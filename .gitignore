@@ -1,2 +1,21 @@
 
 .idea/
+
+# Local planning documents
+PROPOSAL.md
+
+# Claude Code
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# Curated legacy data (never commit)
+old_data/
+
+# Local secrets and Slack probe output
+.env
+.probe/
+__pycache__/
+
+# Local reference material (old R project, CI extraction)
+reference/
