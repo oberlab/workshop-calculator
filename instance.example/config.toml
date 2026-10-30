@@ -1,0 +1,29 @@
+# Instance configuration (example). Copy instance.example/ to instance/ and adapt it.
+
+[calendar]
+# First month of the school year (8 = 1 August, Bavaria).
+school_year_start_month = 8
+
+[target_groups]
+# Sessions in these contexts always count as teacher training ("Lehrkräfte").
+teacher_contexts = ["Lehrkräftefortbildung"]
+
+[slack]
+# Columns of the Slack List that are deliberately not transferred.
+ignored_columns = ["Abgerechnet"]
+
+# Slack List column names for each field. Only these columns are transferred.
+# The defaults below match the column names the app expects; override as needed.
+[slack.columns]
+date = "Datum"
+course_name = "Kursname"
+duration_hours = "Dauer (h)"
+location = "Ort"
+class_age = "Klassenstufe/\nDurchschnittsalter"
+participants_female = "TN :female_sign:"
+participants_male = "TN :male_sign:"
+category = "Kurskategorie"
+context = "Kontext"
+session_number = "Terminnummer"
+status = "Status"
+instructor = "Kursleiter"

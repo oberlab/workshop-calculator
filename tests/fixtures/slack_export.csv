@@ -1,0 +1,7 @@
+Kursname,Datum,"Dauer (h)",Ort,"Klassenstufe/
+Durchschnittsalter","TN :female_sign:","TN :male_sign:",Kurskategorie,Kontext,Terminnummer,Status,Abgerechnet,Kursleiter
+Loeten,2025-03-04,"3,0",Makerspace,"Kl. 3 / 8 Jahre",2,4,Engineering,Kurse,1,Durchgeführt,true,U001
+"Repair  Café ",2025-03-05,"20,0",Makerspace,"über 65 Jahre",5,1,Engineering,LKF,1,Durchgeführt,false,U002
+Robotik,2025-03-06,"1,5",Grundschule Musterstadt,"Kl. 4 / 9 Jahre",10,12,Code,,2,Durchgeführt,true,U001
+Plan,,"0,0",,,0,0,,,0,In Planung,false,
+Unbekannt,2025-04-01,"2,0",Neue Schule,"Kl. 5 / 10 Jahre",3,3,Science,Kurse,1,Durchgeführt,true,

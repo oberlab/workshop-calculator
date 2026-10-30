@@ -1,0 +1,63 @@
+/* Colours and fonts come from /theme.css (instance theme or neutral default). */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-background, #fff);
+  color: var(--color-text, #333);
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+
+h1 {
+  font-family: var(--font-heading, monospace);
+  font-weight: 700;
+  font-size: 1.6rem;
+  margin: 0 0 20px;
+}
+
+.filters { display: grid; gap: 12px; margin-bottom: 20px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; border: 0; margin: 0; padding: 0; }
+.row > label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 0.9rem; }
+
+select, input[type="date"] {
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--color-muted, #999);
+  border-radius: 4px;
+  background: var(--color-background, #fff);
+}
+
+.custom-range[hidden] { display: none; }
+
+.reset { margin-left: auto; color: var(--color-accent, #4477aa); font-size: 0.9rem; padding-bottom: 8px; }
+
+.checklist {
+  border: 1px solid var(--color-grid, #ddd);
+  border-radius: 4px;
+  padding: 6px 10px;
+  min-width: 220px;
+  align-self: flex-start;
+}
+.checklist summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+.checklist .selection { font-weight: 400; color: var(--color-muted, #777); }
+.checklist .options { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; max-height: 260px; overflow-y: auto; }
+.checklist .options label { font-size: 0.95rem; white-space: nowrap; }
+
+.hint, .meta, .empty { color: var(--color-muted, #777); font-size: 0.9rem; margin: 0; }
+.empty { padding: 40px 0; text-align: center; font-size: 1rem; }
+
+.chart { width: 100%; min-height: 200px; }
+.chart .vega-embed { width: 100%; }
+.chart .vega-embed summary { opacity: 0.8; }
+
+@media (max-width: 640px) {
+  .reset { margin-left: 0; }
+  .checklist { min-width: 100%; }
+}

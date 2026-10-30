@@ -1,0 +1,32 @@
+# Theme tokens (example). Same structure as the neutral default theme.
+# Font files are referenced relative to this directory, e.g. "fonts/MyFont-Regular.ttf".
+
+[font]
+heading = "ui-monospace, monospace"
+body = "system-ui, sans-serif"
+files = [
+  # { family = "My Font", weight = 400, file = "fonts/MyFont-Regular.ttf" },
+]
+
+[color]
+text = "#333333"
+background = "#ffffff"
+border = "#333333"
+grid = "#eeeeee"
+accent = "#4477aa"
+muted = "#777777"
+
+[chart]
+bar_opacity = 0.9
+
+[categories]
+# Legend order; the first category is drawn on top of the stack.
+order = ["Code", "Engineering", "Science"]
+
+[categories.colors]
+Code = "#4477aa"
+Engineering = "#ee6677"
+Science = "#ccbb44"
+
+[palette]
+categorical = ["#4477aa", "#ee6677", "#ccbb44", "#228833", "#66ccee", "#aa3377", "#bbbbbb"]

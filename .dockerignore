@@ -1,0 +1,15 @@
+# Only code goes into the image. Private data and config are mounted at runtime.
+.git
+.env
+.probe
+.obsidian
+.venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+old_data
+instance
+reference
+PROPOSAL.md
+CLAUDE.md
+.claude

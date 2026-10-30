@@ -1,0 +1,27 @@
+# Neutral default theme, used when the instance directory has no theme.
+# An instance overrides it with instance/theme/tokens.toml (same structure).
+
+[font]
+heading = "ui-monospace, monospace"
+body = "system-ui, sans-serif"
+files = []
+
+[color]
+text = "#333333"
+background = "#ffffff"
+border = "#333333"
+grid = "#eeeeee"
+accent = "#4477aa"
+muted = "#777777"
+
+[chart]
+bar_opacity = 0.9
+
+[categories]
+order = []
+
+[categories.colors]
+
+# Used for categories without an explicit colour (Paul Tol, colour-blind safe).
+[palette]
+categorical = ["#4477aa", "#ee6677", "#ccbb44", "#228833", "#66ccee", "#aa3377", "#bbbbbb"]

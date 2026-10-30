@@ -19,3 +19,14 @@ __pycache__/
 
 # Local reference material (old R project, CI extraction)
 reference/
+
+# Private instance directory (CI theme, config, seeds, baseline)
+instance/
+
+# Python tooling
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Obsidian vault settings
+.obsidian/

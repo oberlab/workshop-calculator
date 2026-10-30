@@ -1,0 +1,6 @@
+"";"Datum";"Kursname";"Dauer";"Ort";"Schulart";"Durchschnittsalter";"Klasse";"TN_F";"TN_M";"TN_Gesamt";"Kurskategorie";"Kontext";"Terminnummer";"Kursleitung"
+"1";2020-01-07;NA;2;"Grundschule Musterstadt";"GS";8;3;NA;NA;18;"Science";"Projekt A";1;"Alex"
+"2";2020-01-14;NA;1,5;"Grundschule Musterstadt";"GS";8;3;NA;NA;18;"Science";"Projekt A";2;"Alex"
+"3";2021-08-02;NA;3;"Makerspace";NA;6;NA;NA;NA;9;"Code";"Ferien";1;"Kim"
+"4";2024-09-10;"Löten";3,5;"Makerspace";NA;45;NA;2;3;5;"Engineering";"Kurse";1;"Kim"
+"5";2024-10-01;"Fortbildung KI";2;"Mittelschule Musterstadt";"MS";14;9;4;6;10;"Code";"Lehrkräftefortbildung";1;"Kim"

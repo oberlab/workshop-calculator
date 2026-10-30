@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metrics
+      POSTGRES_USER: metrics
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metrics -d metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://metrics:${POSTGRES_PASSWORD}@db:5432/metrics
+      INSTANCE_DIR: /instance
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_LIST_ID: ${SLACK_LIST_ID:-}
+    volumes:
+      # Private, organisation-specific config and theme (see instance.example/).
+      - ${INSTANCE_DIR:-./instance.example}:/instance:ro
+      # Legacy CSV files, only needed for `metrics load-legacy`.
+      - ${LEGACY_DATA_DIR:-./tests/fixtures}:/legacy:ro
+    ports:
+      # Bound to localhost by default; set APP_BIND to expose it on another interface.
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
+
+volumes:
+  pgdata:
