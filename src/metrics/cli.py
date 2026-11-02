@@ -1,13 +1,16 @@
-"""Command line: `metrics load-legacy …` and `metrics sync-slack`."""
+"""Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`."""
 
 import argparse
 import sys
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
 from metrics.ingest import store
+from metrics.ingest.archive import archive_list, delete_archived
+from metrics.ingest.instructors import sync_instructors
 from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_export
 from metrics.ingest.records import SessionRecord
 from metrics.ingest.slack import SOURCE_SLACK, fetch_list, map_items
@@ -72,6 +75,36 @@ def sync_slack(args: argparse.Namespace) -> None:
     _print_summary((SOURCE_SLACK,))
 
 
+def _slack_credentials() -> tuple[str, str]:
+    settings = get_settings()
+    if not settings.slack_bot_token or not settings.slack_list_id:
+        sys.exit("SLACK_BOT_TOKEN and SLACK_LIST_ID must be set.")
+    return settings.slack_bot_token, settings.slack_list_id
+
+
+def archive_slack(args: argparse.Namespace) -> None:
+    token, list_id = _slack_credentials()
+    raw, csv_path, count = archive_list(token, list_id, args.until, Path(args.out), get_instance())
+    print(f"Complete List saved to {raw}")
+    print(f"{count} items dated up to {args.until} written to {csv_path}")
+
+
+def delete_slack(args: argparse.Namespace) -> None:
+    token, list_id = _slack_credentials()
+    csv_path = Path(args.csv)
+    result = delete_archived(token, list_id, csv_path, csv_path.with_suffix(".deleted.log"))
+    print(f"{len(result.deleted)} items deleted from the Slack List, {len(result.skipped)} skipped.")
+    for item_id, reason in result.skipped.items():
+        print(f"  skipped {item_id}: {reason}")
+
+
+def sync_instructor_profiles(args: argparse.Namespace) -> None:
+    token, _ = _slack_credentials()
+    with get_sessionmaker()() as session, session.begin():
+        people, pictures = sync_instructors(session, get_instance(), token)
+    print(f"{people} instructors updated, {pictures} with a profile picture.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -85,6 +118,18 @@ def main() -> None:
 
     slack = commands.add_parser("sync-slack", help="Read the Slack List and upsert its items")
     slack.set_defaults(func=sync_slack)
+
+    archive = commands.add_parser("archive-slack", help="Save the List and export items up to a date as CSV")
+    archive.add_argument("--until", type=date.fromisoformat, required=True, help="last date (inclusive)")
+    archive.add_argument("--out", required=True, help="directory for the raw JSON and the CSV")
+    archive.set_defaults(func=archive_slack)
+
+    remove = commands.add_parser("delete-slack", help="Delete archived items from the List")
+    remove.add_argument("--csv", required=True, help="CSV written by archive-slack")
+    remove.set_defaults(func=delete_slack)
+
+    people = commands.add_parser("sync-instructors", help="Fetch instructor names and pictures from Slack")
+    people.set_defaults(func=sync_instructor_profiles)
 
     args = parser.parse_args()
     args.func(args)

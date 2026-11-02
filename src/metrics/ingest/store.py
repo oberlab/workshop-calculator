@@ -18,8 +18,18 @@ def _log(session: Session, kind: str, rows: int, message: str) -> None:
 
 
 def replace_legacy(session: Session, records: list[SessionRecord]) -> None:
-    """Replace all legacy rows. Allowed until the legacy baseline is frozen."""
+    """Replace all legacy rows. Allowed until the legacy baseline is frozen.
+
+    Rows from archived Slack exports replace the synced Slack rows of the same items, so
+    an item is never counted twice after it has been handed over from the List.
+    """
     session.execute(delete(SessionRow).where(SessionRow.source.in_(LEGACY_SOURCES)))
+    archived = [r.source_key.split(":slack:", 1)[1] for r in records if ":slack:" in r.source_key]
+    if archived:
+        slack_keys = [f"{SOURCE_SLACK}:{item_id}" for item_id in archived]
+        session.execute(
+            delete(SessionRow).where(SessionRow.source == SOURCE_SLACK, SessionRow.source_key.in_(slack_keys))
+        )
     session.execute(insert(SessionRow), [record.as_row() for record in records])
     _log(session, "legacy-load", len(records), f"{len(records)} legacy rows loaded")
 

@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from metrics.db import STATUS_DONE, SessionRow
@@ -145,16 +145,12 @@ class Segment:
     count: int
 
 
-def count_by_date_and_category(session: Session, filters: Filters, today: date, school_year_start_month: int):
-    """Held sessions grouped by date and category, with all filters applied."""
+def _held_sessions(query, filters: Filters, today: date, school_year_start_month: int):
+    """Restrict a query to held sessions matching all filters; returns it with the resolved period."""
     start, end = resolve_period(
         filters.preset, today, school_year_start_month, filters.date_from, filters.date_to
     )
-    query = (
-        select(SessionRow.date, SessionRow.category, func.count())
-        .where(SessionRow.status == STATUS_DONE, SessionRow.date.is_not(None))
-        .group_by(SessionRow.date, SessionRow.category)
-    )
+    query = query.where(SessionRow.status == STATUS_DONE, SessionRow.date.is_not(None))
     if start:
         query = query.where(SessionRow.date >= start)
     if end:
@@ -165,7 +161,60 @@ def count_by_date_and_category(session: Session, filters: Filters, today: date, 
         query = query.where(SessionRow.context.in_(filters.contexts))
     if filters.target_groups:
         query = query.where(SessionRow.target_group.in_(filters.target_groups))
-    return session.execute(query).all(), (start, end)
+    return query, (start, end)
+
+
+def count_by_date_and_category(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held sessions grouped by date and category, with all filters applied."""
+    query, period = _held_sessions(
+        select(SessionRow.date, SessionRow.category, func.count()).group_by(
+            SessionRow.date, SessionRow.category
+        ),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    return session.execute(query).all(), period
+
+
+def count_by_instructor(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held sessions per recorded instructor value (first name or Slack ID), with all filters applied."""
+    query, _ = _held_sessions(
+        select(SessionRow.instructor, func.count()).group_by(SessionRow.instructor),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    return session.execute(query).all()
+
+
+@dataclass
+class Totals:
+    sessions: int
+    participants: int
+    locations: int
+
+
+def totals(session: Session, filters: Filters, today: date, school_year_start_month: int) -> Totals:
+    """Key figures for the selection.
+
+    Participants are counted at session number 1 only, so children in multi-session courses
+    count once (rule of the R analysis). Entries without a session number are not counted.
+    Locations are distinct recorded names.
+    """
+    first_session = case((SessionRow.session_number == 1, SessionRow.participants_total), else_=0)
+    query, _ = _held_sessions(
+        select(
+            func.count(),
+            func.coalesce(func.sum(first_session), 0),
+            func.count(func.distinct(SessionRow.location)),
+        ),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    sessions, participants, locations = session.execute(query).one()
+    return Totals(sessions=sessions, participants=int(participants), locations=locations)
 
 
 def aggregate(rows, bin_name: str, school_year_start_month: int) -> list[Segment]:

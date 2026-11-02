@@ -27,3 +27,7 @@ context = "Kontext"
 session_number = "Terminnummer"
 status = "Status"
 instructor = "Kursleiter"
+
+[features]
+# Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
+instructor_ranking = false

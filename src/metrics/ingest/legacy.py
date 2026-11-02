@@ -27,6 +27,7 @@ from metrics.instance import Instance
 SOURCE_HARMONISED = "legacy-harmonised"
 SOURCE_SLACK_EXPORT = "legacy-slack-export"
 LEGACY_SOURCES = (SOURCE_HARMONISED, SOURCE_SLACK_EXPORT)
+SLACK_ID_COLUMN = "Slack-ID"
 
 
 def _date(value: str | None) -> date | None:
@@ -90,7 +91,12 @@ def read_slack_export(path: Path, instance: Instance) -> tuple[list[SessionRecor
             build_record(
                 instance,
                 source=SOURCE_SLACK_EXPORT,
-                source_key=f"{SOURCE_SLACK_EXPORT}:{path.name}:{number}",
+                # Archived exports carry the Slack item ID; older exports only the row number.
+                source_key=(
+                    f"{SOURCE_SLACK_EXPORT}:slack:{row[SLACK_ID_COLUMN]}"
+                    if row.get(SLACK_ID_COLUMN)
+                    else f"{SOURCE_SLACK_EXPORT}:{path.name}:{number}"
+                ),
                 session_date=session_date,
                 course_name=course,
                 duration_hours=to_decimal(value["duration_hours"]),

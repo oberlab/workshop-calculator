@@ -52,3 +52,13 @@ def test_read_slack_export_missing_column(instance, tmp_path):
     path.write_text("Kursname,Datum\nA,2025-01-01\n", encoding="utf-8")
     with pytest.raises(ValueError, match="columns not found"):
         read_slack_export(path, instance)
+
+
+def test_location_aliases_apply_to_every_source(instance, tmp_path):
+    # instance.example maps "Makerspace Hauptstr." to "Makerspace".
+    path = tmp_path / "export.csv"
+    text = (FIXTURES / "slack_export.csv").read_text(encoding="utf-8")
+    path.write_text(text.replace(",Makerspace,", ",Makerspace Hauptstr.,", 1), encoding="utf-8")
+    rows, _ = read_slack_export(path, instance)
+    assert rows[0].location == "Makerspace"
+    assert rows[0].target_group == r.CHILDREN_OUTSIDE_SCHOOL

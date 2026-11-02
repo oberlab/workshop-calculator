@@ -57,7 +57,55 @@ select, input[type="date"] {
 .chart .vega-embed { width: 100%; }
 .chart .vega-embed summary { opacity: 0.8; }
 
+/* Three equal columns across the full width under the chart. */
+.totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 28px 0 12px; text-align: center; }
+/* Label first in the markup, shown below the number. */
+.totals div { display: flex; flex-direction: column-reverse; align-items: center; }
+.totals dd {
+  margin: 0;
+  font-family: var(--font-heading, monospace);
+  font-weight: 700;
+  font-size: 2.6rem;
+  line-height: 1.1;
+  color: var(--color-text, #333);
+}
+.totals dt { font-size: 1rem; color: var(--color-muted, #777); }
+.totals sup, .footnote sup { font-size: 0.7em; }
+.footnote { color: var(--color-muted, #777); font-size: 0.8rem; margin: 0 0 12px; }
+
+.ranking { margin-top: 40px; }
+.ranking h2 { font-family: var(--font-heading, monospace); font-size: 1.2rem; margin: 0 0 4px; }
+.ranking .internal {
+  font-family: var(--font-body, sans-serif);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+.ranking-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
+.ranking-list li { display: grid; grid-template-columns: 44px 1fr 3.5rem; gap: 12px; align-items: center; }
+.ranking-list .avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-grid, #eee);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.ranking-list .name { font-size: 0.95rem; }
+.ranking-list .bar { height: 14px; background: var(--color-grid, #eee); border-radius: 2px; margin-top: 4px; }
+.ranking-list .fill { height: 100%; background: var(--color-accent, #4477aa); border-radius: 2px; }
+.ranking-list .count { text-align: right; font-family: var(--font-heading, monospace); font-weight: 700; font-size: 1.1rem; }
+.ranking-list .without .fill { background: var(--color-muted, #999); opacity: 0.5; }
+
 @media (max-width: 640px) {
+  .totals dd { font-size: 1.9rem; }
   .reset { margin-left: 0; }
   .checklist { min-width: 100%; }
 }

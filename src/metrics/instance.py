@@ -8,7 +8,8 @@ it is optional: without it the app runs with the neutral defaults in this packag
     ├── theme/tokens.toml    colours, fonts, category colours
     ├── theme/fonts/         font files referenced by tokens.toml
     ├── seeds/locations.csv  which locations are schools
-    └── mappings/            name aliases (kontext.csv, kontext_inferred.csv, kursname.csv)
+    ├── seeds/instructors.csv  legacy first names -> Slack user IDs (same person)
+    └── mappings/            name aliases (kontext.csv, kontext_inferred.csv, kursname.csv, ort.csv)
 """
 
 import csv
@@ -64,6 +65,11 @@ class NameMappings:
     context_aliases: dict[str, str] = field(default_factory=dict)
     context_from_course: dict[str, str] = field(default_factory=dict)
     course_aliases: dict[str, str] = field(default_factory=dict)
+    location_aliases: dict[str, str] = field(default_factory=dict)
+
+    def location(self, name: str | None) -> str | None:
+        cleaned = clean_name(name)
+        return self.location_aliases.get(cleaned, cleaned) or None
 
     def course(self, name: str | None) -> str | None:
         cleaned = clean_name(name)
@@ -87,6 +93,13 @@ class Instance:
     locations: dict[str, bool]
     names: NameMappings
     theme: Theme
+    instructor_aliases: dict[str, str] = field(default_factory=dict)
+    instructor_ranking: bool = False
+
+    def instructor_key(self, recorded: str | None) -> str | None:
+        """The person behind a recorded instructor value (first name or Slack user ID)."""
+        cleaned = clean_name(recorded)
+        return self.instructor_aliases.get(cleaned, cleaned) or None
 
     def location_is_school(self, location: str | None) -> bool | None:
         """True/False if the location is listed, None if unknown or empty."""
@@ -141,6 +154,7 @@ def load_instance(instance_dir: Path) -> Instance:
             clean_name(r["kursname"]): r["canonical"] for r in _read_csv(mappings / "kontext_inferred.csv")
         },
         course_aliases={clean_name(r["alias"]): r["canonical"] for r in _read_csv(mappings / "kursname.csv")},
+        location_aliases={clean_name(r["alias"]): r["canonical"] for r in _read_csv(mappings / "ort.csv")},
     )
     return Instance(
         path=instance_dir,
@@ -151,6 +165,12 @@ def load_instance(instance_dir: Path) -> Instance:
         locations=locations,
         names=names,
         theme=load_theme(instance_dir),
+        instructor_aliases={
+            clean_name(r["alias"]): r["slack_id"].strip()
+            for r in _read_csv(instance_dir / "seeds" / "instructors.csv")
+        },
+        # Internal view; keep it off for anything public.
+        instructor_ranking=bool(config.get("features", {}).get("instructor_ranking", False)),
     )
 
 

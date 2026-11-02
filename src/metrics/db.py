@@ -4,7 +4,7 @@ import datetime as dt
 from decimal import Decimal
 from functools import lru_cache
 
-from sqlalchemy import DateTime, Integer, Numeric, String, Text, create_engine, func
+from sqlalchemy import DateTime, Integer, LargeBinary, Numeric, String, Text, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from metrics.config import get_settings
@@ -44,6 +44,23 @@ class SessionRow(Base):
     status: Mapped[str | None] = mapped_column(String(32), index=True)
     instructor: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Instructor(Base):
+    """A person who leads sessions: Slack user (name and picture from Slack) or legacy first name.
+
+    `key` is the Slack user ID, or the recorded first name for people without a Slack user.
+    """
+
+    __tablename__ = "instructors"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    image: Mapped[bytes | None] = mapped_column(LargeBinary)
+    image_type: Mapped[str | None] = mapped_column(String(64))
+    fetched_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 

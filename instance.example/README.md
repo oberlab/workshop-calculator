@@ -11,5 +11,9 @@ Everything specific to one organisation lives in an instance directory that is m
 | `mappings/kontext.csv` | Context aliases (`alias` → `canonical`) |
 | `mappings/kontext_inferred.csv` | Context for empty values, inferred from the course name (`kursname` → `canonical`) |
 | `mappings/kursname.csv` | Course name aliases (`alias` → `canonical`) |
+| `mappings/ort.csv` | Location aliases (`alias` → `canonical`) |
+| `seeds/instructors.csv` | Legacy first names that belong to a Slack user (`alias` → `slack_id`), for the instructor ranking |
 
-Name mappings are applied to Slack data (API and CSV export). Locations missing from `locations.csv` are reported by the import and get the target group "Unbekannt" for children.
+`config.toml` also holds feature switches: `[features] instructor_ranking` (internal ranking with Slack profile pictures, off by default; keep it off for anything public).
+
+Course name and context mappings are applied to Slack data (API and CSV export); location aliases are applied to every import. Locations missing from `locations.csv` are reported by the import and get the target group "Unbekannt" for children.

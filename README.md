@@ -1,6 +1,6 @@
 # workshop-calculator
 
-Course and workshop metrics for makerspaces. Sessions are recorded in a Slack List, synced into PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year), period presets and filters for category, target group and context/project.
+Course and workshop metrics for makerspaces. Sessions are recorded in a Slack List, synced into PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year), period presets and filters for category, target group and context/project. Below the chart, key figures for the selection: sessions, participants and locations.
 
 The user interface is in German.
 
@@ -29,6 +29,16 @@ docker compose exec app metrics sync-slack
 
 With the defaults, `/legacy` points to `tests/fixtures/`, so the commands above load the synthetic test data.
 
+Quarterly hand-over from the Slack List into the legacy data (needs `lists:write`):
+
+```sh
+metrics archive-slack --until 2026-09-30 --out <dir>   # raw JSON backup + CSV of entries up to the date
+metrics load-legacy … --slack-export <normalised CSV>  # archived entries replace their synced Slack rows
+metrics delete-slack --csv <archive CSV>                # deletes exactly the archived items, logs each one
+```
+
+Optional internal view: with `[features] instructor_ranking = true` in the instance `config.toml`, the page shows sessions per instructor with Slack profile pictures (`metrics sync-instructors`, needs `users:read`; legacy first names are matched to Slack users in `seeds/instructors.csv`). Keep it disabled for anything public.
+
 ## Instance directory
 
 Everything organisation-specific (theme, fonts, location list, name mappings, Slack column mapping) lives in an instance directory that is never committed. See [`instance.example/README.md`](instance.example/README.md). Point `INSTANCE_DIR` in `.env` to your own copy.
@@ -39,6 +49,9 @@ Everything organisation-specific (theme, fonts, location list, name mappings, Sl
 - Only mapped Slack columns are transferred; unmapped columns are reported by the sync, columns listed as ignored (e.g. billing) are dropped silently.
 - Slack items that disappear from the List stay in the database and are marked `removed_from_slack`.
 - Target groups: teacher-training contexts and `Lehrkräfte` → Lehrkräfte; age from 19 or adult age bands → Erwachsene; children → Schulklasse at a school, außerschulisch elsewhere, Unbekannt if the location is empty or not in the location list.
+- Key figures: *Einsätze* = held sessions; *Teilnehmende* = participants of sessions with session number 1 only, so children in multi-session courses count once (continuous formats use 1 on every date and count every time; entries without a session number are not counted); *Orte* = distinct location names.
+- Name aliases (course names, contexts, locations) from the instance directory are applied on every import, including the Slack sync.
+- Archived Slack entries loaded as legacy data replace the synced rows of the same Slack items, so nothing is counted twice.
 
 ## Development
 

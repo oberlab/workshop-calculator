@@ -61,6 +61,7 @@ async function render() {
   history.replaceState(null, "", query ? `?${query}` : location.pathname);
 
   const id = ++requestId;
+  renderRanking(query);
   const response = await fetch(`/api/sessions-over-time?${query}`);
   if (id !== requestId) return; // a newer request is on its way
   if (!response.ok) {
@@ -73,10 +74,60 @@ async function render() {
   chart.hidden = info.count === 0;
   if (info.count > 0) await vegaEmbed(chart, spec, EMBED_OPTIONS);
 
-  const parts = [`${info.count.toLocaleString("de-DE")} Einsätze in der Auswahl`];
-  if (info.first) parts.push(`erster am ${formatDate(info.first)}, letzter am ${formatDate(info.last)}`);
+  for (const [id, value] of [
+    ["total-sessions", info.totals.sessions],
+    ["total-participants", info.totals.participants],
+    ["total-locations", info.totals.locations],
+  ]) {
+    document.getElementById(id).textContent = value.toLocaleString("de-DE");
+  }
+
+  const parts = [];
+  if (info.first) parts.push(`Erster Einsatz am ${formatDate(info.first)}, letzter am ${formatDate(info.last)}`);
   if (info.data_as_of) parts.push(`Datenstand: ${info.data_as_of}`);
   meta.textContent = parts.join(" · ");
+}
+
+const rankingList = document.getElementById("ranking-list");
+
+function rankingItem(row, max) {
+  const li = document.createElement("li");
+  if (row.key === null) li.className = "without";
+  let avatar;
+  if (row.image_url) {
+    avatar = document.createElement("img");
+    avatar.src = row.image_url;
+    avatar.alt = "";
+  } else {
+    avatar = document.createElement("span");
+    avatar.textContent = row.initials;
+  }
+  avatar.classList.add("avatar");
+  const label = document.createElement("div");
+  const name = document.createElement("div");
+  name.className = "name";
+  name.textContent = row.name;
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const fill = document.createElement("div");
+  fill.className = "fill";
+  fill.style.width = `${(100 * row.count) / max}%`;
+  bar.append(fill);
+  label.append(name, bar);
+  const count = document.createElement("span");
+  count.className = "count";
+  count.textContent = row.count.toLocaleString("de-DE");
+  li.append(avatar, label, count);
+  return li;
+}
+
+async function renderRanking(query) {
+  if (!rankingList) return;
+  const response = await fetch(`/api/instructor-ranking?${query}`);
+  if (!response.ok) return;
+  const { rows } = await response.json();
+  const max = Math.max(1, ...rows.map((row) => row.count));
+  rankingList.replaceChildren(...rows.map((row) => rankingItem(row, max)));
 }
 
 form.addEventListener("change", render);
