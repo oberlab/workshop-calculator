@@ -3,6 +3,8 @@
 
 # Local planning documents
 PROPOSAL.md
+IMPLEMENTATION_PLAN.md
+TICKETS.md
 
 # Claude Code
 .claude/
