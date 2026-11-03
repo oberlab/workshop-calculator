@@ -125,8 +125,7 @@ async def _noop():
     return None
 
 
-def test_auth_off_opens_internal_endpoints(monkeypatch, instance):
-    monkeypatch.setattr(web, "get_instance", lambda: instance)
+def test_auth_off_opens_internal_endpoints(monkeypatch):
     client = _client(monkeypatch, auth_mode="off")
     assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
     # Passes the login check; then 404 because the example instance has the ranking switched off.
