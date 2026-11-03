@@ -1,4 +1,5 @@
-from datetime import date
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -43,8 +44,36 @@ def test_theme_css(instance):
     assert "--font-body: system-ui, sans-serif;" in css
 
 
-def test_healthz():
-    assert web.healthz() == {"status": "ok"}
+def test_healthz_without_database():
+    # conftest points DATABASE_URL at a port nothing listens on.
+    response = web.healthz()
+    assert response.status_code == 503
+    assert json.loads(response.body) == {"status": "error", "database": "unreachable"}
+
+
+def test_healthz_reports_last_import(monkeypatch):
+    class Result:
+        def scalar(self):
+            return datetime(2026, 11, 3, 9, 30, tzinfo=UTC)
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, statement):
+            return Result()
+
+    monkeypatch.setattr(web, "get_sessionmaker", lambda: Session)
+    response = web.healthz()
+    assert response.status_code == 200
+    assert json.loads(response.body) == {
+        "status": "ok",
+        "database": "ok",
+        "last_import": "2026-11-03T09:30:00+00:00",
+    }
 
 
 def test_overview_ignores_detail_filters():

@@ -86,4 +86,6 @@ uv run pytest
 uv run ruff check src tests migrations
 ```
 
+`GET /healthz` is meant for monitoring: 200 with the time of the last finished import, 503 when the database does not answer (after at most 10 seconds).
+
 Tests use only synthetic data. The vendored chart libraries (Vega, Vega-Lite, Vega-Embed) are listed in [`src/metrics/web/static/vendor/README.md`](src/metrics/web/static/vendor/README.md).

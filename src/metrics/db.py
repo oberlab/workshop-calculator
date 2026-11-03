@@ -80,5 +80,8 @@ class ImportRun(Base):
 
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
-    engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+    # The timeout keeps /healthz and the pages from hanging when the database does not answer.
+    engine = create_engine(
+        get_settings().database_url, pool_pre_ping=True, connect_args={"connect_timeout": 10}
+    )
     return sessionmaker(engine, expire_on_commit=False)
