@@ -1,0 +1,48 @@
+# Tests and lint on every push and pull request. Uses only the synthetic fixtures and
+# instance.example/; no secrets, no database.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 = the Docker image (production), 3.14 = current development machines.
+        python: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          # Same uv as the Dockerfile.
+          version: "0.11.28"
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+
+      - name: Install dependencies from the lock file
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check src tests migrations
+
+      - name: Formatting
+        run: uv run ruff format --check src tests migrations
+
+      - name: Tests
+        run: uv run pytest

@@ -84,8 +84,13 @@ Everything organisation-specific (theme, fonts, location list, name mappings, Sl
 uv sync
 uv run pytest
 uv run ruff check src tests migrations
+uv run ruff format --check src tests migrations
 ```
+
+GitHub Actions runs the same commands on every push and pull request, on Python 3.13 (the Docker image) and 3.14.
+
+Tests use only synthetic data and always the public `instance.example/`: a fixture in `tests/conftest.py` ignores a private `instance/` directory and any login or Slack settings from `.env`, and points the database URL at a closed port, so no test can read real data.
 
 `GET /healthz` is meant for monitoring: 200 with the time of the last finished import, 503 when the database does not answer (after at most 10 seconds).
 
-Tests use only synthetic data. The vendored chart libraries (Vega, Vega-Lite, Vega-Embed) are listed in [`src/metrics/web/static/vendor/README.md`](src/metrics/web/static/vendor/README.md).
+The vendored chart libraries (Vega, Vega-Lite, Vega-Embed) are listed in [`src/metrics/web/static/vendor/README.md`](src/metrics/web/static/vendor/README.md).
