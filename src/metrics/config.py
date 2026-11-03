@@ -12,6 +12,12 @@ class Settings:
     instance_dir: Path
     slack_bot_token: str | None
     slack_list_id: str | None
+    team_password_hash: str | None = None
+    session_secret: str | None = None
+    auth_mode: str = "password"
+
+
+AUTH_MODES = ("password", "off")
 
 
 @lru_cache
@@ -23,4 +29,15 @@ def get_settings() -> Settings:
         instance_dir=Path(os.environ.get("INSTANCE_DIR", "instance")),
         slack_bot_token=os.environ.get("SLACK_BOT_TOKEN") or None,
         slack_list_id=os.environ.get("SLACK_LIST_ID") or None,
+        team_password_hash=os.environ.get("TEAM_PASSWORD_HASH") or None,
+        session_secret=os.environ.get("SESSION_SECRET") or None,
+        auth_mode=_auth_mode(),
     )
+
+
+def _auth_mode() -> str:
+    value = (os.environ.get("AUTH_MODE") or "password").strip().lower()
+    if value not in AUTH_MODES:
+        # Fail loudly instead of guessing: a typo must never open the analysis page.
+        raise ValueError(f"AUTH_MODE must be one of {', '.join(AUTH_MODES)}, not {value!r}")
+    return value

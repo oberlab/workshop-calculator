@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Anmelden{% endblock %}
+{% block heading %}Analyse: Anmelden{% endblock %}
+
+{% block nav %}<a href="/">Übersicht</a>{% endblock %}
+
+{% block content %}
+{% if mode == "password" and configured %}
+<form method="post" action="/login" class="login">
+  <label>Teampasswort
+    <input type="password" name="password" autocomplete="current-password" required autofocus>
+  </label>
+  {% if failed %}<p class="error" role="alert">Das Passwort ist falsch.</p>{% endif %}
+  <button type="submit">Anmelden</button>
+</form>
+{% else %}
+<p class="hint">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
+{% endif %}
+{% endblock %}

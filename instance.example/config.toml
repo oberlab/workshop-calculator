@@ -30,4 +30,5 @@ instructor = "Kursleiter"
 
 [features]
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
+# Shown only on the analysis page (team login).
 instructor_ranking = false

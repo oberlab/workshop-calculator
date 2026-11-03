@@ -1,4 +1,5 @@
-// Sessions-over-time page: keeps the filter form, the URL and the chart in sync.
+// Sessions-over-time chart (overview and analysis page): keeps the form, the URL and the chart in sync.
+// The form's data-api attribute names the endpoint; the analysis endpoint needs the team login.
 
 const FORMAT_LOCALE = { decimal: ",", thousands: ".", grouping: [3], currency: ["", " €"] };
 const TIME_FORMAT_LOCALE = {
@@ -62,8 +63,12 @@ async function render() {
 
   const id = ++requestId;
   renderRanking(query);
-  const response = await fetch(`/api/sessions-over-time?${query}`);
+  const response = await fetch(`${form.dataset.api}?${query}`);
   if (id !== requestId) return; // a newer request is on its way
+  if (response.status === 401) {
+    location.assign("/login"); // session expired
+    return;
+  }
   if (!response.ok) {
     meta.textContent = `Fehler beim Laden der Daten (${response.status}).`;
     return;

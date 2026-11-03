@@ -1,11 +1,14 @@
-"""Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`."""
+"""Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`,
+`hash-password`."""
 
 import argparse
+import getpass
 import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from metrics.auth import hash_password
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
 from metrics.ingest import store
@@ -105,6 +108,15 @@ def sync_instructor_profiles(args: argparse.Namespace) -> None:
     print(f"{people} instructors updated, {pictures} with a profile picture.")
 
 
+def print_password_hash(args: argparse.Namespace) -> None:
+    password = getpass.getpass("Team password: ")
+    if len(password) < 10:
+        sys.exit("Use at least 10 characters.")
+    if getpass.getpass("Repeat: ") != password:
+        sys.exit("The passwords do not match.")
+    print(f"TEAM_PASSWORD_HASH={hash_password(password)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -130,6 +142,9 @@ def main() -> None:
 
     people = commands.add_parser("sync-instructors", help="Fetch instructor names and pictures from Slack")
     people.set_defaults(func=sync_instructor_profiles)
+
+    password = commands.add_parser("hash-password", help="Print a TEAM_PASSWORD_HASH line for .env")
+    password.set_defaults(func=print_password_hash)
 
     args = parser.parse_args()
     args.func(args)

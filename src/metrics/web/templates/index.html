@@ -1,83 +1,15 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Einsätze über die Zeit</title>
-  <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
-</head>
-<body>
-  <main>
-    <h1>Einsätze über die Zeit</h1>
+{% extends "base.html" %}
+{% from "_chart.html" import time_controls, chart_and_totals, chart_scripts with context %}
 
-    <form id="filters" class="filters">
-      <fieldset class="row">
-        <label>Zeitraster
-          <select name="bin">
-            {% for key, label in bins.items() %}
-            <option value="{{ key }}" {% if filters.bin == key %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Zeitraum
-          <select name="period">
-            {% for key, label in presets.items() %}
-            <option value="{{ key }}" {% if filters.preset == key %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="custom-range">von
-          <input type="date" name="from" value="{{ filters.date_from or '' }}">
-        </label>
-        <label class="custom-range">bis
-          <input type="date" name="to" value="{{ filters.date_to or '' }}">
-        </label>
-        <a class="reset" href="/">Alle Filter zurücksetzen</a>
-      </fieldset>
+{% block nav %}
+<a href="/analyse">{% if team %}Analyse{% else %}Analyse (Team-Login){% endif %}</a>
+{% endblock %}
 
-      {% macro checklist(title, name, values, selected) %}
-      <details class="checklist" {% if selected %}open{% endif %}>
-        <summary>{{ title }} <span class="selection">{% if selected %}({{ selected|length }} ausgewählt){% else %}(alle){% endif %}</span></summary>
-        <div class="options">
-          {% for value in values %}
-          <label><input type="checkbox" name="{{ name }}" value="{{ value }}" {% if value in selected %}checked{% endif %}> {{ value }}</label>
-          {% endfor %}
-        </div>
-      </details>
-      {% endmacro %}
+{% block content %}
+<form id="filters" class="filters" data-api="{{ api }}">
+  {{ time_controls(filters, bins, presets, "Zurücksetzen") }}
+</form>
+{{ chart_and_totals() }}
+{% endblock %}
 
-      <div class="row">
-        {{ checklist("Kurskategorie", "category", options.categories, filters.categories) }}
-        {{ checklist("Zielgruppe", "target_group", options.target_groups, filters.target_groups) }}
-        {{ checklist("Kontext / Projekt", "context", options.contexts, filters.contexts) }}
-      </div>
-      <p class="hint">Keine Auswahl in einer Liste bedeutet: alle.</p>
-    </form>
-
-    <div id="chart" class="chart" aria-live="polite"></div>
-    <p id="empty" class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
-
-    <dl class="totals" aria-live="polite">
-      <div><dt>Einsätze</dt><dd id="total-sessions">–</dd></div>
-      <div><dt>Teilnehmende<sup>*</sup></dt><dd id="total-participants">–</dd></div>
-      <div><dt>Orte</dt><dd id="total-locations">–</dd></div>
-    </dl>
-    <p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Fortlaufende Formate (z.&nbsp;B. JuLab, Repair Café) haben an jedem Termin die Nummer 1 und werden deshalb bei jedem Termin gezählt. Einträge ohne Terminnummer zählen nicht mit.</p>
-    <p id="meta" class="meta"></p>
-
-    {% if instructor_ranking %}
-    <section class="ranking">
-      <h2>Einsätze je Kursleitung <span class="internal">intern</span></h2>
-      <p class="hint">Nur für den internen Gebrauch. Es gelten dieselben Filter wie oben.</p>
-      <ol id="ranking-list" class="ranking-list"></ol>
-    </section>
-    {% endif %}
-  </main>
-
-  <script src="{{ url_for('static', path='vendor/vega.min.js') }}"></script>
-  <script src="{{ url_for('static', path='vendor/vega-lite.min.js') }}"></script>
-  <script src="{{ url_for('static', path='vendor/vega-embed.min.js') }}"></script>
-  <script src="{{ url_for('static', path='app.js') }}"></script>
-</body>
-</html>
+{% block scripts %}{{ chart_scripts() }}{% endblock %}

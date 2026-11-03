@@ -1,0 +1,46 @@
+{# Shared by the overview and the analysis page: time controls, chart, key figures. #}
+{% macro time_controls(filters, bins, presets, reset_label) %}
+<fieldset class="row">
+  <label>Zeitraster
+    <select name="bin">
+      {% for key, label in bins.items() %}
+      <option value="{{ key }}" {% if filters.bin == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Zeitraum
+    <select name="period">
+      {% for key, label in presets.items() %}
+      <option value="{{ key }}" {% if filters.preset == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="custom-range">von
+    <input type="date" name="from" value="{{ filters.date_from or '' }}">
+  </label>
+  <label class="custom-range">bis
+    <input type="date" name="to" value="{{ filters.date_to or '' }}">
+  </label>
+  <a class="reset" href="?">{{ reset_label }}</a>
+</fieldset>
+{% endmacro %}
+
+{% macro chart_and_totals() %}
+<div id="chart" class="chart" aria-live="polite"></div>
+<p id="empty" class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
+
+<dl class="totals" aria-live="polite">
+  <div><dt>Einsätze</dt><dd id="total-sessions">–</dd></div>
+  <div><dt>Teilnehmende<sup>*</sup></dt><dd id="total-participants">–</dd></div>
+  <div><dt>Orte</dt><dd id="total-locations">–</dd></div>
+</dl>
+<p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Fortlaufende Formate (z.&nbsp;B. JuLab, Repair Café) haben an jedem Termin die Nummer 1 und werden deshalb bei jedem Termin gezählt. Einträge ohne Terminnummer zählen nicht mit.</p>
+<p id="meta" class="meta"></p>
+{% endmacro %}
+
+{% macro chart_scripts() %}
+<script src="{{ url_for('static', path='vendor/vega.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/vega-lite.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/vega-embed.min.js') }}"></script>
+<script src="{{ url_for('static', path='app.js') }}"></script>
+{% endmacro %}

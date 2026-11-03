@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_chart.html" import time_controls, chart_and_totals, chart_scripts with context %}
+
+{% block title %}Analyse: Einsätze über die Zeit{% endblock %}
+{% block heading %}Analyse <span class="internal">intern</span>{% endblock %}
+
+{% block nav %}
+<a href="/">Übersicht</a>
+{% if not auth_off %}
+<span class="user">{{ user }}</span>
+<form method="post" action="/logout"><button type="submit" class="link">Abmelden</button></form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if auth_off %}
+<p class="warning" role="note">Anmeldung ausgeschaltet (<code>AUTH_MODE=off</code>): Diese Seite ist für alle erreichbar. Nur für lokale Tests verwenden.</p>
+{% endif %}
+<form id="filters" class="filters" data-api="{{ api }}">
+  {{ time_controls(filters, bins, presets, "Alle Filter zurücksetzen") }}
+
+  {% macro checklist(title, name, values, selected) %}
+  <details class="checklist" {% if selected %}open{% endif %}>
+    <summary>{{ title }} <span class="selection">{% if selected %}({{ selected|length }} ausgewählt){% else %}(alle){% endif %}</span></summary>
+    <div class="options">
+      {% for value in values %}
+      <label><input type="checkbox" name="{{ name }}" value="{{ value }}" {% if value in selected %}checked{% endif %}> {{ value }}</label>
+      {% endfor %}
+    </div>
+  </details>
+  {% endmacro %}
+
+  <div class="row">
+    {{ checklist("Kurskategorie", "category", options.categories, filters.categories) }}
+    {{ checklist("Zielgruppe", "target_group", options.target_groups, filters.target_groups) }}
+    {{ checklist("Kontext / Projekt", "context", options.contexts, filters.contexts) }}
+  </div>
+  <p class="hint">Keine Auswahl in einer Liste bedeutet: alle.</p>
+</form>
+
+{{ chart_and_totals() }}
+
+{% if instructor_ranking %}
+<section class="ranking">
+  <h2>Einsätze je Kursleitung</h2>
+  <p class="hint">Es gelten dieselben Filter wie oben.</p>
+  <ol id="ranking-list" class="ranking-list"></ol>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}{{ chart_scripts() }}{% endblock %}

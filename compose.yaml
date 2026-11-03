@@ -25,6 +25,9 @@ services:
       INSTANCE_DIR: /instance
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_LIST_ID: ${SLACK_LIST_ID:-}
+      AUTH_MODE: ${AUTH_MODE:-password}
+      TEAM_PASSWORD_HASH: ${TEAM_PASSWORD_HASH:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
     volumes:
       # Private, organisation-specific config and theme (see instance.example/).
       - ${INSTANCE_DIR:-./instance.example}:/instance:ro

@@ -1,6 +1,11 @@
 # workshop-calculator
 
-Course and workshop metrics for makerspaces. Sessions are recorded in a Slack List, synced into PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year), period presets and filters for category, target group and context/project. Below the chart, key figures for the selection: sessions, participants and locations.
+Course and workshop metrics for makerspaces. Sessions are recorded in a Slack List, synced into PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year) and period presets. Below the chart, key figures for the selection: sessions, participants and locations.
+
+Two pages:
+
+- `/` (overview): chart and key figures; only time bin and period can be chosen.
+- `/analyse` (team login): the same chart with filters for category, target group and context/project, plus internal views such as the instructor ranking.
 
 The user interface is in German.
 
@@ -37,7 +42,24 @@ metrics load-legacy … --slack-export <normalised CSV>  # archived entries repl
 metrics delete-slack --csv <archive CSV>                # deletes exactly the archived items, logs each one
 ```
 
-Optional internal view: with `[features] instructor_ranking = true` in the instance `config.toml`, the page shows sessions per instructor with Slack profile pictures (`metrics sync-instructors`, needs `users:read`; legacy first names are matched to Slack users in `seeds/instructors.csv`). Keep it disabled for anything public.
+## Team login
+
+The analysis page needs a login. `AUTH_MODE` in `.env` selects how:
+
+| `AUTH_MODE` | Login |
+| --- | --- |
+| `password` (default) | One shared team password. Without `TEAM_PASSWORD_HASH` the page stays locked. |
+| `off` | No login, for local tests only; the analysis page shows a warning. |
+
+After logging in, the app keeps its own login cookie for 14 days. Set `SESSION_SECRET` to a long random string, otherwise every restart logs everyone out. After changing `.env`, run `docker compose up -d app`.
+
+Shared password:
+
+```sh
+docker compose run --rm app metrics hash-password   # prints TEAM_PASSWORD_HASH=…
+```
+
+Optional internal view: with `[features] instructor_ranking = true` in the instance `config.toml`, the analysis page shows sessions per instructor with Slack profile pictures (`metrics sync-instructors`, needs `users:read`; legacy first names are matched to Slack users in `seeds/instructors.csv`). It is only reachable with the team login.
 
 ## Instance directory
 

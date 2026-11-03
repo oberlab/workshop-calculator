@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Einsätze über die Zeit{% endblock %}</title>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <h1>{% block heading %}Einsätze über die Zeit{% endblock %}</h1>
+      <nav class="nav">
+        {% block nav %}{% endblock %}
+      </nav>
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

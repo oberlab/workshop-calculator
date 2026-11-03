@@ -13,18 +13,34 @@ body {
 
 main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
 
+.page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; margin: 0 0 20px; }
 h1 {
   font-family: var(--font-heading, monospace);
   font-weight: 700;
   font-size: 1.6rem;
-  margin: 0 0 20px;
+  margin: 0;
+}
+.nav { display: flex; gap: 16px; align-items: baseline; font-size: 0.9rem; }
+.nav form { margin: 0; }
+.nav a, button.link { color: var(--color-accent, #4477aa); }
+button.link { font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+
+.internal {
+  font-family: var(--font-body, sans-serif);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 6px;
+  vertical-align: middle;
 }
 
 .filters { display: grid; gap: 12px; margin-bottom: 20px; }
 .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; border: 0; margin: 0; padding: 0; }
 .row > label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 0.9rem; }
 
-select, input[type="date"] {
+select, input[type="date"], input[type="password"] {
   font: inherit;
   font-weight: 400;
   color: inherit;
@@ -33,6 +49,23 @@ select, input[type="date"] {
   border-radius: 4px;
   background: var(--color-background, #fff);
 }
+
+.login { display: grid; gap: 12px; max-width: 320px; }
+.login label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 0.9rem; }
+.login button {
+  font: inherit;
+  font-weight: 700;
+  justify-self: start;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-background, #fff);
+  background: var(--color-accent, #4477aa);
+  cursor: pointer;
+}
+.error { color: var(--color-error, #b00020); margin: 0; }
+.warning { border: 2px solid var(--color-error, #b00020); border-radius: 4px; padding: 8px 12px; margin: 0 0 16px; font-weight: 700; }
+.nav .user { color: var(--color-muted, #777); }
 
 .custom-range[hidden] { display: none; }
 
@@ -75,16 +108,6 @@ select, input[type="date"] {
 
 .ranking { margin-top: 40px; }
 .ranking h2 { font-family: var(--font-heading, monospace); font-size: 1.2rem; margin: 0 0 4px; }
-.ranking .internal {
-  font-family: var(--font-body, sans-serif);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  padding: 1px 6px;
-  vertical-align: middle;
-}
 .ranking-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
 .ranking-list li { display: grid; grid-template-columns: 44px 1fr 3.5rem; gap: 12px; align-items: center; }
 .ranking-list .avatar {
