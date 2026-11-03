@@ -49,6 +49,7 @@ The analysis page needs a login. `AUTH_MODE` in `.env` selects how:
 | `AUTH_MODE` | Login |
 | --- | --- |
 | `password` (default) | One shared team password. Without `TEAM_PASSWORD_HASH` the page stays locked. |
+| `oidc` | Single sign-on with an OpenID Connect provider such as Keycloak. |
 | `off` | No login, for local tests only; the analysis page shows a warning. |
 
 After logging in, the app keeps its own login cookie for 14 days. Set `SESSION_SECRET` to a long random string, otherwise every restart logs everyone out. After changing `.env`, run `docker compose up -d app`.
@@ -58,6 +59,8 @@ Shared password:
 ```sh
 docker compose run --rm app metrics hash-password   # prints TEAM_PASSWORD_HASH=…
 ```
+
+OpenID Connect (Keycloak): create a confidential client (client authentication on, standard flow) with the valid redirect URI `<PUBLIC_URL>/login/callback`, for example `http://127.0.0.1:8000/login/callback` locally. Then set `OIDC_ISSUER` (`https://<host>/realms/<realm>`), `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `PUBLIC_URL`. To admit only part of the realm, set `OIDC_ALLOWED_GROUP` and add a "Group Membership" mapper (claim name `groups`, added to the ID token) to the client. If a shared client scope already uses the claim `groups` for something else, give the mapper its own claim name and set it in `OIDC_GROUPS_CLAIM`. The app server must be able to reach the provider. "Abmelden" ends the app's login only; while the Keycloak session lasts, the next login goes through without asking for the password.
 
 Optional internal view: with `[features] instructor_ranking = true` in the instance `config.toml`, the analysis page shows sessions per instructor with Slack profile pictures (`metrics sync-instructors`, needs `users:read`; legacy first names are matched to Slack users in `seeds/instructors.csv`). It is only reachable with the team login.
 

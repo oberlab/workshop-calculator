@@ -5,6 +5,7 @@
 - `password` (default): one shared team password, stored as a hash in `TEAM_PASSWORD_HASH`
   (create it with `metrics hash-password`). The hash uses colons, not `$`, so it can sit in
   a Docker Compose `.env` file without escaping. Without a hash the page stays locked.
+- `oidc`: single sign-on with an OpenID Connect provider such as Keycloak (see `metrics.oidc`).
 - `off`: no login at all, for local testing only. The page shows a warning.
 
 After a successful login the app sets its own signed cookie, valid for 14 days.

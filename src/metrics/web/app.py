@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from starlette.datastructures import QueryParams
 
-from metrics import analytics, auth, charts
+from metrics import analytics, auth, charts, oidc
 from metrics.db import STATUS_DONE, ImportRun, Instructor, SessionRow, get_sessionmaker
 from metrics.ingest.records import TARGET_GROUPS
 from metrics.instance import Theme, get_instance
@@ -132,7 +132,8 @@ def analysis(request: Request):
 
 
 def _secure(request: Request) -> bool:
-    return request.url.scheme == "https"
+    public = auth.get_settings().public_url or ""
+    return request.url.scheme == "https" or public.startswith("https://")
 
 
 def _logged_in(request: Request, user: str) -> RedirectResponse:
@@ -153,13 +154,50 @@ def _login_page(request: Request, status_code: int = 200, **context) -> HTMLResp
     return templates.TemplateResponse(request, "login.html", {**defaults, **context}, status_code=status_code)
 
 
+def _callback_url(request: Request) -> str:
+    # Behind a reverse proxy the app may not see the public host and scheme; PUBLIC_URL fixes that.
+    public = auth.get_settings().public_url
+    return f"{public}/login/callback" if public else str(request.url_for("oidc_callback"))
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     if is_team(request):
         return RedirectResponse("/analyse", status_code=303)
     if auth.mode() == "password":
         return _login_page(request, configured=auth.password_configured())
-    return _login_page(request)
+    if not oidc.configured():
+        return _login_page(request)
+    try:
+        url, flow = oidc.start(_callback_url(request))
+    except OSError:
+        return _login_page(request, 503, configured=True, error="Der Anmeldedienst ist nicht erreichbar.")
+    response = RedirectResponse(url, status_code=303)
+    response.set_cookie(
+        oidc.STATE_COOKIE,
+        auth.sign(flow, oidc.STATE_SECONDS),
+        max_age=oidc.STATE_SECONDS,
+        path="/login",
+        httponly=True,
+        samesite="lax",  # sent on the provider's top-level redirect back to us
+        secure=_secure(request),
+    )
+    return response
+
+
+@app.get("/login/callback", response_class=HTMLResponse, name="oidc_callback")
+def login_callback(request: Request):
+    if auth.mode() != "oidc" or not oidc.configured():
+        raise HTTPException(404)
+    flow = auth.unsign(request.cookies.get(oidc.STATE_COOKIE))
+    try:
+        user = oidc.finish(dict(request.query_params), flow, _callback_url(request))
+    except oidc.OidcError as error:
+        response = _login_page(request, 403, configured=True, error=str(error))
+    else:
+        response = _logged_in(request, user)
+    response.delete_cookie(oidc.STATE_COOKIE, path="/login")
+    return response
 
 
 @app.post("/login", response_class=HTMLResponse)

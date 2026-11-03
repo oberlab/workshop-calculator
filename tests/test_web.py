@@ -73,10 +73,11 @@ def _settings(**overrides):
 def _client(monkeypatch, **overrides):
     from fastapi.testclient import TestClient
 
-    from metrics import auth
+    from metrics import auth, oidc
 
     settings = _settings(**overrides)
     monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(oidc, "get_settings", lambda: settings)
     monkeypatch.setattr(auth, "_secret", lambda: b"test-secret")
     return TestClient(web.app)
 
@@ -130,6 +131,101 @@ def test_auth_off_opens_internal_endpoints(monkeypatch, instance):
     assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
     # Passes the login check; then 404 because the example instance has the ranking switched off.
     assert client.get("/api/instructor-ranking").status_code == 404
+
+
+ISSUER = "https://login.example.org/realms/team"
+
+
+def _fake_provider(monkeypatch, claims_override=None, groups=("/team",)):
+    import base64
+    import json
+
+    from metrics import oidc
+
+    monkeypatch.setattr(
+        oidc,
+        "discovery",
+        lambda: {
+            "issuer": ISSUER,
+            "authorization_endpoint": f"{ISSUER}/auth",
+            "token_endpoint": f"{ISSUER}/token",
+        },
+    )
+    seen = {}
+
+    def post_form(url, data):
+        seen.update(data)
+        claims = {
+            "iss": ISSUER,
+            "aud": "metrics",
+            "exp": 4_000_000_000,
+            "nonce": seen["nonce"],
+            "name": "Alex K",
+            "groups": list(groups),
+            **(claims_override or {}),
+        }
+        body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+        return {"id_token": f"header.{body}.signature", "access_token": "a"}
+
+    monkeypatch.setattr(oidc, "_post_form", post_form)
+    return seen
+
+
+def _oidc_login(client, seen):
+    from urllib.parse import parse_qs, urlsplit
+
+    start = client.get("/login", follow_redirects=False)
+    assert start.status_code == 303
+    query = {k: v[0] for k, v in parse_qs(urlsplit(start.headers["location"]).query).items()}
+    assert query["client_id"] == "metrics" and query["code_challenge_method"] == "S256"
+    assert query["redirect_uri"] == "http://testserver/login/callback"
+    seen["nonce"] = query["nonce"]
+    return client.get(f"/login/callback?code=abc&state={query['state']}", follow_redirects=False)
+
+
+OIDC = {"auth_mode": "oidc", "oidc_issuer": ISSUER, "oidc_client_id": "metrics", "oidc_client_secret": "s"}
+
+
+def test_oidc_login(monkeypatch):
+    client = _client(monkeypatch, **OIDC, oidc_allowed_group="team")
+    seen = _fake_provider(monkeypatch)
+    callback = _oidc_login(client, seen)
+    assert (callback.status_code, callback.headers["location"]) == (303, "/analyse")
+    assert web.auth.token_user(callback.cookies["metrics_team"]) == "Alex K"
+    assert seen["client_secret"] == "s" and seen["code"] == "abc" and seen["code_verifier"]
+    assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405
+
+
+def test_oidc_rejects_user_outside_group(monkeypatch):
+    client = _client(monkeypatch, **OIDC, oidc_allowed_group="team")
+    seen = _fake_provider(monkeypatch, groups=("/andere",))
+    callback = _oidc_login(client, seen)
+    assert callback.status_code == 403
+    assert "metrics_team" not in callback.cookies
+
+
+def test_oidc_reads_custom_groups_claim(monkeypatch):
+    client = _client(
+        monkeypatch, **OIDC, oidc_allowed_group="metrics_team", oidc_groups_claim="metrics_groups"
+    )
+    # A shared scope fills "groups" with something else; the app's own mapper uses another claim.
+    seen = _fake_provider(
+        monkeypatch, claims_override={"metrics_groups": ["/metrics_team"]}, groups=("Editor",)
+    )
+    assert _oidc_login(client, seen).status_code == 303
+
+
+def test_oidc_rejects_wrong_issuer(monkeypatch):
+    client = _client(monkeypatch, **OIDC)
+    seen = _fake_provider(monkeypatch, claims_override={"iss": "https://evil.example"})
+    assert _oidc_login(client, seen).status_code == 403
+
+
+def test_oidc_rejects_forged_state(monkeypatch):
+    client = _client(monkeypatch, **OIDC)
+    _fake_provider(monkeypatch)
+    client.get("/login", follow_redirects=False)
+    assert client.get("/login/callback?code=abc&state=geraten").status_code == 403
 
 
 def test_unknown_auth_mode_fails(monkeypatch):

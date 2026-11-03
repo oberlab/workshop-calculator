@@ -15,9 +15,15 @@ class Settings:
     team_password_hash: str | None = None
     session_secret: str | None = None
     auth_mode: str = "password"
+    oidc_issuer: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_allowed_group: str | None = None
+    oidc_groups_claim: str = "groups"
+    public_url: str | None = None
 
 
-AUTH_MODES = ("password", "off")
+AUTH_MODES = ("password", "oidc", "off")
 
 
 @lru_cache
@@ -32,6 +38,12 @@ def get_settings() -> Settings:
         team_password_hash=os.environ.get("TEAM_PASSWORD_HASH") or None,
         session_secret=os.environ.get("SESSION_SECRET") or None,
         auth_mode=_auth_mode(),
+        oidc_issuer=os.environ.get("OIDC_ISSUER") or None,
+        oidc_client_id=os.environ.get("OIDC_CLIENT_ID") or None,
+        oidc_client_secret=os.environ.get("OIDC_CLIENT_SECRET") or None,
+        oidc_allowed_group=os.environ.get("OIDC_ALLOWED_GROUP") or None,
+        oidc_groups_claim=os.environ.get("OIDC_GROUPS_CLAIM") or "groups",
+        public_url=(os.environ.get("PUBLIC_URL") or "").rstrip("/") or None,
     )
 
 

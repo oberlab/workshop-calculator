@@ -14,6 +14,13 @@
   {% if failed %}<p class="error" role="alert">Das Passwort ist falsch.</p>{% endif %}
   <button type="submit">Anmelden</button>
 </form>
+{% elif mode == "oidc" and configured %}
+<div class="login">
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <a class="button" href="/login">Erneut anmelden</a>
+</div>
+{% elif mode == "oidc" %}
+<p class="hint">Die Anmeldung über den Anmeldedienst ist nicht vollständig eingerichtet (<code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>). Die Analyse-Seite bleibt gesperrt (siehe README).</p>
 {% else %}
 <p class="hint">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
 {% endif %}
