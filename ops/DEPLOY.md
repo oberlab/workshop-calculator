@@ -111,9 +111,22 @@ FORWARDED_ALLOW_IPS=<proxy IP>
 
 `chmod 600 .env`. `APP_VERSION` is added by `ops/update.sh`.
 
+**Without a reverse proxy** (the app is opened directly by IP address, e.g. the server's local IP and its Tailscale IP, plain HTTP): change these lines.
+
+```sh
+PUBLIC_URL=                 # empty: the login returns to the address that was used
+APP_BIND=0.0.0.0            # listen on every interface (local network and Tailscale)
+APP_PORT=8000
+FORWARDED_ALLOW_IPS=127.0.0.1
+```
+
+Docker publishes the port past host firewalls such as ufw, so `0.0.0.0` must only be used on a server that has no interface facing the internet. Without TLS the login cookie is sent unencrypted on the local network (Tailscale traffic is encrypted); use this setup on trusted networks only and add the reverse proxy later.
+
 ### 5. Keycloak
 
 On the client add `<PUBLIC_URL>/login/callback` as a valid redirect URI and `<PUBLIC_URL>` as a web origin. Keep the existing `http://127.0.0.1:8000/login/callback` for local work.
+
+Without a reverse proxy, add one redirect URI per address people use, e.g. `http://<local IP>:8000/login/callback` and `http://<Tailscale IP>:8000/login/callback` (Keycloak compares them exactly).
 
 ### 6. Install and load the data
 
@@ -128,9 +141,9 @@ docker compose run --rm app metrics sync-instructors
 
 Check the numbers against the PC: the overview's key figures for "Gesamter Zeitraum" must match the PC after the same Slack sync.
 
-### 7. Reverse proxy (Caddy)
+### 7. Reverse proxy (Caddy, optional)
 
-Add a site to the existing Caddy that is reachable from the internal network only, for example:
+Skip this step when the app is opened directly by IP address. Otherwise add a site to the existing Caddy that is reachable from the internal network only, for example:
 
 ```caddyfile
 metrics.example.internal {
@@ -144,6 +157,6 @@ Use the address from `PUBLIC_URL`. `remote_ip` only works if Caddy sees the real
 
 ### 8. Check
 
-- `https://<PUBLIC_URL>/healthz` answers with `"status": "ok"` and the version.
+- `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version.
 - Logging in through Keycloak works and lands on the analysis page; an admin sees "Review" in the sidebar.
-- From outside the internal network the address answers 403.
+- From outside the internal network the app is not reachable (with Caddy: answers 403).
