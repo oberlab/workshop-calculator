@@ -1,13 +1,15 @@
-"""Two pages on the sessions-over-time chart.
+"""Pages and data endpoints.
 
-`/` is the overview: chart and key figures, only time bin and period can be chosen.
-`/analyse` is for the team (shared password): all filters and the internal views.
+`/` is the public overview: chart and key figures, only time bin and period can be chosen.
+Behind the team login: `/analyse` (all filters and the internal views), one page per
+selected project (`/projekte/<slug>`, the analysis limited to the project's contexts) and,
+for admins only, `/review`. A sidebar on every page holds the login and the navigation.
 """
 
 import asyncio
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
@@ -21,7 +23,7 @@ from starlette.datastructures import QueryParams
 from metrics import analytics, auth, charts, oidc
 from metrics.db import STATUS_DONE, ImportRun, Instructor, SessionRow, get_sessionmaker
 from metrics.ingest.records import TARGET_GROUPS
-from metrics.instance import Theme, get_instance
+from metrics.instance import Project, Theme, get_instance
 from metrics.ranking import instructor_ranking
 
 HERE = Path(__file__).parent
@@ -85,12 +87,12 @@ def _data_as_of(session) -> str | None:
     return finished.astimezone(TIMEZONE).strftime("%d.%m.%Y, %H:%M Uhr") if finished else None
 
 
-def current_user(request: Request) -> str | None:
-    return auth.current_user(request.cookies.get(auth.COOKIE_NAME))
+def current_login(request: Request) -> auth.Login | None:
+    return auth.current_login(request.cookies.get(auth.COOKIE_NAME))
 
 
 def is_team(request: Request) -> bool:
-    return current_user(request) is not None
+    return current_login(request) is not None
 
 
 def _require_team(request: Request) -> None:
@@ -102,11 +104,44 @@ def _page_context(filters: analytics.Filters, **extra) -> dict:
     return {"filters": filters, "bins": analytics.BINS, "presets": analytics.PRESETS, **extra}
 
 
+def _page(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
+    """A page with the sidebar: login state and the links this person may open."""
+    login = current_login(request)
+    sidebar = {
+        "login": login,
+        "auth_off": auth.mode() == "off",
+        "projects": get_instance().projects if login else [],
+        "path": request.url.path,
+    }
+    return templates.TemplateResponse(request, template, {**sidebar, **context}, status_code=status_code)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     filters = parse_filters(request.query_params, detailed=False)
-    return templates.TemplateResponse(
-        request, "index.html", _page_context(filters, api="/api/sessions-over-time", team=is_team(request))
+    return _page(request, "index.html", _page_context(filters, api="/api/sessions-over-time"))
+
+
+def _analysis_page(request: Request, project: Project | None = None) -> HTMLResponse:
+    filters = parse_filters(request.query_params, detailed=project is None)
+    options = None
+    if project is None:  # a project page has no category, target group or context filter
+        with get_sessionmaker()() as session:
+            options = _options(session)
+    instance = get_instance()
+    return _page(
+        request,
+        "analyse.html",
+        _page_context(
+            filters,
+            api="/api/analyse/sessions-over-time",
+            options=options,
+            project=project,
+            # Sent with every data request but kept out of the address bar.
+            fixed=urlencode([("context", c) for c in project.contexts]) if project else "",
+            instructor_ranking=instance.instructor_ranking,
+            map=instance.map,
+        ),
     )
 
 
@@ -114,23 +149,25 @@ def index(request: Request):
 def analysis(request: Request):
     if not is_team(request):
         return RedirectResponse("/login", status_code=303)
-    filters = parse_filters(request.query_params)
-    with get_sessionmaker()() as session:
-        options = _options(session)
-    return templates.TemplateResponse(
-        request,
-        "analyse.html",
-        _page_context(
-            filters,
-            api="/api/analyse/sessions-over-time",
-            options=options,
-            instructor_ranking=get_instance().instructor_ranking,
-            map=get_instance().map,
-            team=True,
-            user=current_user(request),
-            auth_off=auth.mode() == "off",
-        ),
-    )
+    return _analysis_page(request)
+
+
+@app.get("/projekte/{slug}", response_class=HTMLResponse)
+def project_page(slug: str, request: Request):
+    if not is_team(request):
+        return RedirectResponse("/login", status_code=303)
+    project = get_instance().project(slug)
+    if project is None:
+        raise HTTPException(404, "Unbekanntes Projekt")
+    return _analysis_page(request, project)
+
+
+@app.get("/review", response_class=HTMLResponse)
+def review(request: Request):
+    login = current_login(request)
+    if login is None:
+        return RedirectResponse("/login", status_code=303)
+    return _page(request, "review.html", {}, status_code=200 if login.admin else 403)
 
 
 def _secure(request: Request) -> bool:
@@ -138,11 +175,11 @@ def _secure(request: Request) -> bool:
     return request.url.scheme == "https" or public.startswith("https://")
 
 
-def _logged_in(request: Request, user: str) -> RedirectResponse:
+def _logged_in(request: Request, login: auth.Login) -> RedirectResponse:
     response = RedirectResponse("/analyse", status_code=303)
     response.set_cookie(
         auth.COOKIE_NAME,
-        auth.make_token(user),
+        auth.make_token(login.user, admin=login.admin),
         max_age=auth.SESSION_SECONDS,
         httponly=True,
         samesite="lax",
@@ -153,7 +190,7 @@ def _logged_in(request: Request, user: str) -> RedirectResponse:
 
 def _login_page(request: Request, status_code: int = 200, **context) -> HTMLResponse:
     defaults = {"mode": auth.mode(), "configured": False, "failed": False, "error": None}
-    return templates.TemplateResponse(request, "login.html", {**defaults, **context}, status_code=status_code)
+    return _page(request, "login.html", {**defaults, **context}, status_code=status_code)
 
 
 def _callback_url(request: Request) -> str:
@@ -209,7 +246,7 @@ async def login(request: Request):
     form = parse_qs((await request.body()).decode(errors="replace"))
     password = (form.get("password") or [""])[0]
     if auth.check_team_password(password):
-        return _logged_in(request, "Team")
+        return _logged_in(request, auth.Login("Team"))
     await asyncio.sleep(1)  # slows down guessing
     return _login_page(request, 401, configured=auth.password_configured(), failed=True)
 

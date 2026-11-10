@@ -19,6 +19,7 @@ class Settings:
     oidc_client_id: str | None = None
     oidc_client_secret: str | None = None
     oidc_allowed_group: str | None = None
+    oidc_admin_group: str | None = None
     oidc_groups_claim: str = "groups"
     public_url: str | None = None
 
@@ -42,6 +43,7 @@ def get_settings() -> Settings:
         oidc_client_id=os.environ.get("OIDC_CLIENT_ID") or None,
         oidc_client_secret=os.environ.get("OIDC_CLIENT_SECRET") or None,
         oidc_allowed_group=os.environ.get("OIDC_ALLOWED_GROUP") or None,
+        oidc_admin_group=os.environ.get("OIDC_ADMIN_GROUP") or None,
         oidc_groups_claim=os.environ.get("OIDC_GROUPS_CLAIM") or "groups",
         public_url=(os.environ.get("PUBLIC_URL") or "").rstrip("/") or None,
     )

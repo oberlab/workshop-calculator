@@ -8,7 +8,9 @@
 - `oidc`: single sign-on with an OpenID Connect provider such as Keycloak (see `metrics.oidc`).
 - `off`: no login at all, for local testing only. The page shows a warning.
 
-After a successful login the app sets its own signed cookie, valid for 14 days.
+After a successful login the app sets its own signed cookie, valid for 14 days. It records
+whether the person is an admin (only with `oidc`, as a member of `OIDC_ADMIN_GROUP`; `off`
+counts as admin so the admin pages can be tried locally).
 """
 
 import base64
@@ -17,6 +19,7 @@ import hmac
 import json
 import secrets
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 
 from metrics.config import get_settings
@@ -24,6 +27,13 @@ from metrics.config import get_settings
 COOKIE_NAME = "metrics_team"
 SESSION_SECONDS = 14 * 24 * 3600
 OFF_USER = "Test (Anmeldung ausgeschaltet)"
+
+
+@dataclass(frozen=True)
+class Login:
+    user: str
+    admin: bool = False
+
 
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 
@@ -91,17 +101,25 @@ def unsign(value: str | None, now: float | None = None, secret: bytes | None = N
         return None
 
 
-def make_token(user: str, now: float | None = None, secret: bytes | None = None) -> str:
-    return sign({"tier": "team", "user": user}, SESSION_SECONDS, now, secret)
+def make_token(user: str, now: float | None = None, secret: bytes | None = None, admin: bool = False) -> str:
+    return sign({"tier": "team", "user": user, "admin": admin}, SESSION_SECONDS, now, secret)
+
+
+def token_login(token: str | None, now: float | None = None, secret: bytes | None = None) -> Login | None:
+    """Who is logged in, or None if the cookie is missing or invalid."""
+    data = unsign(token, now, secret)
+    if not data or data.get("tier") != "team":
+        return None
+    return Login(str(data.get("user") or ""), data.get("admin") is True)
 
 
 def token_user(token: str | None, now: float | None = None, secret: bytes | None = None) -> str | None:
     """The logged-in user's display name, or None if the cookie is missing or invalid."""
-    data = unsign(token, now, secret)
-    return str(data.get("user") or "") if data and data.get("tier") == "team" else None
+    login = token_login(token, now, secret)
+    return login.user if login else None
 
 
-def current_user(token: str | None) -> str | None:
+def current_login(token: str | None) -> Login | None:
     if mode() == "off":
-        return OFF_USER
-    return token_user(token)
+        return Login(OFF_USER, admin=True)
+    return token_login(token)

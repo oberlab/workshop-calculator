@@ -34,6 +34,15 @@ instructor = "Kursleiter"
 instructor_ranking = false
 
 
+# Selected projects, each with its own page in the sidebar (team login): the analysis limited
+# to the project's contexts, without the category, target group and context filters.
+# slug (optional, default: lowercase title) is the address /projekte/<slug>;
+# contexts (optional, default: [title]) are the "Kontext" values that belong to the project.
+[[projects]]
+title = "Projekt A"
+slug = "projekt-a"
+contexts = ["Projekt A"]
+
 [map]
 # Municipality map on the analysis page: a GeoJSON file with a "name" property per feature.
 # German districts: python3 scripts/fetch_municipalities.py <district key> instance/geo/municipalities.geojson

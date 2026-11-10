@@ -157,6 +157,35 @@ def test_password_login(client, monkeypatch):
     assert client.get("/analyse", follow_redirects=False).status_code == 303
 
 
+def test_sidebar_without_login(client):
+    html = client.get("/").text
+    assert 'href="/login"' in html and "Anmelden" in html
+    assert 'href="/analyse"' not in html and 'href="/projekte/' not in html and 'href="/review"' not in html
+
+
+def test_team_sidebar_and_project_page(client, monkeypatch):
+    monkeypatch.setattr(web.asyncio, "sleep", lambda _: _noop())
+    client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
+    html = client.get("/").text
+    assert 'href="/analyse"' in html and 'href="/projekte/projekt-a"' in html
+    assert 'href="/review"' not in html  # the shared password never makes anyone an admin
+    assert client.get("/review").status_code == 403
+
+    project = client.get("/projekte/projekt-a?category=Code")
+    assert project.status_code == 200
+    assert 'data-fixed="context=Projekt+A"' in project.text
+    assert 'name="category"' not in project.text and 'name="context"' not in project.text
+    assert 'aria-current="page"' in project.text
+    assert 'role="tablist"' in project.text and 'id="view-schularten"' in project.text
+    assert client.get("/projekte/unbekannt").status_code == 404
+
+
+@pytest.mark.parametrize("path", ["/projekte/projekt-a", "/review"])
+def test_team_pages_redirect_to_login(client, path):
+    response = client.get(path, follow_redirects=False)
+    assert (response.status_code, response.headers["location"]) == (303, "/login")
+
+
 async def _noop():
     return None
 
@@ -229,6 +258,24 @@ def test_oidc_login(monkeypatch):
     assert web.auth.token_user(callback.cookies["metrics_team"]) == "Alex K"
     assert seen["client_secret"] == "s" and seen["code"] == "abc" and seen["code_verifier"]
     assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405
+
+
+def test_oidc_admin_group(monkeypatch):
+    client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
+    # Admins may log in without being in the team group.
+    seen = _fake_provider(monkeypatch, groups=("/admins",))
+    login = web.auth.token_login(_oidc_login(client, seen).cookies["metrics_team"])
+    assert login == web.auth.Login("Alex K", admin=True)
+    assert client.get("/review").status_code == 200
+
+
+def test_oidc_team_member_is_no_admin(monkeypatch):
+    client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
+    seen = _fake_provider(monkeypatch)
+    assert web.auth.token_login(_oidc_login(client, seen).cookies["metrics_team"]).admin is False
+    html = client.get("/").text
+    assert 'href="/analyse"' in html and 'href="/review"' not in html
+    assert client.get("/review").status_code == 403
 
 
 def test_oidc_rejects_user_outside_group(monkeypatch):

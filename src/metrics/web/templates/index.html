@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 {% from "_chart.html" import time_controls, chart_and_totals, chart_scripts with context %}
 
-{% block nav %}
-<a href="/analyse">{% if team %}Analyse{% else %}Analyse (Team-Login){% endif %}</a>
-{% endblock %}
-
 {% block content %}
-<form id="filters" class="filters" data-api="{{ api }}">
+<form id="filters" class="filters panel" data-api="{{ api }}">
   {{ time_controls(filters, bins, presets, "Zurücksetzen") }}
 </form>
 {{ chart_and_totals() }}

@@ -8,15 +8,57 @@
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
-  <main>
+{% macro nav_link(href, label, exact=true) %}
+  {% set active = path == href if exact else path.startswith(href) %}
+  <a href="{{ href }}" {% if active %}class="active" aria-current="page"{% endif %}>{{ label }}</a>
+{% endmacro %}
+<div class="layout">
+  <aside class="sidebar">
+    <section class="account" aria-label="Anmeldung">
+      {% if login %}
+      <div class="account-user">
+        <span class="account-initial" aria-hidden="true">{{ login.user[:1]|upper }}</span>
+        <div>
+          <div class="account-name">{{ login.user }}</div>
+          <div class="account-role">{% if login.admin %}Admin{% else %}Team{% endif %}</div>
+        </div>
+      </div>
+      {% if not auth_off %}
+      <form method="post" action="/logout"><button type="submit" class="button secondary">Abmelden</button></form>
+      {% endif %}
+      {% else %}
+      <p class="account-hint">Team-Bereich mit Analyse und Projekten</p>
+      <a class="button" href="/login">Anmelden</a>
+      {% endif %}
+    </section>
+
+    <nav class="side-nav" aria-label="Seiten">
+      {{ nav_link("/", "Übersicht") }}
+      {% if login %}
+      {{ nav_link("/analyse", "Analyse") }}
+      {% if projects %}
+      <div class="nav-group">Projekte</div>
+      {% for p in projects %}{{ nav_link("/projekte/" ~ p.slug, p.title) }}{% endfor %}
+      {% endif %}
+      {% if login.admin %}
+      <div class="nav-group">Verwaltung</div>
+      {{ nav_link("/review", "Review") }}
+      {% endif %}
+      {% endif %}
+    </nav>
+  </aside>
+
+  <main class="content">
+    {% if auth_off %}
+    <p class="warning" role="note">Anmeldung ausgeschaltet (<code>AUTH_MODE=off</code>): Alle Seiten sind für alle erreichbar. Nur für lokale Tests verwenden.</p>
+    {% endif %}
     <header class="page-header">
       <h1>{% block heading %}Einsätze über die Zeit{% endblock %}</h1>
-      <nav class="nav">
-        {% block nav %}{% endblock %}
-      </nav>
+      {% block subheading %}{% endblock %}
     </header>
     {% block content %}{% endblock %}
   </main>
-  {% block scripts %}{% endblock %}
+</div>
+{% block scripts %}{% endblock %}
 </body>
 </html>

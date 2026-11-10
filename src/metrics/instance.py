@@ -113,6 +113,29 @@ DEFAULT_SCHOOL_TYPES = {
 
 
 @dataclass(frozen=True)
+class Project:
+    """A selected project with its own page: the analysis, limited to its contexts."""
+
+    slug: str
+    title: str
+    contexts: tuple[str, ...]
+
+
+def load_projects(config: dict) -> list[Project]:
+    projects = []
+    for entry in config.get("projects", []):
+        title = str(entry["title"]).strip()
+        slug = str(entry.get("slug") or title).strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug):
+            raise ValueError(f"[[projects]] {title!r}: slug must be lowercase letters, digits and dashes")
+        contexts = tuple(entry.get("contexts") or [title])
+        projects.append(Project(slug, title, contexts))
+    if len({p.slug for p in projects}) != len(projects):
+        raise ValueError("[[projects]]: every project needs its own slug")
+    return projects
+
+
+@dataclass(frozen=True)
 class Instance:
     path: Path
     school_year_start_month: int
@@ -129,6 +152,10 @@ class Instance:
     location_coordinates: dict[str, tuple[float, float]] = field(default_factory=dict)  # (lat, lon)
     school_types: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SCHOOL_TYPES))
     map: MapConfig | None = None
+    projects: list[Project] = field(default_factory=list)
+
+    def project(self, slug: str) -> Project | None:
+        return next((p for p in self.projects if p.slug == slug), None)
 
     def instructor_key(self, recorded: str | None) -> str | None:
         """The person behind a recorded instructor value (first name or Slack user ID)."""
@@ -256,6 +283,7 @@ def load_instance(instance_dir: Path) -> Instance:
         location_coordinates=coordinates,
         school_types=school_type_labels,
         map=load_map(instance_dir, config),
+        projects=load_projects(config),
     )
 
 

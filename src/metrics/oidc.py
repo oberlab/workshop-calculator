@@ -11,7 +11,8 @@ Authorization code flow with PKCE for a confidential client:
 3. Optionally only members of one group may log in (`OIDC_ALLOWED_GROUP`). Keycloak puts
    groups into the token only with a "Group Membership" mapper on the client; the claim name
    is `groups` unless `OIDC_GROUPS_CLAIM` says otherwise (useful when a shared client scope
-   already fills `groups` with something else).
+   already fills `groups` with something else). Members of `OIDC_ADMIN_GROUP` are admins
+   and may always log in.
 """
 
 import base64
@@ -23,6 +24,7 @@ import urllib.parse
 import urllib.request
 from functools import lru_cache
 
+from metrics.auth import Login
 from metrics.config import get_settings
 
 STATE_COOKIE = "metrics_oidc"
@@ -118,8 +120,8 @@ def display_name(claims: dict) -> str:
     return claims.get("name") or claims.get("preferred_username") or claims.get("email") or "Team"
 
 
-def finish(params: dict, flow: dict | None, redirect_uri: str) -> str:
-    """Check the callback, exchange the code and return the user's display name."""
+def finish(params: dict, flow: dict | None, redirect_uri: str) -> Login:
+    """Check the callback, exchange the code and return who logged in."""
     if params.get("error"):
         raise OidcError("Die Anmeldung wurde abgebrochen.")
     if not flow or not params.get("state") or params["state"] != flow.get("state"):
@@ -141,6 +143,7 @@ def finish(params: dict, flow: dict | None, redirect_uri: str) -> str:
         raise OidcError("Der Anmeldedienst ist nicht erreichbar oder hat die Anmeldung abgelehnt.") from error
     claims = _claims(tokens.get("id_token", ""))
     check_claims(claims, flow["nonce"])
-    if not in_allowed_group(claims, s.oidc_allowed_group, s.oidc_groups_claim):
+    admin = bool(s.oidc_admin_group) and in_allowed_group(claims, s.oidc_admin_group, s.oidc_groups_claim)
+    if not admin and not in_allowed_group(claims, s.oidc_allowed_group, s.oidc_groups_claim):
         raise OidcError("Dein Konto hat keinen Zugriff auf die Analyse.")
-    return display_name(claims)
+    return Login(display_name(claims), admin)

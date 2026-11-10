@@ -37,3 +37,10 @@ def test_signed_state_is_not_a_session():
     state = auth.sign({"state": "x"}, 600, now=1000, secret=SECRET)
     assert auth.unsign(state, now=1001, secret=SECRET) == {"state": "x", "exp": 1600}
     assert auth.token_user(state, now=1001, secret=SECRET) is None
+
+
+def test_token_keeps_admin_flag():
+    plain = auth.make_token("Alex", now=1000, secret=SECRET)
+    admin = auth.make_token("Alex", now=1000, secret=SECRET, admin=True)
+    assert auth.token_login(plain, now=1001, secret=SECRET) == auth.Login("Alex", admin=False)
+    assert auth.token_login(admin, now=1001, secret=SECRET) == auth.Login("Alex", admin=True)

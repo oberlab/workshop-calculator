@@ -1,5 +1,6 @@
 // Sessions-over-time chart (overview and analysis page): keeps the form, the URL and the chart in sync.
 // The form's data-api attribute names the endpoint; the analysis endpoint needs the team login.
+// data-fixed holds filters a page always sends (a project's contexts) without showing them in the URL.
 
 const FORMAT_LOCALE = { decimal: ",", thousands: ".", grouping: [3], currency: ["", " €"] };
 const TIME_FORMAT_LOCALE = {
@@ -28,6 +29,23 @@ const chart = document.getElementById("chart");
 const empty = document.getElementById("empty");
 const meta = document.getElementById("meta");
 let requestId = 0;
+
+// Charts sized to their container cannot be drawn while their tab is hidden (zero width):
+// keep the latest spec and draw it when the tab is shown.
+const pending = new Map();
+
+async function embed(target, spec) {
+  if (target.closest("[hidden]")) {
+    pending.set(target, spec);
+    return;
+  }
+  pending.delete(target);
+  await vegaEmbed(target, spec, EMBED_OPTIONS);
+}
+
+function drawPending(view) {
+  for (const [target, spec] of pending) if (view.contains(target)) embed(target, spec);
+}
 
 function formatDate(iso) {
   const [y, m, d] = iso.split("-");
@@ -58,8 +76,10 @@ function updateForm() {
 async function render() {
   updateForm();
   const params = currentParams();
-  const query = params.toString();
-  history.replaceState(null, "", query ? `?${query}` : location.pathname);
+  let query = params.toString();
+  history.replaceState(null, "", (query ? `?${query}` : location.pathname) + location.hash);
+  const fixed = form.dataset.fixed;
+  if (fixed) query = [query, fixed].filter(Boolean).join("&");
 
   const id = ++requestId;
   renderRanking(query);
@@ -78,7 +98,7 @@ async function render() {
 
   empty.hidden = info.count > 0;
   chart.hidden = info.count === 0;
-  if (info.count > 0) await vegaEmbed(chart, spec, EMBED_OPTIONS);
+  if (info.count > 0) await embed(chart, spec);
 
   for (const [id, value] of [
     ["total-sessions", info.totals.sessions],
@@ -105,7 +125,7 @@ async function renderFigure(section, query, id) {
   const hasData = meta.count === undefined || meta.count > 0;
   target.hidden = !hasData;
   if (note) note.hidden = hasData;
-  if (hasData) await vegaEmbed(target, spec, EMBED_OPTIONS);
+  if (hasData) await embed(target, spec);
   for (const el of section.querySelectorAll("[data-meta]")) {
     el.textContent = Number(meta[el.dataset.meta] ?? 0).toLocaleString("de-DE");
   }
@@ -156,6 +176,34 @@ async function renderRanking(query) {
   const max = Math.max(1, ...rows.map((row) => row.count));
   rankingList.replaceChildren(...rows.map((row) => rankingItem(row, max)));
 }
+
+// Tabs on the analysis page; the open tab is kept in the address (#schularten) across reloads.
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+
+function selectTab(tab, focus = false) {
+  for (const other of tabs) {
+    const selected = other === tab;
+    other.setAttribute("aria-selected", selected);
+    other.tabIndex = selected ? 0 : -1;
+    document.getElementById(other.getAttribute("aria-controls")).hidden = !selected;
+  }
+  if (focus) tab.focus();
+  const view = document.getElementById(tab.getAttribute("aria-controls"));
+  history.replaceState(null, "", `${location.search || location.pathname}#${tab.id.slice(4)}`);
+  drawPending(view);
+}
+
+for (const tab of tabs) {
+  tab.addEventListener("click", () => selectTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    selectTab(tabs[(tabs.indexOf(tab) + step + tabs.length) % tabs.length], true);
+  });
+}
+const initialTab = tabs.find((tab) => location.hash && tab.id === `tab-${location.hash.slice(1)}`);
+if (initialTab) selectTab(initialTab);
 
 form.addEventListener("change", render);
 form.addEventListener("submit", (event) => { event.preventDefault(); render(); });

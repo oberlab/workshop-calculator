@@ -25,7 +25,8 @@
 </fieldset>
 {% endmacro %}
 
-{% macro chart_and_totals() %}
+{% macro chart_and_totals(panel=true) %}
+{% if panel %}<section class="panel">{% endif %}
 <div id="chart" class="chart" aria-live="polite"></div>
 <p id="empty" class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
 
@@ -36,6 +37,7 @@
 </dl>
 <p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Fortlaufende Formate (z.&nbsp;B. JuLab, Repair Café) haben an jedem Termin die Nummer 1 und werden deshalb bei jedem Termin gezählt. Einträge ohne Terminnummer zählen nicht mit.</p>
 <p id="meta" class="meta"></p>
+{% if panel %}</section>{% endif %}
 {% endmacro %}
 
 {% macro chart_scripts() %}

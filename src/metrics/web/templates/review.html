@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Review{% endblock %}
+{% block heading %}Review <span class="internal">Admin</span>{% endblock %}
+
+{% block content %}
+{% if login.admin %}
+<div class="panel placeholder">
+  <h2>Noch in Arbeit</h2>
+  <p class="hint">Hier sollen Admins künftig Auffälligkeiten in den Daten prüfen und entscheiden, zum Beispiel abweichende Kursnamen oder gemeldete Duplikate.</p>
+</div>
+{% else %}
+<div class="panel placeholder">
+  <h2>Kein Zugriff</h2>
+  <p class="hint">Diese Seite ist nur für Admins.</p>
+</div>
+{% endif %}
+{% endblock %}

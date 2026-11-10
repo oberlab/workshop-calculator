@@ -139,3 +139,15 @@ def test_check_names_flags_variants_and_never_changes_them(instance):
         ("LKF", "Lehrkräftefortbildung")
     ]
     assert report.problems == 4
+
+
+def test_projects_from_config():
+    import pytest
+
+    from metrics.instance import Project, load_projects
+
+    assert load_projects({"projects": [{"title": "Kurse"}]}) == [Project("kurse", "Kurse", ("Kurse",))]
+    with pytest.raises(ValueError):
+        load_projects({"projects": [{"title": "A", "slug": "Mit Leerzeichen"}]})
+    with pytest.raises(ValueError):
+        load_projects({"projects": [{"title": "A"}, {"title": "a"}]})
