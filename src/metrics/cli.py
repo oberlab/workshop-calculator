@@ -1,6 +1,6 @@
 """Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`,
 `hash-password`, `check-locations`,
-`check-names`."""
+`check-names`, `export-baseline`, `load-baseline`."""
 
 import argparse
 import getpass
@@ -14,6 +14,7 @@ from metrics.config import get_settings
 from metrics.db import STATUS_DONE, SessionRow, get_sessionmaker
 from metrics.ingest import store
 from metrics.ingest.archive import archive_list, delete_archived
+from metrics.ingest.baseline import SOURCE_BASELINE, checksum, read_baseline, write_baseline
 from metrics.ingest.instructors import sync_instructors
 from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_export
 from metrics.ingest.records import SessionRecord
@@ -46,6 +47,18 @@ def _print_summary(sources: tuple[str, ...]) -> None:
 
 
 def load_legacy(args: argparse.Namespace) -> None:
+    records = _read_legacy_files(args)
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            store.replace_legacy(session, records)
+    except store.BaselineFrozen as error:
+        sys.exit(str(error))
+    print(f"Replaced all legacy rows with {len(records)} rows.")
+    _print_warnings(records)
+    _print_summary(LEGACY_SOURCES)
+
+
+def _read_legacy_files(args: argparse.Namespace) -> list[SessionRecord]:
     instance = get_instance()
     records: list[SessionRecord] = []
     for path in args.harmonised:
@@ -56,11 +69,31 @@ def load_legacy(args: argparse.Namespace) -> None:
         loaded, skipped = read_slack_export(Path(path), instance)
         print(f"{path}: {len(loaded)} rows (Slack export format), {skipped} without date skipped")
         records += loaded
-    with get_sessionmaker()() as session, session.begin():
-        store.replace_legacy(session, records)
-    print(f"Replaced all legacy rows with {len(records)} rows.")
+    return records
+
+
+def export_baseline(args: argparse.Namespace) -> None:
+    records = _read_legacy_files(args)
+    sha256 = write_baseline(records, Path(args.out))
+    dates = [r.date for r in records if r.date]
+    print(f"{len(records)} entries ({min(dates)} to {max(dates)}) written to {args.out}")
+    print(f"sha256 {sha256}")
+
+
+def load_baseline_file(args: argparse.Namespace) -> None:
+    path = Path(args.csv)
+    sha256 = checksum(path)
+    if args.sha256 and args.sha256 != sha256:
+        sys.exit(f"Checksum does not match: expected {args.sha256}, file has {sha256}.")
+    records = read_baseline(path, get_instance())
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            store.load_baseline(session, records, args.version, sha256)
+    except store.BaselineFrozen as error:
+        sys.exit(str(error))
+    print(f"Baseline {args.version} loaded and frozen: {len(records)} rows, sha256 {sha256}")
     _print_warnings(records)
-    _print_summary(LEGACY_SOURCES)
+    _print_summary((SOURCE_BASELINE,))
 
 
 def sync_slack(args: argparse.Namespace) -> None:
@@ -204,6 +237,22 @@ def main() -> None:
         "check-names", help="List names in synced Slack entries that differ from the clean data"
     )
     names.set_defaults(func=check_new_names)
+
+    export = commands.add_parser(
+        "export-baseline", help="Write all reviewed legacy data into one baseline CSV"
+    )
+    export.add_argument(
+        "--harmonised", action="append", default=[], help="CSV in the harmonised legacy format"
+    )
+    export.add_argument("--slack-export", action="append", default=[], help="CSV export of the Slack List")
+    export.add_argument("--out", required=True, help="baseline CSV to write")
+    export.set_defaults(func=export_baseline)
+
+    baseline = commands.add_parser("load-baseline", help="Load the baseline CSV once and freeze it")
+    baseline.add_argument("csv", help="baseline CSV written by export-baseline")
+    baseline.add_argument("--version", required=True, help="name of this baseline, e.g. 2026-09-30")
+    baseline.add_argument("--sha256", help="expected checksum; the load stops if the file differs")
+    baseline.set_defaults(func=load_baseline_file)
 
     args = parser.parse_args()
     args.func(args)

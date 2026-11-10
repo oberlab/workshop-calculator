@@ -34,6 +34,13 @@ docker compose exec app metrics sync-slack
 
 With the defaults, `/legacy` points to `tests/fixtures/`, so the commands above load the synthetic test data.
 
+Legacy baseline: all reviewed data up to a cut-off date in one CSV file, loaded once and then frozen. Later legacy loads (quarterly hand-overs) may only add entries dated after it.
+
+```sh
+metrics export-baseline --harmonised … --slack-export … --out baseline.csv   # prints the sha256
+docker compose exec app metrics load-baseline /legacy/baseline.csv --version 2026-09-30 --sha256 <sha256>
+```
+
 Quarterly hand-over from the Slack List into the legacy data (needs `lists:write`):
 
 ```sh
