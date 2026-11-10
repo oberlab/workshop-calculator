@@ -85,7 +85,8 @@ def read_slack_export(path: Path, instance: Instance) -> tuple[list[SessionRecor
         if session_date is None:
             skipped += 1
             continue
-        course = instance.names.course(value["course_name"])
+        # Names are stored as recorded; differences are flagged (metrics check-names), never mapped.
+        course = to_text(value["course_name"])
         class_age_text = to_text(value["class_age"])
         records.append(
             build_record(
@@ -108,7 +109,7 @@ def read_slack_export(path: Path, instance: Instance) -> tuple[list[SessionRecor
                 participants_male=to_int(value["participants_male"]),
                 participants_total=None,
                 category=to_text(value["category"]),
-                context=instance.names.context(value["context"], course),
+                context=to_text(value["context"]),
                 session_number=to_int(value["session_number"]),
                 status=to_text(value["status"]),
                 instructor=to_text(value["instructor"]),

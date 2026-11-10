@@ -79,7 +79,7 @@ def test_map_items(instance):
     first, second = mapped.records
     assert first.source_key == "slack:R1"
     assert first.date == date(2026, 2, 3)
-    assert first.course_name == "Löten"
+    assert first.course_name == "Loeten"  # stored as recorded: no alias is applied
     assert first.location == "Grundschule Musterstadt"
     assert (first.class_level, first.age) == (4, 9)
     assert first.participants_total == 22
@@ -87,9 +87,9 @@ def test_map_items(instance):
     assert first.status == "Durchgeführt"
     assert first.instructor == "U001"
     assert first.target_group == r.SCHOOL_CLASS
-    assert second.context == "Lehrkräftefortbildung"
+    assert second.context == "LKF"  # as recorded; the variant is flagged by metrics check-names
     assert second.status == "In Planung"
-    assert second.target_group == r.TEACHERS
+    assert second.target_group == r.TEACHERS  # from the class/age field "Lehrkräfte", not the context
 
 
 def test_missing_column_is_an_error(instance):

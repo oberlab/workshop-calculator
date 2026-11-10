@@ -117,7 +117,8 @@ def map_items(snapshot: ListSnapshot, instance: Instance) -> MappedItems:
         if not value["date"]:
             mapped.skipped_without_date += 1
             continue
-        course = instance.names.course(value["course_name"])
+        # Names are stored as recorded; differences are flagged (metrics check-names), never mapped.
+        course = to_text(value["course_name"])
         class_age_text = to_text(value["class_age"])
         mapped.records.append(
             build_record(
@@ -135,7 +136,7 @@ def map_items(snapshot: ListSnapshot, instance: Instance) -> MappedItems:
                 participants_male=to_int(value["participants_male"]),
                 participants_total=None,
                 category=to_text(value["category"]),
-                context=instance.names.context(value["context"], course),
+                context=to_text(value["context"]),
                 session_number=to_int(value["session_number"]),
                 status=to_text(value["status"]),
                 instructor=to_text(value["instructor"]),

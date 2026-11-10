@@ -43,7 +43,7 @@ def test_archive_list_writes_raw_json_and_csv(instance, tmp_path, monkeypatch):
     records, skipped = read_slack_export(csv_path, instance)
     assert skipped == 0
     assert records[0].source_key == "legacy-slack-export:slack:R1"
-    assert records[0].course_name == "Löten"
+    assert records[0].course_name == "Loeten"  # as recorded
 
 
 def test_delete_archived_skips_edited_and_missing_items(tmp_path, monkeypatch):

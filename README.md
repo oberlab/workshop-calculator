@@ -83,7 +83,7 @@ Everything organisation-specific (theme, fonts, location list, name mappings, Sl
 - Slack items that disappear from the List stay in the database and are marked `removed_from_slack`.
 - Target groups: teacher-training contexts and `Lehrkräfte` → Lehrkräfte; age from 19 or adult age bands → Erwachsene; children → Schulklasse at a school, außerschulisch elsewhere, Unbekannt if the location is empty or not in the location list.
 - Key figures: *Einsätze* = held sessions; *Teilnehmende* = participants of sessions with session number 1 only, so children in multi-session courses count once (continuous formats use 1 on every date and count every time; entries without a session number are not counted); *Orte* = distinct location names.
-- Name aliases (course names, contexts, locations) from the instance directory are applied on every import, including the Slack sync.
+- Names are stored exactly as recorded; only whitespace is tidied. Nothing is renamed automatically: course names, locations and contexts in synced Slack entries that the clean data does not use are listed by `metrics check-names`, with a suggestion (the alias from the instance mappings or the most similar known name). A person decides: correct the entry in Slack, or record the decision.
 - Archived Slack entries loaded as legacy data replace the synced rows of the same Slack items, so nothing is counted twice.
 
 ## Development

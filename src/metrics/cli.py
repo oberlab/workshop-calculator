@@ -1,5 +1,6 @@
 """Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`hash-password`, `check-locations`."""
+`hash-password`, `check-locations`,
+`check-names`."""
 
 import argparse
 import getpass
@@ -19,6 +20,8 @@ from metrics.ingest.records import SessionRecord
 from metrics.ingest.slack import SOURCE_SLACK, fetch_list, map_items
 from metrics.instance import get_instance
 from metrics.locations_check import check_locations, format_report
+from metrics.names_check import FIELDS, check_names
+from metrics.names_check import format_report as format_names_report
 
 
 def _print_warnings(records: list[SessionRecord]) -> None:
@@ -133,6 +136,36 @@ def check_location_tables(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def check_new_names(args: argparse.Namespace) -> None:
+    from collections import Counter
+
+    from sqlalchemy import func, select
+
+    known: dict[str, set[str]] = {}
+    new: dict[str, Counter] = {}
+    with get_sessionmaker()() as session:
+        for name in FIELDS:
+            column = getattr(SessionRow, name)
+            known[name] = {
+                v
+                for (v,) in session.execute(
+                    select(column).where(SessionRow.source != SOURCE_SLACK).distinct()
+                )
+                if v
+            }
+            new[name] = Counter(
+                dict(
+                    session.execute(
+                        select(column, func.count()).where(SessionRow.source == SOURCE_SLACK).group_by(column)
+                    ).all()
+                )
+            )
+    report = check_names(get_instance(), known, new)
+    print(format_names_report(report))
+    if report.problems:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -166,6 +199,11 @@ def main() -> None:
         "check-locations", help="Check the location and school type lookup tables against the data"
     )
     locations.set_defaults(func=check_location_tables)
+
+    names = commands.add_parser(
+        "check-names", help="List names in synced Slack entries that differ from the clean data"
+    )
+    names.set_defaults(func=check_new_names)
 
     args = parser.parse_args()
     args.func(args)

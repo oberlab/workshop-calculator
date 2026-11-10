@@ -11,7 +11,7 @@ it is optional: without it the app runs with the neutral defaults in this packag
     ├── seeds/school_types.csv  school type codes and labels, in chart order
     ├── geo/                 municipality boundaries for the map (GeoJSON, see [map])
     ├── seeds/instructors.csv  legacy first names -> Slack user IDs (same person)
-    └── mappings/            name aliases (kontext.csv, kontext_inferred.csv, kursname.csv, ort.csv)
+    └── mappings/            name aliases, suggestions only (kontext, kontext_inferred, kursname, ort)
 """
 
 import csv

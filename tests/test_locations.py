@@ -116,3 +116,26 @@ def test_check_locations_finds_contradicting_coordinates(instance, monkeypatch):
     report = check_locations(instance, {})
     assert report.municipality_mismatch == {"Grundschule Musterstadt": ("Musterstadt", "Neudorf")}
     assert report.unknown_school_type == {"Mittelschule Musterstadt": "XYZ"}
+
+
+def test_check_names_flags_variants_and_never_changes_them(instance):
+    from collections import Counter
+
+    from metrics.names_check import check_names
+
+    known = {"course_name": {"Löten", "Repair Café"}, "location": set(), "context": {"Lehrkräftefortbildung"}}
+    new = {
+        "course_name": Counter({"Loeten": 2, "Löten": 3, "Ganz neu": 1}),
+        "location": Counter({"Makerspace Hauptstr.": 1, "Grundschule Musterstadt": 4}),
+        "context": Counter({"LKF": 1}),
+    }
+    report = check_names(instance, known, new)
+    courses = {d.value: (d.sessions, d.suggestion) for d in report.divergent["course_name"]}
+    assert courses == {"Loeten": (2, "Löten"), "Ganz neu": (1, None)}  # alias from instance mappings
+    assert [(d.value, d.suggestion) for d in report.divergent["location"]] == [
+        ("Makerspace Hauptstr.", "Makerspace")
+    ]  # lookup names count as known; the alias is only a suggestion
+    assert [(d.value, d.suggestion) for d in report.divergent["context"]] == [
+        ("LKF", "Lehrkräftefortbildung")
+    ]
+    assert report.problems == 4

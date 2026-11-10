@@ -156,7 +156,6 @@ def build_record(
     instructor: str | None,
 ) -> SessionRecord:
     warnings = []
-    location = instance.names.location(location)
     location_is_school = instance.location_is_school(location)
     if location and location_is_school is None:
         warnings.append(f"unknown location: {location}")
