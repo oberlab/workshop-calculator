@@ -32,3 +32,6 @@ instance/
 
 # Obsidian vault settings
 .obsidian/
+
+# Database dumps written by ops/update.sh on the server
+backups/

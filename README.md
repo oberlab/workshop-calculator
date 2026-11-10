@@ -95,6 +95,10 @@ Everything organisation-specific (theme, fonts, location list, name mappings, Sl
 - Names are stored exactly as recorded; only whitespace is tidied. Nothing is renamed automatically: course names, locations and contexts in synced Slack entries that the clean data does not use are listed by `metrics check-names`, with a suggestion (the alias from the instance mappings or the most similar known name). A person decides: correct the entry in Slack, or record the decision.
 - Archived Slack entries loaded as legacy data replace the synced rows of the same Slack items, so nothing is counted twice.
 
+## Server deployment
+
+Releases are Git tags on `main`; the server checks out a tag and builds the image itself with `ops/update.sh vX.Y.Z` (database dump first, then build, restart and a health check). First installation, releases and rollback: [ops/DEPLOY.md](ops/DEPLOY.md).
+
 ## Development
 
 ```sh

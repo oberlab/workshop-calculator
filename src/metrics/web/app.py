@@ -7,6 +7,7 @@ for admins only, `/review`. A sidebar on every page holds the login and the navi
 """
 
 import asyncio
+import os
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
@@ -417,5 +418,6 @@ def healthz() -> JSONResponse:
             "status": "ok",
             "database": "ok",
             "last_import": last_import.isoformat() if last_import else None,
+            "version": os.environ.get("APP_VERSION", "dev"),
         }
     )

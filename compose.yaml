@@ -35,6 +35,7 @@ services:
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     volumes:
       # Private, organisation-specific config and theme (see instance.example/).
       - ${INSTANCE_DIR:-./instance.example}:/instance:ro

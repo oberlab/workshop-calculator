@@ -25,6 +25,7 @@ _ENVIRONMENT = (
     "OIDC_ADMIN_GROUP",
     "OIDC_GROUPS_CLAIM",
     "PUBLIC_URL",
+    "APP_VERSION",
 )
 
 

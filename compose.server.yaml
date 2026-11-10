@@ -1,0 +1,25 @@
+# Additions for the server, on top of compose.yaml. The server's .env selects both files:
+#   COMPOSE_FILE=compose.yaml:compose.server.yaml
+# ops/update.sh builds the image from a release tag; see ops/DEPLOY.md.
+
+services:
+  app:
+    # One image per release, so the previous one is still there for a rollback.
+    image: workshop-calculator-app:${APP_VERSION:?run ops/update.sh, it sets APP_VERSION in .env}
+    build:
+      args:
+        APP_VERSION: ${APP_VERSION}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }

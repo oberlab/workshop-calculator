@@ -67,12 +67,14 @@ def test_healthz_reports_last_import(monkeypatch):
             return Result()
 
     monkeypatch.setattr(web, "get_sessionmaker", lambda: Session)
+    monkeypatch.setenv("APP_VERSION", "v1.2.3")
     response = web.healthz()
     assert response.status_code == 200
     assert json.loads(response.body) == {
         "status": "ok",
         "database": "ok",
         "last_import": "2026-11-03T09:30:00+00:00",
+        "version": "v1.2.3",
     }
 
 
