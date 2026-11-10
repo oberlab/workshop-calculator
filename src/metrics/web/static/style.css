@@ -128,7 +128,16 @@ select, input[type="date"], input[type="password"] {
 .ranking-list .count { text-align: right; font-family: var(--font-heading, monospace); font-weight: 700; font-size: 1.1rem; }
 .ranking-list .without .fill { background: var(--color-muted, #999); opacity: 0.5; }
 
+.figure { margin-top: 40px; }
+.figure h2 { font-family: var(--font-heading, monospace); font-size: 1.2rem; margin: 0 0 4px; }
+.figure .chart { margin-top: 12px; }
+
+/* Map with the numbers outside the map area in a column beside it. */
+.map-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr); gap: 24px; align-items: center; }
+.totals.map-side { grid-template-columns: 1fr; margin: 0; }
+
 @media (max-width: 640px) {
+  .map-layout { grid-template-columns: 1fr; }
   .totals dd { font-size: 1.9rem; }
   .reset { margin-left: 0; }
   .checklist { min-width: 100%; }

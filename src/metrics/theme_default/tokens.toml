@@ -25,3 +25,7 @@ order = []
 # Used for categories without an explicit colour (Paul Tol, colour-blind safe).
 [palette]
 categorical = ["#4477aa", "#ee6677", "#ccbb44", "#228833", "#66ccee", "#aa3377", "#bbbbbb"]
+
+[map]
+# Fill of municipalities from few to many sessions (sequential, light to dark); no sessions = grid colour.
+gradient = ["#c6dbef", "#6baed6", "#2171b5", "#08306b"]

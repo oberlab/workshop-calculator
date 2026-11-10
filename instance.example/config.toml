@@ -32,3 +32,18 @@ instructor = "Kursleiter"
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
 # Shown only on the analysis page (team login).
 instructor_ranking = false
+
+
+[map]
+# Municipality map on the analysis page: a GeoJSON file with a "name" property per feature.
+# German districts: python3 scripts/fetch_municipalities.py <district key> instance/geo/municipalities.geojson
+# The example shows three made-up municipalities.
+title = "Landkreis Muster"
+# Label of the number next to the map (sessions in municipalities not on the map).
+outside_label = "Außerhalb des Landkreises"
+geojson = "geo/municipalities.geojson"
+attribution = "Beispielgeometrie, frei erfunden"
+
+[map.labels]
+# Optional shorter names written on the map (official name = label); the seeds keep the official names.
+# "Gmund a.Tegernsee" = "Gmund"

@@ -1,5 +1,5 @@
 """Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`hash-password`."""
+`hash-password`, `check-locations`."""
 
 import argparse
 import getpass
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from metrics.auth import hash_password
 from metrics.config import get_settings
-from metrics.db import get_sessionmaker
+from metrics.db import STATUS_DONE, SessionRow, get_sessionmaker
 from metrics.ingest import store
 from metrics.ingest.archive import archive_list, delete_archived
 from metrics.ingest.instructors import sync_instructors
@@ -18,6 +18,7 @@ from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_ex
 from metrics.ingest.records import SessionRecord
 from metrics.ingest.slack import SOURCE_SLACK, fetch_list, map_items
 from metrics.instance import get_instance
+from metrics.locations_check import check_locations, format_report
 
 
 def _print_warnings(records: list[SessionRecord]) -> None:
@@ -117,6 +118,21 @@ def print_password_hash(args: argparse.Namespace) -> None:
     print(f"TEAM_PASSWORD_HASH={hash_password(password)}")
 
 
+def check_location_tables(args: argparse.Namespace) -> None:
+    from sqlalchemy import func, select
+
+    with get_sessionmaker()() as session:
+        rows = session.execute(
+            select(SessionRow.location, func.count())
+            .where(SessionRow.status == STATUS_DONE, SessionRow.date.is_not(None))
+            .group_by(SessionRow.location)
+        ).all()
+    report = check_locations(get_instance(), dict(rows))
+    print(format_report(report))
+    if report.problems:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -145,6 +161,11 @@ def main() -> None:
 
     password = commands.add_parser("hash-password", help="Print a TEAM_PASSWORD_HASH line for .env")
     password.set_defaults(func=print_password_hash)
+
+    locations = commands.add_parser(
+        "check-locations", help="Check the location and school type lookup tables against the data"
+    )
+    locations.set_defaults(func=check_location_tables)
 
     args = parser.parse_args()
     args.func(args)

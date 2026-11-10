@@ -63,6 +63,7 @@ async function render() {
 
   const id = ++requestId;
   renderRanking(query);
+  renderFigures(query, id);
   const response = await fetch(`${form.dataset.api}?${query}`);
   if (id !== requestId) return; // a newer request is on its way
   if (response.status === 401) {
@@ -91,6 +92,27 @@ async function render() {
   if (info.first) parts.push(`Erster Einsatz am ${formatDate(info.first)}, letzter am ${formatDate(info.last)}`);
   if (info.data_as_of) parts.push(`Datenstand: ${info.data_as_of}`);
   meta.textContent = parts.join(" · ");
+}
+
+// Further figures on the analysis page: each <section data-figure="<api>"> holds a .chart, an
+// optional .empty note and optional [data-meta="<key>"] elements filled from the response's meta.
+async function renderFigure(section, query, id) {
+  const target = section.querySelector(".chart");
+  const note = section.querySelector(".empty");
+  const response = await fetch(`${section.dataset.figure}?${query}`);
+  if (id !== requestId || !response.ok) return;
+  const { spec, meta } = await response.json();
+  const hasData = meta.count === undefined || meta.count > 0;
+  target.hidden = !hasData;
+  if (note) note.hidden = hasData;
+  if (hasData) await vegaEmbed(target, spec, EMBED_OPTIONS);
+  for (const el of section.querySelectorAll("[data-meta]")) {
+    el.textContent = Number(meta[el.dataset.meta] ?? 0).toLocaleString("de-DE");
+  }
+}
+
+function renderFigures(query, id) {
+  for (const section of document.querySelectorAll("section[data-figure]")) renderFigure(section, query, id);
 }
 
 const rankingList = document.getElementById("ranking-list");

@@ -1,5 +1,6 @@
-name,school
-Grundschule Musterstadt,ja
-Mittelschule Musterstadt,ja
-Makerspace,nein
-Online,nein
+name,school,school_type,address,lat,lon,municipality,source,note,reviewed
+Grundschule Musterstadt,ja,GS,Schulweg 1,48.05,11.10,Musterstadt,example,,
+Mittelschule Musterstadt,ja,MS,Schulweg 3,48.06,11.12,Musterstadt,example,,
+Gymnasium Nachbarstadt,ja,GYM,,,,Nachbarstadt,example,outside the map,
+Makerspace,nein,,Werkstattstraße 5,48.08,11.30,Beispieldorf,example,,
+Online,nein,,,,,,example,no place,

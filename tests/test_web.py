@@ -124,7 +124,14 @@ def test_overview_has_only_time_controls(client):
 
 
 @pytest.mark.parametrize(
-    "path", ["/api/analyse/sessions-over-time", "/api/instructor-ranking", "/instructors/U1/image"]
+    "path",
+    [
+        "/api/analyse/sessions-over-time",
+        "/api/analyse/schools",
+        "/api/analyse/municipalities",
+        "/api/instructor-ranking",
+        "/instructors/U1/image",
+    ],
 )
 def test_internal_endpoints_need_login(client, path):
     assert client.get(path).status_code == 401

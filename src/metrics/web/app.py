@@ -125,6 +125,7 @@ def analysis(request: Request):
             api="/api/analyse/sessions-over-time",
             options=options,
             instructor_ranking=get_instance().instructor_ranking,
+            map=get_instance().map,
             team=True,
             user=current_user(request),
             auth_off=auth.mode() == "off",
@@ -257,6 +258,49 @@ def sessions_over_time(request: Request) -> JSONResponse:
 def sessions_over_time_detailed(request: Request) -> JSONResponse:
     _require_team(request)
     return _sessions_over_time(parse_filters(request.query_params))
+
+
+def _location_rows(filters: analytics.Filters):
+    instance = get_instance()
+    with get_sessionmaker()() as session:
+        rows = analytics.count_by_location(session, filters, today(), instance.school_year_start_month)
+    return rows, instance
+
+
+@app.get("/api/analyse/schools")
+def sessions_by_school_type(request: Request) -> JSONResponse:
+    """Sessions at schools per school type (team only, all filters)."""
+    _require_team(request)
+    rows, instance = _location_rows(parse_filters(request.query_params))
+    counts, order = analytics.by_school_type(rows, instance)
+    return JSONResponse(
+        {
+            "spec": charts.sessions_by_school_type(counts, order, instance.theme),
+            "meta": {"count": sum(c for _, _, c in counts)},
+        }
+    )
+
+
+@app.get("/api/analyse/municipalities")
+def sessions_by_municipality(request: Request) -> JSONResponse:
+    """Map of sessions per municipality plus the sessions outside the map (team only, all filters)."""
+    _require_team(request)
+    instance = get_instance()
+    if instance.map is None:
+        raise HTTPException(404, "Keine Karte eingerichtet")
+    rows, instance = _location_rows(parse_filters(request.query_params))
+    counts = analytics.by_municipality(rows, instance)
+    return JSONResponse(
+        {
+            "spec": charts.municipality_map(instance.map, counts, instance.theme),
+            "meta": {
+                "title": instance.map.title,
+                "inside": sum(counts.inside.values()),
+                "outside": counts.outside,
+                "unassigned": counts.unassigned,
+            },
+        }
+    )
 
 
 def _theme_css(theme: Theme) -> str:

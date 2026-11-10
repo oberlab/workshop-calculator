@@ -2,8 +2,8 @@
 
 from collections import defaultdict
 
-from metrics.analytics import BIN_PER, NO_CATEGORY, Segment
-from metrics.instance import Theme
+from metrics.analytics import BIN_PER, NO_CATEGORY, MunicipalityCounts, Segment
+from metrics.instance import MapConfig, Theme
 
 ORDINAL_BINS = ("year", "school_year")
 
@@ -163,5 +163,202 @@ def sessions_over_time(segments: list[Segment], bin_name: str, theme: Theme, x_t
         ],
         "mark": {"type": "bar"},
         "encoding": encoding,
+        "config": theme_config(theme),
+    }
+
+
+def _stacked(rows: list[tuple[str, str, int]], order: list[str], stack_order: list[str]) -> list[dict]:
+    """Bar segments with explicit y0/y1 per group, first category on top (as in the main chart)."""
+    values = []
+    for group in order:
+        parts = sorted((r for r in rows if r[0] == group), key=lambda r: stack_order.index(r[1]))
+        total, y = sum(r[2] for r in parts), 0
+        for _, category, count in parts:
+            values.append(
+                {
+                    "group": group,
+                    "category": category,
+                    "count": count,
+                    "y0": y,
+                    "y1": y + count,
+                    "total": total,
+                }
+            )
+            y += count
+    return values
+
+
+def sessions_by_school_type(rows: list[tuple[str, str, int]], type_order: list[str], theme: Theme) -> dict:
+    """Stacked bars of sessions at schools per school type, total above each bar."""
+    categories = category_order(theme, {category for _, category, _ in rows})
+    colors = [theme.color_for(category, i) for i, category in enumerate(categories)]
+    values = _stacked(rows, type_order, list(reversed(categories)))
+    totals = [{"group": group, "total": sum(r[2] for r in rows if r[0] == group)} for group in type_order]
+    x = {
+        "field": "group",
+        "type": "ordinal",
+        "title": "Schulart",
+        "sort": type_order,
+        "axis": {"labelAngle": 0},
+    }
+    return {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "width": "container",
+        "height": 360,
+        "autosize": {"type": "fit-x", "contains": "padding"},
+        "layer": [
+            {
+                "data": {"values": values},
+                # Inside the layer: a top-level selection would be copied into every layer.
+                "params": [
+                    {
+                        "name": "highlight",
+                        "select": {"type": "point", "fields": ["category"]},
+                        "bind": "legend",
+                    }
+                ],
+                "mark": {"type": "bar"},
+                "encoding": {
+                    "x": x,
+                    "y": {
+                        "field": "y1",
+                        "type": "quantitative",
+                        "title": "Anzahl der Einsätze",
+                        "axis": {"tickMinStep": 1, "format": "d"},
+                    },
+                    "y2": {"field": "y0"},
+                    "color": {
+                        "field": "category",
+                        "type": "nominal",
+                        "title": "Kurskategorie",
+                        "scale": {"domain": categories, "range": colors},
+                        "legend": {"orient": "top", "direction": "horizontal"},
+                    },
+                    "opacity": {
+                        "condition": {"param": "highlight", "value": theme.bar_opacity, "empty": True},
+                        "value": 0.2,
+                    },
+                    "tooltip": [
+                        {"field": "group", "title": "Schulart"},
+                        {"field": "category", "title": "Kurskategorie"},
+                        {"field": "count", "title": "Einsätze"},
+                        {"field": "total", "title": "Einsätze der Schulart gesamt"},
+                    ],
+                },
+            },
+            {
+                "data": {"values": totals},
+                "mark": {
+                    "type": "text",
+                    "baseline": "bottom",
+                    "dy": -4,
+                    "font": theme.heading_font,
+                    "fontWeight": "bold",
+                    "fontSize": 13,
+                    "color": theme.colors.get("text", "#333333"),
+                },
+                "encoding": {
+                    "x": x,
+                    "y": {"field": "total", "type": "quantitative"},
+                    "text": {"field": "total", "type": "quantitative", "format": "d"},
+                },
+            },
+        ],
+        "config": theme_config(theme),
+    }
+
+
+def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: Theme) -> dict:
+    """Choropleth of sessions per municipality, labelled with name and count.
+
+    Colour runs along the theme's map gradient on a log scale, so a few municipalities with
+    many sessions do not push all others into the first colour. No sessions = grid colour.
+    """
+    text = theme.colors.get("text", "#333333")
+    features = [
+        {
+            "type": "Feature",
+            "geometry": m.geometry,
+            "properties": {"name": m.name, "count": counts.inside.get(m.name, 0)},
+        }
+        for m in map_config.municipalities
+    ]
+    labels = [
+        {
+            "label": f"{map_config.label(m.name)}\n{counts.inside.get(m.name, 0)}",
+            "lon": m.label_lon,
+            "lat": m.label_lat,
+        }
+        for m in map_config.municipalities
+    ]
+    highest = max(counts.inside.values(), default=0)
+    return {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "width": "container",
+        "height": 520,
+        "autosize": {"type": "fit-x", "contains": "padding"},
+        "projection": {"type": "mercator"},
+        "title": {
+            "text": map_config.attribution,
+            "orient": "bottom",
+            "anchor": "end",
+            "fontSize": 10,
+            "fontWeight": "normal",
+            "color": theme.colors.get("muted", "#777777"),
+        },
+        "layer": [
+            {
+                "data": {"values": features},
+                "mark": {
+                    "type": "geoshape",
+                    "stroke": theme.colors.get("background", "#ffffff"),
+                    "strokeWidth": 1.5,
+                },
+                "encoding": {
+                    "color": {
+                        "condition": {
+                            "test": "datum.properties.count == 0",
+                            "value": theme.colors.get("grid", "#eeeeee"),
+                        },
+                        "field": "properties.count",
+                        "type": "quantitative",
+                        "title": "Einsätze",
+                        "scale": {
+                            "type": "log",
+                            "domain": [1, max(highest, 2)],
+                            "range": theme.map_gradient,
+                            # Blend the gradient colours like ggplot2 (CIELAB), as in the corinna map.
+                            "interpolate": "lab",
+                        },
+                        "legend": {
+                            "orient": "bottom",
+                            "direction": "horizontal",
+                            "gradientLength": 260,
+                            "format": "d",
+                        },
+                    },
+                    "tooltip": [
+                        {"field": "properties.name", "title": "Gemeinde"},
+                        {"field": "properties.count", "title": "Einsätze"},
+                    ],
+                },
+            },
+            {
+                "data": {"values": labels},
+                "mark": {
+                    "type": "text",
+                    "lineBreak": "\n",
+                    "font": theme.heading_font,
+                    "fontWeight": "bold",
+                    "fontSize": 11,
+                    "color": text,
+                },
+                "encoding": {
+                    "longitude": {"field": "lon", "type": "quantitative"},
+                    "latitude": {"field": "lat", "type": "quantitative"},
+                    "text": {"field": "label"},
+                },
+            },
+        ],
         "config": theme_config(theme),
     }

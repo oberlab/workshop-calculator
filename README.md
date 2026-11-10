@@ -64,6 +64,14 @@ OpenID Connect (Keycloak): create a confidential client (client authentication o
 
 Optional internal view: with `[features] instructor_ranking = true` in the instance `config.toml`, the analysis page shows sessions per instructor with Slack profile pictures (`metrics sync-instructors`, needs `users:read`; legacy first names are matched to Slack users in `seeds/instructors.csv`). It is only reachable with the team login.
 
+## Analysis figures
+
+Besides the main chart, the analysis page shows sessions at schools per school type and a map of sessions per municipality of one district, with the sessions outside the district and those without a municipality beside it. Both come from two lookup tables in the instance directory, `seeds/locations.csv` (school type, address, coordinates and municipality per location) and `seeds/school_types.csv`. Check them against the data with:
+
+```sh
+docker compose exec app metrics check-locations   # lists missing locations, contradictions, sessions without municipality
+```
+
 ## Instance directory
 
 Everything organisation-specific (theme, fonts, location list, name mappings, Slack column mapping) lives in an instance directory that is never committed. See [`instance.example/README.md`](instance.example/README.md). Point `INSTANCE_DIR` in `.env` to your own copy.

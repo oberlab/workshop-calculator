@@ -1,0 +1,107 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "ags": "00000001",
+    "name": "Musterstadt"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       11.0,
+       48.0
+      ],
+      [
+       11.2,
+       48.0
+      ],
+      [
+       11.2,
+       48.15
+      ],
+      [
+       11.0,
+       48.15
+      ],
+      [
+       11.0,
+       48.0
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "ags": "00000002",
+    "name": "Beispieldorf"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       11.2,
+       48.0
+      ],
+      [
+       11.4,
+       48.0
+      ],
+      [
+       11.4,
+       48.15
+      ],
+      [
+       11.2,
+       48.15
+      ],
+      [
+       11.2,
+       48.0
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "ags": "00000003",
+    "name": "Neudorf"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       11.0,
+       48.15
+      ],
+      [
+       11.4,
+       48.15
+      ],
+      [
+       11.4,
+       48.25
+      ],
+      [
+       11.0,
+       48.25
+      ],
+      [
+       11.0,
+       48.15
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}

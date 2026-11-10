@@ -47,6 +47,27 @@
   <ol id="ranking-list" class="ranking-list"></ol>
 </section>
 {% endif %}
+
+<section class="figure" data-figure="/api/analyse/schools">
+  <h2>Einsätze an Schulen nach Schulart</h2>
+  <p class="hint">Nur Einsätze an Orten, die als Schule eingetragen sind. Es gelten dieselben Filter wie oben.</p>
+  <div class="chart"></div>
+  <p class="empty" hidden>Keine Einsätze an Schulen für diese Auswahl.</p>
+</section>
+
+{% if map %}
+<section class="figure" data-figure="/api/analyse/municipalities">
+  <h2>Einsätze nach Gemeinde: {{ map.title }}</h2>
+  <p class="hint">Es gelten dieselben Filter wie oben.</p>
+  <div class="map-layout">
+    <div class="chart"></div>
+    <dl class="totals map-side" aria-live="polite">
+      <div><dt>{{ map.outside_label }}</dt><dd data-meta="outside">–</dd></div>
+      <div><dt>Ohne Gemeinde (z.&nbsp;B. Online)</dt><dd data-meta="unassigned">–</dd></div>
+    </dl>
+  </div>
+</section>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}{{ chart_scripts() }}{% endblock %}

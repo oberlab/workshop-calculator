@@ -1,4 +1,4 @@
-"""Time bins, period presets and the sessions-over-time aggregation."""
+"""Time bins, period presets and the aggregations behind the charts."""
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -8,6 +8,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from metrics.db import STATUS_DONE, SessionRow
+from metrics.instance import Instance
 
 MONTHS = [
     "Januar",
@@ -186,6 +187,65 @@ def count_by_instructor(session: Session, filters: Filters, today: date, school_
         school_year_start_month,
     )
     return session.execute(query).all()
+
+
+def count_by_location(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held sessions per recorded location and category, with all filters applied."""
+    query, _ = _held_sessions(
+        select(SessionRow.location, SessionRow.category, func.count()).group_by(
+            SessionRow.location, SessionRow.category
+        ),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    return session.execute(query).all()
+
+
+UNKNOWN_SCHOOL_TYPE = "Schulart unbekannt"
+
+
+def by_school_type(rows, instance: Instance) -> tuple[list[tuple[str, str, int]], list[str]]:
+    """Sessions at schools per school type and category, and the order of the school types.
+
+    Only locations listed as schools count. The school type comes from seeds/locations.csv; a
+    code the instance config does not name is shown as the code, a school without a type as
+    "Schulart unbekannt" (last).
+    """
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for location, category, count in rows:
+        if instance.location_is_school(location) is not True:
+            continue
+        code = instance.school_type(location)
+        label = instance.school_types.get(code, code) if code else UNKNOWN_SCHOOL_TYPE
+        counts[(label, category or NO_CATEGORY)] += count
+    present = {label for label, _ in counts}
+    configured = [label for label in instance.school_types.values() if label in present]
+    others = sorted(present - set(configured) - {UNKNOWN_SCHOOL_TYPE})
+    order = configured + others + ([UNKNOWN_SCHOOL_TYPE] if UNKNOWN_SCHOOL_TYPE in present else [])
+    return [(label, category, count) for (label, category), count in counts.items()], order
+
+
+@dataclass
+class MunicipalityCounts:
+    inside: dict[str, int]  # every municipality on the map, including those with 0
+    outside: int  # a municipality is set but is not on the map
+    unassigned: int  # no location, location not listed, or no municipality set (e.g. "Online")
+
+
+def by_municipality(rows, instance: Instance) -> MunicipalityCounts:
+    names = [m.name for m in instance.map.municipalities] if instance.map else []
+    inside = dict.fromkeys(names, 0)
+    outside = unassigned = 0
+    for location, _category, count in rows:
+        municipality = instance.municipality(location)
+        if municipality in inside:
+            inside[municipality] += count
+        elif municipality:
+            outside += count
+        else:
+            unassigned += count
+    return MunicipalityCounts(inside=inside, outside=outside, unassigned=unassigned)
 
 
 @dataclass
