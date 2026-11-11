@@ -37,7 +37,7 @@
   <div class="tabs planning-tabs">
     {% for key, label in stages.items() %}
     <a role="tab" href="/planung?stage={{ key }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}" aria-selected="{{ 'true' if key == stage else 'false' }}">
-      {{ label }} <span class="count">{{ counts[key] }}</span>{% if high[key] %} <span class="flag flag-high" title="mit hohem Hinweis">{{ high[key] }}</span>{% endif %}
+      {{ label }} <span class="count">{{ counts[key] }}</span>{% if high[key] %} <span class="flag flag-high" title="mit kritischem Hinweis">{{ high[key] }}</span>{% endif %}
     </a>
     {% endfor %}
     <a class="button new-course" href="/planung/neu">+ Neuer Kurs</a>

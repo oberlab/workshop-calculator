@@ -16,7 +16,7 @@
 <p class="prototype-note"><strong>Planung (Prototyp).</strong> Die Abschnitte unten lesen und schreiben nur die Demo-Datenbank der Planung. Kalender: {{ pl.calendar_name }}.</p>
 
 <section class="panel">
-  <h2>Hohe Hinweise <span class="count">{{ pl.high|length }}</span></h2>
+  <h2>Kritische Hinweise <span class="count">{{ pl.high|length }}</span></h2>
   {% if pl.high %}
   <ul class="review-list">
     {% for c, flags in pl.high %}

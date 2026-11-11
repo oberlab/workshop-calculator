@@ -344,7 +344,7 @@ def test_availability_endpoint(team):
 def test_demo_data_and_review_page(team):
     assert team.post("/review/demo/zuruecksetzen", follow_redirects=False).status_code == 303
     review = team.get("/review").text
-    assert "Hohe Hinweise" in review and "Kalender ohne Kurs" in review and "Lasercutter-Workshop" in review
+    assert "Kritische Hinweise" in review and "Kalender ohne Kurs" in review and "Lasercutter-Workshop" in review
     with get_planning_sessionmaker()() as session:
         stages = {c.stage for c in session.query(Course)}
         assert {GEPLANT, BESTAETIGT, DURCHGEFUEHRT, ABGESCHLOSSEN, ABGESAGT} <= stages
