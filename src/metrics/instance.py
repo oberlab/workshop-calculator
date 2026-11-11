@@ -152,6 +152,8 @@ class Instance:
     location_school_types: dict[str, str] = field(default_factory=dict)
     location_municipalities: dict[str, str] = field(default_factory=dict)
     location_coordinates: dict[str, tuple[float, float]] = field(default_factory=dict)  # (lat, lon)
+    # Every place of the location list with its address ("" where none is kept on purpose).
+    location_addresses: dict[str, str] = field(default_factory=dict)
     school_types: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SCHOOL_TYPES))
     map: MapConfig | None = None
     projects: list[Project] = field(default_factory=list)
@@ -283,6 +285,7 @@ def load_instance(instance_dir: Path) -> Instance:
         location_school_types=school_types,
         location_municipalities=municipalities,
         location_coordinates=coordinates,
+        location_addresses={clean_name(row["name"]): clean_name(row.get("address")) for row in location_rows},
         school_types=school_type_labels,
         map=load_map(instance_dir, config),
         projects=load_projects(config),

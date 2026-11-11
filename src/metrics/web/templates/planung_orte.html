@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Orte{% endblock %}
+{% block heading %}Orte <span class="internal">Prototyp</span>{% endblock %}
+{% block subheading %}<p class="subheading">Jeder Kursort braucht eine Adresse (Straße, PLZ, Ort) und die Angabe, ob er eine Schule ist. Daraus ergeben sich Zielgruppe, Schulart und Gemeinde in den Kennzahlen.</p>{% endblock %}
+
+{% macro place_form(p) %}
+<form method="post" action="/planung/orte" class="place-form">
+  <input type="hidden" name="name" value="{{ p.name }}">
+  <div class="grid">
+    <label class="field">Straße und Hausnummer<input name="street" value="{{ p.street or '' }}" required autocomplete="off"></label>
+    <label class="field">PLZ<input name="zip_code" value="{{ p.zip_code or '' }}" required inputmode="numeric" maxlength="10"></label>
+    <label class="field">Ort<input name="city" value="{{ p.city or '' }}" required></label>
+  </div>
+  <div class="grid">
+    <fieldset class="school-choice">
+      <legend class="field-label">Schule?</legend>
+      <label class="check"><input type="radio" name="school" value="ja" {% if p.school %}checked{% endif %}> ja</label>
+      <label class="check"><input type="radio" name="school" value="nein" {% if p.school == false %}checked{% endif %}> nein</label>
+    </fieldset>
+    <label class="field">Schulart
+      <select name="school_type">
+        <option value=""></option>
+        {% for code, label in school_types.items() %}<option value="{{ code }}" {% if p.school_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">Notiz<input name="note" value="{{ p.note or '' }}"></label>
+  </div>
+  <button type="submit" class="button small">Speichern</button>
+</form>
+{% endmacro %}
+
+{% block content %}
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+
+{% if edit %}
+<section class="panel" id="bearbeiten">
+  <h2>{{ edit.name }}</h2>
+  {{ place_form(edit) }}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Adresse fehlt <span class="count">{{ missing|length }}</span></h2>
+  {% if missing %}
+  <p class="hint">Orte aus der Planung, die nicht in der Ortsliste stehen und noch keine vollständige Adresse haben.</p>
+  <ul class="review-list">
+    {% for name, n in missing %}
+    <li><a href="/planung/orte?ort={{ name|urlencode }}#bearbeiten">{{ name }}</a> <span class="muted">in {{ n }} Kurs{% if n > 1 %}en{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="hint">Alle Orte haben eine Adresse.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>In der Planung angelegt <span class="count">{{ entered|length }}</span></h2>
+  <p class="hint">Neue Orte, bis ein Admin sie in die Ortsliste der Instanz übernimmt (<code>seeds/locations.csv</code>).</p>
+  {% if entered %}
+  <table class="courses">
+    <thead><tr><th>Name</th><th>Adresse</th><th>Schule</th><th>Schulart</th><th>zuletzt</th><th></th></tr></thead>
+    <tbody>
+      {% for p in entered %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td>{{ p.address or "unvollständig" }}</td>
+        <td>{{ {True: "ja", False: "nein"}.get(p.school, "–") }}</td>
+        <td>{{ school_types.get(p.school_type, "–") if p.school_type else "–" }}</td>
+        <td class="muted">{{ p.updated_by }}</td>
+        <td><a href="/planung/orte?ort={{ p.name|urlencode }}#bearbeiten">bearbeiten</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <details>
+    <summary><strong>Ortsliste</strong> <span class="count">{{ seeds|length }}</span></summary>
+    <p class="hint">Bekannte Orte der Instanz (nur lesen). Orte ohne Adresse (z.&nbsp;B. Online) sind so gewollt.</p>
+    <table class="courses">
+      <thead><tr><th>Name</th><th>Adresse</th><th>Schule</th><th>Schulart</th></tr></thead>
+      <tbody>
+        {% for name, address in seeds %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>{{ address or "–" }}</td>
+          <td>{{ {True: "ja", False: "nein"}.get(seed_school.get(name), "–") }}</td>
+          <td>{{ school_types.get(seed_types.get(name), "–") if seed_types.get(name) else "–" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</section>
+{% endblock %}

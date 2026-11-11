@@ -4,6 +4,7 @@ import datetime as dt
 import json
 from dataclasses import dataclass
 from decimal import Decimal
+from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +33,7 @@ from metrics.planning.models import (
     History,
     Municipality,
 )
+from metrics.planning.places import needs_address
 
 SYSTEM = "System (automatisch)"
 SOURCE = "planung"
@@ -50,9 +52,10 @@ BASIC = [
     "course_name",
     "note",
 ]
-DETAILS = ["category", "duration_hours", "session_number", "participants_female", "participants_male"]
+DETAILS = ["category", "session_number", "participants_female", "participants_male"]
+# Every field can be filled in from the start; requirements only grow with the stage.
 EDITABLE = {
-    GEPLANT: set(BASIC) | {"alternatives", "people"},
+    GEPLANT: set(BASIC + DETAILS) | {"alternatives", "people", "municipalities"},
     BESTAETIGT: set(BASIC + DETAILS) | {"people", "municipalities"},
     DURCHGEFUEHRT: set(BASIC + DETAILS) | {"people", "municipalities"},
     ABGESCHLOSSEN: set(),
@@ -126,16 +129,6 @@ def _int(value: str, label: str, errors: list) -> int | None:
         return None
 
 
-def _float(value: str, label: str, errors: list) -> float | None:
-    if not value:
-        return None
-    try:
-        return float(value.replace(",", "."))
-    except ValueError:
-        errors.append(f"{label}: keine Zahl")
-        return None
-
-
 def _display(course: Course, name: str) -> str:
     if name == "alternatives":
         return ", ".join(a.date.strftime("%d.%m.%Y") for a in course.alternatives)
@@ -155,7 +148,7 @@ def _display(course: Course, name: str) -> str:
     return str(value)
 
 
-TRACKED = BASIC + DETAILS + ["billed", "alternatives", LEAD, SUPPORT, "municipalities"]
+TRACKED = BASIC + DETAILS + ["duration_hours", "billed", "alternatives", LEAD, SUPPORT, "municipalities"]
 
 
 def snapshot(course: Course) -> dict[str, str]:
@@ -182,17 +175,17 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
         course.note = (form.get("note") or [""])[0].strip() or None
     if "category" in editable:
         course.category = _one(form, "category") or None
-        course.duration_hours = _float(_one(form, "duration_hours"), "Dauer", errors)
         course.session_number = _int(_one(form, "session_number"), "Terminnummer", errors)
         course.participants_female = _int(_one(form, "participants_female"), "TN weiblich", errors)
         course.participants_male = _int(_one(form, "participants_male"), "TN männlich", errors)
-    times_ok = course.start_time and course.end_time and course.end_time > course.start_time
-    if "category" in editable and course.duration_hours is None and times_ok:
-        # Dauer defaults to end minus start; it stays editable for courses with breaks.
+    # Dauer is always end minus start: breaks are not recorded (decided 2026-11-11).
+    if course.start_time and course.end_time and course.end_time > course.start_time:
         start = dt.datetime.combine(dt.date.min, course.start_time)
         course.duration_hours = round(
             (dt.datetime.combine(dt.date.min, course.end_time) - start).seconds / 3600, 2
         )
+    else:
+        course.duration_hours = None
     course.billed = "billed" in form
     if "alternatives" in editable:
         dates = {
@@ -386,6 +379,7 @@ class Flag:
     severity: str
     text: str
     link: int | None = None  # other course
+    href: str | None = None  # page where the flag is resolved
 
 
 def flags(
@@ -408,11 +402,19 @@ def flags(
         for c in conflicts_for(course, active, names):
             prefix = f"{c.date:%d.%m.} Alternativtermin: " if c.alternative else ""
             found.append(Flag(c.severity, f"{prefix}{c.reason} mit „{c.other_title}“", c.other_id))
+    if course.stage not in (ABGESCHLOSSEN, ABGESAGT) and needs_address(instance, course.location):
+        found.append(
+            Flag(
+                MEDIUM,
+                f"Neuer Ort „{course.location}“: Adresse fehlt (Straße, PLZ, Ort)",
+                href=f"/planung/orte?ort={quote(course.location)}",
+            )
+        )
     if calendar_on and course.stage in (GEPLANT, BESTAETIGT):
         if course.calendar_state == CAL_MISSING:
             found.append(Flag(MEDIUM, "Kalendereintrag fehlt (gelöscht?)"))
         elif course.calendar_state == CAL_OUTDATED:
-            found.append(Flag(MEDIUM, "Kalendereintrag weicht ab (Datum, Zeit oder Ort)"))
+            found.append(Flag(MEDIUM, "Kalendereintrag weicht vom Kurs ab"))
         elif course.calendar_state == CAL_NONE and course.stage == BESTAETIGT:
             found.append(Flag(LOW, "Noch nicht im Kalender"))
     if calendar_on and course.stage == ABGESAGT and course.calendar_state == CAL_OK:

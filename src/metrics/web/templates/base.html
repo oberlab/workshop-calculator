@@ -8,9 +8,14 @@
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
-{% macro nav_link(href, label, exact=true) %}
-  {% set active = path == href if exact else path.startswith(href) %}
-  <a href="{{ href }}" {% if active %}class="active" aria-current="page"{% endif %}>{{ label }}</a>
+{% macro nav_link(href, label, exact=true, badges=[]) %}
+  {% if exact %}{% set active = path == href %}
+  {% elif href == "/planung" %}{% set active = path.startswith("/planung") and not path.startswith("/planung/orte") %}
+  {% else %}{% set active = path.startswith(href) %}{% endif %}
+  <a href="{{ href }}" {% if active %}class="active" aria-current="page"{% endif %}>
+    <span>{{ label }}</span>
+    {% for kind, n, title in badges if n %}<span class="nav-count nav-count-{{ kind }}" title="{{ n }} {{ title }}">{{ n }}</span>{% endfor %}
+  </a>
 {% endmacro %}
 <div class="layout">
   <aside class="sidebar">
@@ -41,10 +46,11 @@
       {% for p in projects %}{{ nav_link("/projekte/" ~ p.slug, p.title) }}{% endfor %}
       {% endif %}
       <div class="nav-group">Planung <span class="tag">Prototyp</span></div>
-      {{ nav_link("/planung", "Kurse", exact=false) }}
+      {{ nav_link("/planung", "Kurse", exact=false, badges=[("high", counts.courses_high, "Kurse mit hohem Hinweis"), ("medium", counts.courses_medium, "Kurse mit mittlerem Hinweis")]) }}
+      {{ nav_link("/planung/orte", "Orte", exact=false, badges=[("medium", counts.places, "Orte ohne Adresse")]) }}
       {% if login.admin %}
       <div class="nav-group">Verwaltung</div>
-      {{ nav_link("/review", "Review") }}
+      {{ nav_link("/review", "Review", badges=[("review", counts.review, "offene Punkte")]) }}
       {% endif %}
       {% endif %}
     </nav>

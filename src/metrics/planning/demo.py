@@ -103,6 +103,9 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
         c.people = [CoursePerson(person_key=k, role=LEAD) for k in lead] + [
             CoursePerson(person_key=k, role=SUPPORT) for k in support
         ]
+        if c.start_time and c.end_time:  # Dauer is always end minus start
+            start = dt.datetime.combine(c.date or today, c.start_time)
+            c.duration_hours = (dt.datetime.combine(c.date or today, c.end_time) - start).seconds / 3600
         session.add(c)
         session.flush()
         session.add(History(course_id=c.id, user=DEMO_USER, action="angelegt"))
@@ -135,6 +138,20 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
     b = course(BESTAETIGT, 3, "09:00", "10:30", [p4], location=places[0], **full(1, 1))
     into_calendar(b)
     course(GEPLANT, 3, "13:00", "15:00", [p3], location=places[2])
+
+    # A place that is not in the location list yet: its address is still missing.
+    course(
+        GEPLANT,
+        15,
+        "14:00",
+        "16:00",
+        [p4],
+        location="Jugendzentrum Neustadt",
+        class_kind="band",
+        class_level=None,
+        age=None,
+        age_band="19 - 24 Jahre",
+    )
 
     # Planned with alternatives: no conflict on the main date, a low one on an alternative.
     alt = course(
@@ -181,7 +198,6 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
         location=places[2],
         participants_female=11,
         participants_male=12,
-        duration_hours=3,
         **full(2, 2),
     )
 
@@ -203,7 +219,6 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
             session_number=1,
             participants_female=4,
             participants_male=6,
-            duration_hours=4,
         )
         jl.municipalities = [
             Municipality(municipality=mun_names[0], female=2, male=3),
@@ -223,7 +238,6 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
         location=places[0],
         participants_female=9,
         participants_male=10,
-        duration_hours=2,
         **full(1, 1),
     )
     session.flush()

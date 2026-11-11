@@ -382,3 +382,28 @@ pre.record { font-size: 0.75rem; white-space: pre-wrap; background: var(--surfac
   .course-layout { grid-template-columns: minmax(0, 1fr); }
   .course-side { position: static; }
 }
+
+/* Sidebar counters: open items that someone should clear. */
+.side-nav a { display: flex; align-items: center; gap: 6px; }
+.side-nav a > span:first-child { flex: 1; }
+.nav-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 0.72rem; font-weight: 700; display: inline-grid; place-items: center; line-height: 1; }
+.nav-count-high { background: #c7326c; color: #fff; }
+.nav-count-medium { background: #fabb3a; color: #4a4a49; }
+.nav-count-review { background: var(--color-text, #333); color: var(--color-background, #fff); }
+.side-nav a.active .nav-count { box-shadow: 0 0 0 2px var(--color-background, #fff); }
+.computed { padding: 7px 0; font-weight: 400; color: var(--color-muted, #777); }
+.field-with-note { display: grid; gap: 4px; }
+.place-note { font-size: 0.8rem; font-weight: 700; color: #b06d00; }
+table.changes { border-collapse: collapse; font-size: 0.82rem; margin: 4px 0 8px; width: 100%; }
+table.changes th, table.changes td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.changes thead th { color: var(--color-muted, #777); font-weight: 700; }
+table.changes del { color: var(--color-muted, #777); }
+.calendar-id { font-size: 0.75rem; color: var(--color-muted, #777); margin: 8px 0 0; }
+.calendar-id code { font-size: 0.75rem; }
+.place-form { display: grid; gap: 8px; }
+.place-form .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.place-form input, .place-form select { font: inherit; padding: 6px 8px; border: 1px solid var(--color-muted, #999); border-radius: 4px; }
+.school-choice { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+table.changes th { white-space: nowrap; }
+.place-form .button { justify-self: start; }
+.panel > h2, .panel > details > summary h2 { font-family: var(--font-heading, monospace); font-size: 1.15rem; margin: 0 0 8px; }

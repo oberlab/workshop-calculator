@@ -20,7 +20,6 @@
 </div>
 {% endif %}
 
-{% set confirmed = course.stage != "geplant" %}
 {% set locked = course.stage in ("abgeschlossen", "abgesagt") %}
 <div class="course-layout">
   <form id="course-form" class="course-form" method="post" action="{% if course.id %}/planung/{{ course.id }}{% else %}/planung/neu{% endif %}" data-course="{{ course.id or '' }}">
@@ -44,7 +43,10 @@
 
       <div class="grid">
         {{ field("context", "Kontext", course.context, list="dl-context", required=true) }}
-        {{ field("location", "Ort", course.location, list="dl-location", required=true) }}
+        <div class="field-with-note">
+          {{ field("location", "Ort", course.location, list="dl-location", required=true) }}
+          {% if place_needs_address %}<a class="place-note" href="/planung/orte?ort={{ course.location|urlencode }}#bearbeiten">Neuer Ort: Adresse eintragen</a>{% endif %}
+        </div>
         {{ field("course_name", "Kursname", course.course_name, list="dl-course") }}
       </div>
 
@@ -92,8 +94,8 @@
       </label>
     </section>
 
-    <section class="panel {% if not confirmed %}section-later{% endif %}">
-      <h2>Durchführung {% if not confirmed %}<span class="later">ab „Bestätigt“</span>{% endif %}</h2>
+    <section class="panel">
+      <h2>Durchführung {% if course.stage in ("geplant", "bestaetigt") %}<span class="later">Pflicht für den Abschluss</span>{% endif %}</h2>
       <div class="grid">
         <label class="field">Kurskategorie
           <select name="category" {% if "category" not in editable %}disabled{% endif %}>
@@ -101,13 +103,13 @@
             {% for c in suggest.category %}<option {% if course.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
           </select>
         </label>
-        {{ field("duration_hours", "Dauer (h)", course.duration_hours, "number", extra='step="0.25" min="0" placeholder="aus Beginn/Ende"') }}
+        <div class="field">Dauer (h)<output class="computed">{{ "%g"|format(course.duration_hours) if course.duration_hours else "aus Beginn und Ende" }}</output></div>
         {{ field("session_number", "Terminnummer", course.session_number, "number", extra='min="1"') }}
       </div>
     </section>
 
-    <section class="panel {% if not confirmed %}section-later{% endif %}">
-      <h2>Teilnehmende {% if not confirmed %}<span class="later">ab „Bestätigt“</span>{% endif %}</h2>
+    <section class="panel">
+      <h2>Teilnehmende {% if course.stage in ("geplant", "bestaetigt") %}<span class="later">Pflicht für den Abschluss</span>{% endif %}</h2>
       <div class="grid">
         {{ field("participants_female", "TN weiblich", course.participants_female, "number", extra='min="0"') }}
         {{ field("participants_male", "TN männlich", course.participants_male, "number", extra='min="0"') }}
@@ -136,7 +138,7 @@
         {{ datalist("dl-municipality", municipality_options) }}
       </div>
       {% elif not course.id %}
-      <p class="hint">Bei Projekten mit Herkunftsangabe (z.&nbsp;B. JugendLab) erscheint hier ab „Bestätigt“ eine Tabelle für die Gemeinden.</p>
+      <p class="hint">Bei Projekten mit Herkunftsangabe (z.&nbsp;B. JugendLab) erscheint hier nach dem Speichern eine Tabelle für die Gemeinden.</p>
       {% endif %}
     </section>
 
@@ -251,7 +253,7 @@
       <h2>Hinweise</h2>
       <ul class="flag-list">
         {% for f in flags %}
-        <li>{{ badge(f.severity, severity_labels) }} {{ f.text }}{% if f.link %} · <a href="/planung/{{ f.link }}">ansehen</a>{% endif %}</li>
+        <li>{{ badge(f.severity, severity_labels) }} {{ f.text }}{% if f.link %} · <a href="/planung/{{ f.link }}">ansehen</a>{% endif %}{% if f.href %} · <a href="{{ f.href }}#bearbeiten">beheben</a>{% endif %}</li>
         {% endfor %}
       </ul>
     </section>
@@ -267,7 +269,13 @@
         <p class="hint">Steht im Kalender.</p>
         <button type="submit" class="button secondary" disabled>Im Kalender eingetragen</button>
         {% elif course.calendar_state == "outdated" %}
-        <p class="hint">Der Kalendereintrag weicht vom Kurs ab.</p>
+        <p class="hint">Der Kalendereintrag weicht vom Kurs ab. „Aktualisieren“ übernimmt die Angaben des Kurses:</p>
+        {% if calendar_changes %}
+        <table class="changes">
+          <thead><tr><th></th><th>im Kalender</th><th>neu</th></tr></thead>
+          <tbody>{% for what, old, new in calendar_changes %}<tr><th>{{ what }}</th><td><del>{{ old }}</del></td><td>{{ new }}</td></tr>{% endfor %}</tbody>
+        </table>
+        {% endif %}
         <button type="submit" class="button">Kalender aktualisieren</button>
         {% else %}
         {% if course.calendar_state == "missing" %}<p class="hint">Der Kalendereintrag ist verschwunden.</p>{% endif %}
@@ -275,6 +283,7 @@
         {% if not has_times %}<p class="hint">Braucht Datum, Beginn und Ende.</p>{% endif %}
         {% endif %}
       </form>
+      {% if course.calendar_uid %}<p class="calendar-id" title="Verknüpft Kurs und Kalendereintrag">Kalender-ID: <code>{{ course.calendar_uid }}</code></p>{% endif %}
       <p class="hint small">{{ calendar_name }}</p>
     </section>
     {% endif %}

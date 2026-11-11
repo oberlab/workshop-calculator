@@ -97,8 +97,14 @@ def warnings(course: Course, instance: Instance, vocabulary: dict[str, set[str]]
             hint = suggestion(value, known, {})
             text = f"Neuer {label} „{value}“" + (f", ähnlich: „{hint}“" if hint else "")
             found.append(Problem(text, blocking=False))
-    if course.location and instance.locations and instance.location_is_school(course.location) is None:
+    # A place with an address but without the school question: the target group stays unknown.
+    # (Places without an address get their own flag, see metrics.planning.places.)
+    if (
+        course.location
+        and course.location in instance.location_addresses
+        and instance.location_is_school(course.location) is None
+    ):
         found.append(
-            Problem(f"Ort „{course.location}“ fehlt in der Ortsliste (Zielgruppe unbekannt)", blocking=False)
+            Problem(f"Ort „{course.location}“: Schule ja/nein fehlt (Zielgruppe unbekannt)", blocking=False)
         )
     return found

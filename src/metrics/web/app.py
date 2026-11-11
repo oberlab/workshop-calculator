@@ -110,6 +110,7 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
     login = current_login(request)
     sidebar = {
         "login": login,
+        "counts": planning.sidebar_counts(login) if login else {},
         "auth_off": auth.mode() == "off",
         "projects": get_instance().projects if login else [],
         "path": request.url.path,

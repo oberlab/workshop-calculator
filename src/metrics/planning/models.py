@@ -121,6 +121,36 @@ class Course(PlanningBase):
         return self.course_name or self.context or "Kurs ohne Namen"
 
 
+class Place(PlanningBase):
+    """A place entered in planning that is not in the instance's location list yet.
+
+    Admins later copy complete entries into `seeds/locations.csv`; until then the planning
+    uses them for the target group (school or not) and stops asking for the address.
+    """
+
+    __tablename__ = "places"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    street: Mapped[str | None] = mapped_column(Text)
+    zip_code: Mapped[str | None] = mapped_column(String(16))
+    city: Mapped[str | None] = mapped_column(Text)
+    school: Mapped[bool | None] = mapped_column(Boolean)
+    school_type: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    @property
+    def complete(self) -> bool:
+        return bool(self.street and self.zip_code and self.city)
+
+    @property
+    def address(self) -> str:
+        return f"{self.street}, {self.zip_code} {self.city}" if self.complete else ""
+
+
 class AlternativeDate(PlanningBase):
     __tablename__ = "alternative_dates"
 

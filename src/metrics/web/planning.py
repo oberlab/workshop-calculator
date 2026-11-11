@@ -11,11 +11,11 @@ from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from metrics.instance import get_instance
 from metrics.planning import calendar as cal
-from metrics.planning import demo, rules, service, vocabulary
+from metrics.planning import demo, places, rules, service, vocabulary
 from metrics.planning.conflicts import SEVERITY_LABELS, busy_people
 from metrics.planning.models import (
     BESTAETIGT,
@@ -31,6 +31,7 @@ from metrics.planning.models import (
     FinalSession,
     History,
     Person,
+    Place,
     get_planning_sessionmaker,
 )
 from metrics.web.app import current_login, page, public_base, today
@@ -92,8 +93,13 @@ def _refresh(session, request: Request) -> None:
     session.commit()
 
 
+def _instance(session):
+    """The instance with the places entered in planning added to the location list."""
+    return places.merged(get_instance(), session)
+
+
 def _flags_by_course(session, courses: list[Course]) -> dict[int, list[service.Flag]]:
-    instance = get_instance()
+    instance = _instance(session)
     known = vocabulary.known(instance)
     names = _names(session)
     return {c.id: service.flags(c, courses, names, instance, known, today(), True) for c in courses}
@@ -163,7 +169,7 @@ def course_list(request: Request):
                 "me": me,
                 "params": {k: params.get(k, "") for k in FILTERS},
                 "filter_query": urlencode({k: params[k] for k in FILTERS if params.get(k)}),
-                "suggest": vocabulary.suggestions(session, get_instance()),
+                "suggest": vocabulary.suggestions(session, _instance(session)),
                 "severity_labels": SEVERITY_LABELS,
                 "calendar_name": cal.get_calendar(session).name,
                 "message": params.get("hinweis"),
@@ -171,8 +177,20 @@ def course_list(request: Request):
         )
 
 
+def _calendar_changes(session, request, course: Course) -> list | None:
+    """What "Kalender aktualisieren" would change, for an outdated event."""
+    if course.calendar_state != "outdated" or not course.calendar_uid:
+        return None
+    try:
+        actual = cal.get_calendar(session).get(course.calendar_uid)
+    except cal.CalendarError:
+        return None
+    expected = cal.event_for(course, _names(session), _link(request)(course))
+    return cal.changes(expected, actual) if actual and expected else None
+
+
 def _course_page(request, session, course: Course, errors: list[str] | None = None, status_code: int = 200):
-    instance = get_instance()
+    instance = _instance(session)
     courses = list(session.scalars(select(Course)))
     if course not in courses:
         courses.append(course)
@@ -222,6 +240,8 @@ def _course_page(request, session, course: Course, errors: list[str] | None = No
             "severity_labels": SEVERITY_LABELS,
             "message": request.query_params.get("hinweis"),
             "CAL_OK": CAL_OK,
+            "calendar_changes": _calendar_changes(session, request, course) if course.id else None,
+            "place_needs_address": places.needs_address(instance, course.location),
         },
         status_code=status_code,
     )
@@ -269,7 +289,7 @@ def _get(session, course_id: int) -> Course:
     return course
 
 
-@router.get("/planung/{course_id}", response_class=HTMLResponse)
+@router.get("/planung/{course_id:int}", response_class=HTMLResponse)
 def show_course(course_id: int, request: Request):
     if current_login(request) is None:
         return RedirectResponse("/login", status_code=303)
@@ -280,7 +300,7 @@ def show_course(course_id: int, request: Request):
         return _course_page(request, session, course)
 
 
-@router.post("/planung/{course_id}", response_class=HTMLResponse)
+@router.post("/planung/{course_id:int}", response_class=HTMLResponse)
 async def save_course(course_id: int, request: Request):
     login = _login(request)
     form = await _form(request)
@@ -320,7 +340,7 @@ def _calendar_entry(session, request, course: Course, user: str) -> str:
     return "Kalendereintrag aktualisiert." if existing else "In den Kalender eingetragen."
 
 
-@router.post("/planung/{course_id}/aktion", response_class=HTMLResponse)
+@router.post("/planung/{course_id:int}/aktion", response_class=HTMLResponse)
 async def course_action(course_id: int, request: Request):
     login = _login(request)
     form = await _form(request)
@@ -353,8 +373,8 @@ async def course_action(course_id: int, request: Request):
                 service.finalize(
                     session,
                     course,
-                    get_instance(),
-                    vocabulary.known(get_instance()),
+                    _instance(session),
+                    vocabulary.known(_instance(session)),
                     login.user,
                     "checked" in form,
                 )
@@ -556,3 +576,96 @@ async def save_people(request: Request):
 
 def clean(value: str) -> str:
     return " ".join(value.split())
+
+
+# --- places -----------------------------------------------------------------------------------
+
+
+@router.get("/planung/orte", response_class=HTMLResponse)
+def place_list(request: Request):
+    if current_login(request) is None:
+        return RedirectResponse("/login", status_code=303)
+    instance = get_instance()
+    with get_planning_sessionmaker()() as session:
+        entered = places.places(session)
+        merged = places.merged(instance, session)
+        wanted = clean(request.query_params.get("ort", ""))
+        return page(
+            request,
+            "planung_orte.html",
+            {
+                "missing": places.missing(session, merged),
+                "entered": list(entered.values()),
+                "edit": entered.get(wanted) or (Place(name=wanted) if wanted else None),
+                "seeds": sorted(instance.location_addresses.items(), key=lambda kv: kv[0].casefold()),
+                "school_types": instance.school_types,
+                "seed_types": instance.location_school_types,
+                "seed_school": instance.locations,
+                "message": request.query_params.get("hinweis"),
+            },
+        )
+
+
+@router.post("/planung/orte")
+async def save_place(request: Request):
+    login = _login(request)
+    form = await _form(request)
+    name = clean(form.get("name", [""])[0])
+    if not name:
+        raise HTTPException(400, "Name fehlt")
+    if name in get_instance().location_addresses:
+        raise HTTPException(400, "Dieser Ort steht schon in der Ortsliste")
+    school = form.get("school", [""])[0]
+    with get_planning_sessionmaker()() as session:
+        place = session.get(Place, name) or Place(name=name)
+        before = place.address or "–"
+        place.street = clean(form.get("street", [""])[0]) or None
+        place.zip_code = clean(form.get("zip_code", [""])[0]) or None
+        place.city = clean(form.get("city", [""])[0]) or None
+        place.school = {"ja": True, "nein": False}.get(school)
+        place.school_type = (form.get("school_type", [""])[0] or None) if place.school else None
+        place.note = clean(form.get("note", [""])[0]) or None
+        place.updated_by = login.user
+        session.add(place)
+        session.add(
+            History(
+                course_id=0,
+                user=login.user,
+                action=f"Ort „{name}“",
+                old=before,
+                new=place.address or "unvollständig",
+            )
+        )
+        session.commit()
+        message = (
+            "Ort gespeichert." if place.complete else "Gespeichert, aber die Adresse ist noch unvollständig."
+        )
+    return RedirectResponse(f"/planung/orte?hinweis={quote(message)}", status_code=303)
+
+
+# --- sidebar counters -------------------------------------------------------------------------
+
+
+def sidebar_counts(login) -> dict[str, int]:
+    """Open items for the sidebar badges; never fails a page (empty on any error)."""
+    try:
+        with get_planning_sessionmaker()() as session:
+            courses = list(session.scalars(select(Course)))
+            flags = _flags_by_course(session, courses)
+            tops = [service.top_severity(f) for f in flags.values()]
+            counts = {
+                "courses_high": tops.count("high"),
+                "courses_medium": tops.count("medium"),
+                "places": len(places.missing(session, _instance(session))),
+            }
+            if login.admin:
+                orphans = session.scalar(
+                    select(func.count())
+                    .select_from(CalendarOrphan)
+                    .where(CalendarOrphan.ignored_by.is_(None))
+                )
+                waiting = sum(1 for c in courses if c.stage == DURCHGEFUEHRT)
+                counts["review"] = counts["courses_high"] + waiting + (orphans or 0)
+            return counts
+    except Exception:  # noqa: BLE001 - a broken prototype must not break the other pages
+        return {}

@@ -355,3 +355,87 @@ def test_demo_data_and_review_page(team):
         ids = [c.id for c in session.query(Course)]
     for course_id in ids:
         assert team.get(f"/planung/{course_id}").status_code == 200
+
+
+def test_every_field_can_be_filled_while_planned_and_dauer_follows_the_times(instance):
+    course = make(1, None)
+    form = {**BASIC, **_form(participants_female="3", category="Code", duration_hours="7")}
+    service.apply_form(course, form, GEPLANT)
+    assert (course.participants_female, course.category) == (3, "Code")
+    assert course.duration_hours == 2.5  # from 09:00 to 11:30; a typed value is ignored
+
+
+def test_new_place_needs_an_address_until_entered(instance):
+    from metrics.planning import places
+    from metrics.planning.models import Place
+
+    session = get_planning_sessionmaker()()
+    course = make(None, DAY, "09:00", "11:00", location="Jugendzentrum Neustadt", stage=BESTAETIGT)
+    session.add(course)
+    session.flush()
+    merged = places.merged(instance, session)
+    assert any("Adresse fehlt" in f.text for f in service.flags(course, [], {}, merged, {}, TODAY, False))
+    assert places.missing(session, merged) == [("Jugendzentrum Neustadt", 1)]
+    assert not places.needs_address(instance, "Grundschule Musterstadt")  # in the location list
+
+    session.add(
+        Place(
+            name="Jugendzentrum Neustadt",
+            street="Hauptstr. 1",
+            zip_code="83700",
+            city="Neustadt",
+            school=False,
+        )
+    )
+    session.flush()
+    merged = places.merged(instance, session)
+    assert not any("Adresse" in f.text for f in service.flags(course, [], {}, merged, {}, TODAY, False))
+    assert merged.location_is_school("Jugendzentrum Neustadt") is False  # feeds the target group
+
+
+def test_calendar_changes_say_what_the_update_does():
+    course = make(7, DAY, "09:00", "11:00", lead=["kim"], course_name="Löten")
+    expected = cal.event_for(course, {"kim": "Kim"}, "http://a/planung/7")
+    assert "Planungs-ID: 7" in expected.description
+    actual = cal.Event(
+        expected.uid,
+        expected.summary,
+        expected.start,
+        expected.end,
+        "Schule",
+        expected.description.replace("Kim", "Sam").replace("http://a", "http://b"),
+    )
+    assert cal.changes(expected, actual) == [("Ort", "Schule", "Makerspace"), ("Kursleitung", "Sam", "Kim")]
+
+
+def test_orte_page_and_sidebar_counters(team):
+    team.post(
+        "/planung/neu",
+        data={
+            "date": "2030-03-04",
+            "start_time": "09:00",
+            "end_time": "11:00",
+            "location": "Jugendzentrum Neustadt",
+            "lead": "demo-a",
+        },
+    )
+    page = team.get("/planung/orte").text
+    assert "Jugendzentrum Neustadt" in page and "Adresse fehlt" in page
+    sidebar = team.get("/").text
+    assert "nav-count nav-count-medium" in sidebar and 'title="1 Orte ohne Adresse"' in sidebar
+    saved = team.post(
+        "/planung/orte",
+        data={
+            "name": "Jugendzentrum Neustadt",
+            "street": "Hauptstr. 1",
+            "zip_code": "83700",
+            "city": "Neustadt",
+            "school": "nein",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert 'title="1 Orte ohne Adresse"' not in team.get("/").text
+    assert (
+        team.post("/planung/orte", data={"name": "Grundschule Musterstadt"}).status_code == 400
+    )  # already listed

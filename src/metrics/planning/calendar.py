@@ -57,6 +57,9 @@ class CalendarError(Exception):
 # --- what the event for a course looks like -------------------------------------------------
 
 
+PLANNING_LINE = "Planung: "  # the link line; it depends on the address used, so it is not compared
+
+
 def event_for(course: Course, names: dict[str, str], link: str) -> Event | None:
     if not (course.date and course.start_time and course.end_time):
         return None
@@ -66,7 +69,8 @@ def event_for(course: Course, names: dict[str, str], link: str) -> Event | None:
         f"Klasse/Alter: {course.class_age_text or '–'}",
         f"Kursleitung: {people('lead')}",
         f"Unterstützung: {people('support')}",
-        f"Planung: {link}",
+        f"Planungs-ID: {course.id}",
+        f"{PLANNING_LINE}{link}",
     ]
     return Event(
         uid=course.calendar_uid or f"planung-{course.id}",
@@ -78,12 +82,34 @@ def event_for(course: Course, names: dict[str, str], link: str) -> Event | None:
     )
 
 
+def _team_lines(description: str | None) -> list[str]:
+    return [line for line in (description or "").splitlines() if not line.startswith(PLANNING_LINE)]
+
+
+def changes(expected: Event, actual: Event) -> list[tuple[str, str, str]]:
+    """(what, in the calendar, from the course) for everything the update would change."""
+
+    def when(e: Event) -> str:
+        return f"{e.start:%d.%m.%Y %H:%M}–{e.end:%H:%M}"
+
+    found = []
+    if (expected.start, expected.end) != (actual.start, actual.end):
+        found.append(("Termin", when(actual), when(expected)))
+    if (expected.location or "") != (actual.location or ""):
+        found.append(("Ort", actual.location or "–", expected.location or "–"))
+    if expected.summary != actual.summary:
+        found.append(("Titel", actual.summary, expected.summary))
+    old, new = _team_lines(actual.description), _team_lines(expected.description)
+    for line in new:
+        label = line.split(":", 1)[0]
+        before = next((x for x in old if x.split(":", 1)[0] == label), "")
+        if before != line:
+            found.append((label, before.split(":", 1)[-1].strip() or "–", line.split(":", 1)[-1].strip()))
+    return found
+
+
 def differs(expected: Event, actual: Event) -> bool:
-    return (expected.start, expected.end, expected.location or "") != (
-        actual.start,
-        actual.end,
-        actual.location or "",
-    )
+    return bool(changes(expected, actual))
 
 
 # --- backends -----------------------------------------------------------------------------

@@ -56,7 +56,7 @@ def suggestions(planning: Session, instance: Instance) -> dict[str, list[str]]:
         for name in FIELDS:
             if value := getattr(course, name):
                 counts[name][value] += 1
-    for place in instance.locations:
+    for place in {*instance.locations, *instance.location_addresses}:
         counts["location"][place] += 0
     for category in instance.theme.category_order:
         counts["category"][category] += 0
@@ -70,7 +70,7 @@ def known(instance: Instance) -> dict[str, set[str]]:
     """Values of the clean metrics data, for the spelling warnings."""
     counts = _cached("metrics", _metrics_counts)
     result = {name: set(counts[name]) for name in FIELDS}
-    result["location"] |= set(instance.locations)
+    result["location"] |= set(instance.locations) | set(instance.location_addresses)
     return result
 
 
