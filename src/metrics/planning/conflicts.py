@@ -1,10 +1,10 @@
 """Courses at the same time: who is double-booked, which courses collide.
 
-| severity | case |
-| high     | a person is in two courses whose times overlap |
-| medium   | times overlap without a shared person, the same place overlaps, or a shared person on
-|          | the same day where a time is missing |
-| low      | another course on the same day, or any conflict only on an alternative date |
+| severity (label) | case |
+| high (Kritisch)  | a person is in two courses whose times overlap |
+| medium (Wichtig) | times overlap without a shared person, the same place overlaps, or a shared person on
+|                  | the same day where a time is missing |
+| low (Info)       | another course on the same day, or any conflict only on an alternative date |
 """
 
 import datetime as dt
@@ -14,7 +14,7 @@ from metrics.planning.models import BESTAETIGT, DURCHGEFUEHRT, GEPLANT, Course
 
 HIGH, MEDIUM, LOW = "high", "medium", "low"
 SEVERITY_ORDER = {HIGH: 0, MEDIUM: 1, LOW: 2}
-SEVERITY_LABELS = {HIGH: "hoch", MEDIUM: "mittel", LOW: "niedrig"}
+SEVERITY_LABELS = {HIGH: "Kritisch", MEDIUM: "Wichtig", LOW: "Info"}
 
 ACTIVE = (GEPLANT, BESTAETIGT)
 

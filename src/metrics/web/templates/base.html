@@ -46,7 +46,7 @@
       {% for p in projects %}{{ nav_link("/projekte/" ~ p.slug, p.title) }}{% endfor %}
       {% endif %}
       <div class="nav-group">Planung <span class="tag">Prototyp</span></div>
-      {{ nav_link("/planung", "Kurse", exact=false, badges=[("high", counts.courses_high, "Kurse mit kritischem Hinweis"), ("medium", counts.courses_medium, "Kurse mit mittlerem Hinweis")]) }}
+      {{ nav_link("/planung", "Kurse", exact=false, badges=[("high", counts.courses_high, "Kurse mit kritischem Hinweis"), ("medium", counts.courses_medium, "Kurse mit wichtigem Hinweis")]) }}
       {{ nav_link("/planung/orte", "Orte", exact=false, badges=[("medium", counts.places, "Orte ohne Adresse")]) }}
       {% if login.admin %}
       <div class="nav-group">Verwaltung</div>
