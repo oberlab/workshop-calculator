@@ -125,7 +125,7 @@
   <form method="post" action="/review/demo/zuruecksetzen" class="inline">
     <button type="submit" class="button secondary small">Demo-Daten neu anlegen</button>
   </form>
-  <p class="hint">Löscht alle Kurse der Planung (nicht die Personen) und legt Beispielkurse rund um heute an, die jede Art Hinweis zeigen.{% if pl.demo_events is none %} Mit dem echten Kalender werden dabei auch Testtermine dort eingetragen.{% endif %}</p>
+  <p class="hint">Löscht alle Kurse der Planung, baut die Personenliste aus den aktuellen Slack-Nutzern neu auf (Login-Verknüpfungen bleiben) und legt Beispielkurse rund um heute an, die jede Art Hinweis zeigen.{% if pl.demo_events is none %} Mit dem echten Kalender werden dabei auch Testtermine dort eingetragen.{% endif %}</p>
 </section>
 {% endif %}
 {% endblock %}

@@ -28,7 +28,7 @@ from metrics.planning.models import (
     Municipality,
     PlanningBase,
 )
-from metrics.planning.vocabulary import people, suggestions
+from metrics.planning.vocabulary import people, rebuild_people, suggestions
 
 DEMO_USER = "Demo-Daten"
 
@@ -40,12 +40,14 @@ def _pick(values: list[str], wanted: list[str], fallback: list[str]) -> list[str
 
 
 def reset(session: Session, instance: Instance, today: dt.date, link) -> None:
+    """Delete all planning data except the entered places and seed the demo courses."""
     engine = session.get_bind()
     session.close()
     for table in reversed(PlanningBase.metadata.sorted_tables):
-        if table.name != "people":
+        if table.name not in ("people", "places"):
             with engine.begin() as connection:
                 connection.execute(table.delete())
+    rebuild_people(session)
     _seed(session, instance, today, link)
 
 

@@ -5,10 +5,11 @@ planning database and the location list. Cached for five minutes. Without a reac
 database the planning values alone are used.
 """
 
+import re
 import time
 from collections import Counter
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -81,24 +82,46 @@ def municipalities(planning: Session, instance: Instance) -> list[str]:
     return sorted(set(names), key=str.casefold)
 
 
-def ensure_people(planning: Session) -> None:
-    """Fill an empty people list from the metrics instructors (Slack users first)."""
-    if planning.scalar(select(func.count()).select_from(Person)):
-        return
+SLACK_USER = re.compile(r"^[UW][A-Z0-9]{6,}$")
+DEMO_PEOPLE = [("demo-a", "Alex"), ("demo-b", "Kim"), ("demo-c", "Sam"), ("demo-d", "Robin")]
+
+
+def first_names(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """(key, first name); people sharing a first name keep the initial of their last name."""
+    split = [(key, (name.split() or [key])) for key, name in rows]
+    firsts = [parts[0] for _, parts in split]
+    return [
+        (key, parts[0] if firsts.count(parts[0]) == 1 or len(parts) == 1 else f"{parts[0]} {parts[-1][0]}.")
+        for key, parts in split
+    ]
+
+
+def team_from_slack() -> list[tuple[str, str]]:
+    """The instructors that are Slack users, by first name (legacy names without Slack are left out)."""
     try:
         with get_sessionmaker()() as session:
             rows = session.execute(select(Instructor.key, Instructor.name)).all()
     except SQLAlchemyError:
         rows = []
-    if not rows:
-        rows = [
-            ("demo-a", "Alex Beispiel"),
-            ("demo-b", "Kim Muster"),
-            ("demo-c", "Sam Probe"),
-            ("demo-d", "Robin Test"),
-        ]
-    for key, name in rows:
+    slack = [(key, name) for key, name in rows if SLACK_USER.match(key)]
+    return first_names(sorted(slack, key=lambda row: row[1].casefold())) or DEMO_PEOPLE
+
+
+def ensure_people(planning: Session) -> None:
+    """Fill an empty people list from the Slack users among the instructors."""
+    if planning.scalar(select(func.count()).select_from(Person)):
+        return
+    for key, name in team_from_slack():
         planning.add(Person(key=key, name=name, active=True))
+    planning.commit()
+
+
+def rebuild_people(planning: Session) -> None:
+    """Replace the people list with the current Slack users; login links are kept."""
+    logins = {p.key: p.login for p in planning.scalars(select(Person)) if p.login}
+    planning.execute(delete(Person))
+    for key, name in team_from_slack():
+        planning.add(Person(key=key, name=name, active=True, login=logins.get(key)))
     planning.commit()
 
 

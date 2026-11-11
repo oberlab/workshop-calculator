@@ -310,7 +310,7 @@ def test_create_confirm_and_list(team):
     assert refused.status_code == 400 and "Zum Bestätigen fehlt" in refused.text
 
     listing = team.get("/planung?person=demo-a").text
-    assert "Löten" in listing and "Alex Beispiel" in listing
+    assert "Löten" in listing and ">Alex<" in listing
     assert "Löten" not in team.get("/planung?person=demo-b").text
 
     assert team.post(f"{url}/aktion", data={"action": "calendar"}, follow_redirects=False).status_code == 303
@@ -439,3 +439,35 @@ def test_orte_page_and_sidebar_counters(team):
     assert (
         team.post("/planung/orte", data={"name": "Grundschule Musterstadt"}).status_code == 400
     )  # already listed
+
+
+def test_team_is_slack_users_by_first_name(monkeypatch):
+    from metrics.planning import vocabulary
+
+    rows = [
+        ("U0AAA1111", "Kim Muster"),
+        ("Christine", "Christine"),
+        ("U0BBB2222", "Sam Probe"),
+        ("U0CCC3333", "Sam Beispiel"),
+    ]
+
+    class Result:
+        def all(self):
+            return rows
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, statement):
+            return Result()
+
+    monkeypatch.setattr(vocabulary, "get_sessionmaker", lambda: Session)
+    assert vocabulary.team_from_slack() == [
+        ("U0AAA1111", "Kim"),
+        ("U0CCC3333", "Sam B."),
+        ("U0BBB2222", "Sam P."),
+    ]
