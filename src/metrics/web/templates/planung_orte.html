@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 
 {% block title %}Orte{% endblock %}
+
+{% block scripts %}
+<script>
+  // Schulart only for schools.
+  for (const form of document.querySelectorAll(".place-form")) {
+    form.addEventListener("change", (event) => {
+      if (event.target.name !== "school") return;
+      form.querySelector("[data-school-only]").hidden = event.target.value !== "ja";
+    });
+  }
+</script>
+{% endblock %}
 {% block heading %}Orte <span class="internal">Prototyp</span>{% endblock %}
 {% block subheading %}<p class="subheading">Jeder Kursort braucht eine Adresse (Straße, PLZ, Ort) und die Angabe, ob er eine Schule ist. Daraus ergeben sich Zielgruppe, Schulart und Gemeinde in den Kennzahlen.</p>{% endblock %}
 
@@ -18,7 +30,7 @@
       <label class="check"><input type="radio" name="school" value="ja" {% if p.school %}checked{% endif %}> ja</label>
       <label class="check"><input type="radio" name="school" value="nein" {% if p.school == false %}checked{% endif %}> nein</label>
     </fieldset>
-    <label class="field">Schulart
+    <label class="field" data-school-only {% if not p.school %}hidden{% endif %}>Schulart
       <select name="school_type">
         <option value=""></option>
         {% for code, label in school_types.items() %}<option value="{{ code }}" {% if p.school_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}

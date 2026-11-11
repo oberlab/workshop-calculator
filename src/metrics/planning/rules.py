@@ -7,6 +7,7 @@ marked as checked before the final confirmation. The vocabulary for the spelling
 
 from dataclasses import dataclass
 
+from metrics.ingest.records import ADULT_MIN_AGE
 from metrics.instance import Instance
 from metrics.names_check import suggestion
 from metrics.planning.models import Course
@@ -61,6 +62,8 @@ def final_problems(course: Course, instance: Instance, vocabulary: dict[str, set
     problems = [Problem(f"Fehlt: {', '.join(m)}") for m in [missing(course, FINAL_FIELDS)] if m]
     if course.class_kind == "klasse" and course.class_level is not None and course.age is None:
         problems.append(Problem("Bei einer Schulklasse fehlt das Durchschnittsalter"))
+    if course.class_kind == "alter" and course.age is not None and course.age >= ADULT_MIN_AGE:
+        problems.append(Problem("Durchschnittsalter (Kinder) ist 19 oder mehr: Altersgruppe wählen"))
     if course.start_time and course.end_time and course.end_time <= course.start_time:
         problems.append(Problem("Ende liegt vor dem Beginn"))
     if course.duration_hours is not None and not 0.25 <= course.duration_hours <= 12:
@@ -97,6 +100,16 @@ def warnings(course: Course, instance: Instance, vocabulary: dict[str, set[str]]
             hint = suggestion(value, known, {})
             text = f"Neuer {label} „{value}“" + (f", ähnlich: „{hint}“" if hint else "")
             found.append(Problem(text, blocking=False))
+    if (
+        course.location
+        and instance.location_is_school(course.location)
+        and course.class_kind in ("alter", "band")
+    ):
+        found.append(
+            Problem(
+                f"„{course.location}“ ist eine Schule: Schulklasse oder Lehrkräfte wählen", blocking=False
+            )
+        )
     # A place with an address but without the school question: the target group stays unknown.
     # (Places without an address get their own flag, see metrics.planning.places.)
     if (

@@ -407,3 +407,22 @@ table.changes del { color: var(--color-muted, #777); }
 table.changes th { white-space: nowrap; }
 .place-form .button { justify-self: start; }
 .panel > h2, .panel > details > summary h2 { font-family: var(--font-heading, monospace); font-size: 1.15rem; margin: 0 0 8px; }
+
+/* Team pickers: one Kursleitung (select), several Unterstützung (dropdown with checkboxes). */
+.team { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; align-items: start; }
+.team select { font: inherit; padding: 6px 8px; border: 1px solid var(--color-muted, #999); border-radius: 4px; background: var(--color-background, #fff); }
+.team-hint { grid-column: 1 / -1; }
+details.multi { position: relative; font-weight: 400; }
+details.multi summary { list-style: none; cursor: pointer; padding: 6px 28px 6px 8px; border: 1px solid var(--color-muted, #999); border-radius: 4px; background: var(--color-background, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+details.multi summary::-webkit-details-marker { display: none; }
+details.multi summary::after { content: "▾"; position: absolute; right: 10px; top: 6px; color: var(--color-muted, #777); }
+details.multi[inert] summary { opacity: 0.6; cursor: default; }
+.multi-options { position: absolute; z-index: 5; left: 0; right: 0; margin-top: 4px; max-height: 300px; overflow-y: auto; display: grid; padding: 6px; background: var(--color-background, #fff); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); }
+.multi-options label.check { margin: 0; padding: 4px 6px; border-radius: 4px; }
+.multi-options label.check:hover { background: color-mix(in srgb, var(--color-accent, #4477aa) 8%, transparent); }
+.multi-options .busy { margin-left: auto; font-size: 0.78rem; color: var(--color-muted, #777); }
+.multi-options label.is-busy { color: var(--color-muted, #777); }
+.busy-note { font-size: 0.8rem; font-weight: 700; color: #c7326c; min-height: 1em; }
+.kinds { display: flex; flex-wrap: wrap; gap: 4px 0; }
+.kinds [hidden] { display: none; }
+.field[hidden] { display: none; }

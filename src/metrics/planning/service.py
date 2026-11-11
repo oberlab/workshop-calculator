@@ -36,6 +36,13 @@ from metrics.planning.models import (
 from metrics.planning.places import needs_address
 
 SYSTEM = "System (automatisch)"
+CLASS_KINDS = {
+    "klasse": "Schulklasse",
+    "lehrkraefte": "Lehrkräfte",
+    "alter": "Durchschnittsalter (Kinder)",
+    "band": "Altersgruppe (Erwachsene)",
+}
+AT_SCHOOL = ("klasse", "lehrkraefte")  # the only kinds offered when the place is a school
 SOURCE = "planung"
 
 # Fields per form section; which sections a stage may edit.
@@ -164,11 +171,13 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
         course.start_time = _time(_one(form, "start_time"), "Beginn", errors)
         course.end_time = _time(_one(form, "end_time"), "Ende", errors)
         kind = _one(form, "class_kind") or None
-        course.class_kind = kind if kind in ("klasse", "band", "lehrkraefte") else None
+        course.class_kind = kind if kind in CLASS_KINDS else None
         course.class_level = (
             _int(_one(form, "class_level"), "Klassenstufe", errors) if kind == "klasse" else None
         )
-        course.age = _int(_one(form, "age"), "Alter", errors) if kind == "klasse" else None
+        # Separate inputs per kind, so a hidden one never overwrites the visible one.
+        age_input = {"klasse": "class_age", "alter": "child_age"}.get(kind)
+        course.age = _int(_one(form, age_input), "Alter", errors) if age_input else None
         course.age_band = (_one(form, "age_band") or None) if kind == "band" else None
         for name in ("context", "location", "course_name"):
             setattr(course, name, _one(form, name) or None)
@@ -194,7 +203,7 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
         dates.discard(course.date)
         course.alternatives = [AlternativeDate(date=d) for d in sorted(dates)]
     if "people" in editable:
-        leads = [k for k in dict.fromkeys(form.get("lead", [])) if k]
+        leads = [k for k in form.get("lead", []) if k][:1]  # one Kursleitung
         support = [k for k in dict.fromkeys(form.get("support", [])) if k and k not in leads]
         course.people = [CoursePerson(person_key=k, role=LEAD) for k in leads] + [
             CoursePerson(person_key=k, role=SUPPORT) for k in support

@@ -44,6 +44,10 @@ title = "Projekt A"
 slug = "projekt-a"
 contexts = ["Projekt A"]
 
+[planning]
+# Planning prototype: Slack users who are never offered as team members (Slack user IDs).
+exclude_people = []
+
 [map]
 # Municipality map on the analysis page: a GeoJSON file with a "name" property per feature.
 # German districts: python3 scripts/fetch_municipalities.py <district key> instance/geo/municipalities.geojson

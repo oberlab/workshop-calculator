@@ -157,6 +157,8 @@ class Instance:
     school_types: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SCHOOL_TYPES))
     map: MapConfig | None = None
     projects: list[Project] = field(default_factory=list)
+    # Planning: Slack users who are never offered as team members (by Slack user ID).
+    planning_exclude_people: frozenset[str] = frozenset()
 
     def project(self, slug: str) -> Project | None:
         return next((p for p in self.projects if p.slug == slug), None)
@@ -289,6 +291,7 @@ def load_instance(instance_dir: Path) -> Instance:
         school_types=school_type_labels,
         map=load_map(instance_dir, config),
         projects=load_projects(config),
+        planning_exclude_people=frozenset(config.get("planning", {}).get("exclude_people", [])),
     )
 
 

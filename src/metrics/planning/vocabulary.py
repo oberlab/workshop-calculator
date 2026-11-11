@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from metrics.db import Instructor, SessionRow, get_sessionmaker
-from metrics.instance import Instance
+from metrics.instance import Instance, get_instance
 from metrics.planning.models import Course, Person
 
 FIELDS = ("course_name", "context", "location", "category")
@@ -97,13 +97,17 @@ def first_names(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def team_from_slack() -> list[tuple[str, str]]:
-    """The instructors that are Slack users, by first name (legacy names without Slack are left out)."""
+    """The instructors that are Slack users, by first name.
+
+    Legacy names without Slack and the users in `[planning] exclude_people` are left out.
+    """
     try:
         with get_sessionmaker()() as session:
             rows = session.execute(select(Instructor.key, Instructor.name)).all()
     except SQLAlchemyError:
         rows = []
-    slack = [(key, name) for key, name in rows if SLACK_USER.match(key)]
+    excluded = get_instance().planning_exclude_people
+    slack = [(key, name) for key, name in rows if SLACK_USER.match(key) and key not in excluded]
     return first_names(sorted(slack, key=lambda row: row[1].casefold())) or DEMO_PEOPLE
 
 

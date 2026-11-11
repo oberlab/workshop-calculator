@@ -97,7 +97,7 @@ def _form(**values) -> dict[str, list[str]]:
 
 BASIC = _form(
     date="2026-11-20", start_time="09:00", end_time="11:30", context="Projekt A",
-    location="Grundschule Musterstadt", class_kind="klasse", class_level="3", age="8", lead="kim",
+    location="Grundschule Musterstadt", class_kind="klasse", class_level="3", class_age="8", lead="kim",
 )  # fmt: skip
 
 
@@ -471,3 +471,47 @@ def test_team_is_slack_users_by_first_name(monkeypatch):
         ("U0CCC3333", "Sam B."),
         ("U0BBB2222", "Sam P."),
     ]
+
+
+def test_one_lead_and_children_by_average_age(instance):
+    course = make(1, None)
+    form = {
+        **BASIC,
+        **_form(lead=["kim", "sam"], support=["kim", "robin"], class_kind="alter", child_age="12"),
+    }
+    service.apply_form(course, form, GEPLANT)
+    assert course.keys(LEAD) == ["kim"] and course.keys(SUPPORT) == ["robin"]
+    assert (course.class_age_text, course.class_level) == ("12 Jahre", None)
+
+
+def test_school_place_wants_class_or_teachers(instance):
+    course = _held(class_kind=["band"], age_band=["19 - 24 Jahre"])  # at "Grundschule Musterstadt"
+    texts = [p.text for p in rules.warnings(course, instance, {})]
+    assert any("ist eine Schule" in t for t in texts)
+
+
+def test_excluded_people_are_left_out(monkeypatch):
+    from dataclasses import replace
+
+    from metrics.planning import vocabulary
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, statement):
+            return type(
+                "R", (), {"all": lambda self: [("U0AAA1111", "Kim Muster"), ("U0BBB2222", "Sam Probe")]}
+            )()
+
+    instance = vocabulary.get_instance()
+    monkeypatch.setattr(vocabulary, "get_sessionmaker", lambda: Session)
+    monkeypatch.setattr(
+        vocabulary,
+        "get_instance",
+        lambda: replace(instance, planning_exclude_people=frozenset({"U0BBB2222"})),
+    )
+    assert vocabulary.team_from_slack() == [("U0AAA1111", "Kim")]

@@ -177,6 +177,14 @@ def course_list(request: Request):
         )
 
 
+def _pickable(session, course: Course) -> list[tuple[str, str]]:
+    """Active people, plus anyone already on the course who is no longer in the list."""
+    names = _names(session)
+    active = [(p.key, p.name) for p in vocabulary.people(session, active_only=True)]
+    listed = {key for key, _ in active}
+    return active + [(k, names.get(k, k)) for k in course.all_keys if k not in listed]
+
+
 def _calendar_changes(session, request, course: Course) -> list | None:
     """What "Kalender aktualisieren" would change, for an outdated event."""
     if course.calendar_state != "outdated" or not course.calendar_uid:
@@ -233,6 +241,13 @@ def _course_page(request, session, course: Course, errors: list[str] | None = No
             "municipality_options": vocabulary.municipalities(session, instance),
             "wants_municipalities": rules.wants_municipalities(course, instance),
             "age_bands": rules.AGE_BANDS,
+            "class_kinds": service.CLASS_KINDS,
+            "at_school": service.AT_SCHOOL,
+            # place -> school yes/no, so the form offers only the fitting Klasse/Alter kinds
+            "school_places": {
+                name: school for name, school in instance.locations.items() if school is not None
+            },
+            "pickable": _pickable(session, course),
             "history": history,
             "final": final,
             "today": today(),

@@ -50,14 +50,20 @@
         {{ field("course_name", "Kursname", course.course_name, list="dl-course") }}
       </div>
 
-      <fieldset class="class-age" {% if "class_kind" not in editable %}disabled{% endif %}>
+      <fieldset class="class-age" data-school-places='{{ school_places|tojson|forceescape }}' {% if "class_kind" not in editable %}disabled{% endif %}>
         <legend class="field-label required">Klasse/Alter</legend>
-        <label class="check"><input type="radio" name="class_kind" value="klasse" {% if course.class_kind == "klasse" %}checked{% endif %}> Schulklasse</label>
-        <label class="check"><input type="radio" name="class_kind" value="band" {% if course.class_kind == "band" %}checked{% endif %}> Altersgruppe (Erwachsene)</label>
-        <label class="check"><input type="radio" name="class_kind" value="lehrkraefte" {% if course.class_kind == "lehrkraefte" %}checked{% endif %}> Lehrkräfte</label>
+        <div class="kinds">
+          {% for key, label in class_kinds.items() %}
+          <label class="check" data-kind-option="{{ key }}" data-at-school="{{ 1 if key in at_school else 0 }}"><input type="radio" name="class_kind" value="{{ key }}" {% if course.class_kind == key %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </div>
+        <p class="hint" data-school-hint hidden>Der Ort ist eine Schule: nur Schulklasse oder Lehrkräfte.</p>
         <div class="grid" data-kind="klasse">
           <label class="field">Klassenstufe <input type="number" min="1" max="13" name="class_level" value="{{ course.class_level or '' }}"></label>
-          <label class="field">Durchschnittsalter <input type="number" min="3" max="99" name="age" value="{{ course.age or '' }}"></label>
+          <label class="field">Durchschnittsalter <input type="number" min="3" max="25" name="class_age" value="{{ course.age if course.class_kind == 'klasse' and course.age else '' }}"></label>
+        </div>
+        <div class="grid" data-kind="alter">
+          <label class="field">Durchschnittsalter <input type="number" min="1" max="18" name="child_age" value="{{ course.age if course.class_kind == 'alter' and course.age else '' }}"></label>
         </div>
         <div class="grid" data-kind="band">
           <label class="field">Altersgruppe
@@ -69,24 +75,29 @@
         </div>
       </fieldset>
 
-      <div class="people-picker" data-people>
-        <div class="people-head">
-          <span class="field-label">Team</span>
-          <span class="hint" data-availability-note>Personen, die zur selben Zeit schon eingeplant sind, werden markiert.</span>
+      {% set people_off = "people" not in editable %}
+      <div class="team" data-people>
+        <div class="field">
+          <span>Kursleitung</span>
+          <select name="lead" data-lead {% if people_off %}disabled{% endif %}>
+            <option value="">– niemand –</option>
+            {% for key, name in pickable %}<option value="{{ key }}" data-name="{{ name }}" {% if key in leads %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+          <span class="busy-note" data-lead-note></span>
         </div>
-        <table class="people">
-          <thead><tr><th>Person</th><th>Kursleitung</th><th>Unterstützung</th><th></th></tr></thead>
-          <tbody>
-            {% for p in people %}
-            <tr data-person="{{ p.key }}">
-              <td>{{ p.name }}</td>
-              <td><input type="checkbox" name="lead" value="{{ p.key }}" {% if p.key in leads %}checked{% endif %} {% if "people" not in editable %}disabled{% endif %} aria-label="{{ p.name }} leitet"></td>
-              <td><input type="checkbox" name="support" value="{{ p.key }}" {% if p.key in supports %}checked{% endif %} {% if "people" not in editable %}disabled{% endif %} aria-label="{{ p.name }} unterstützt"></td>
-              <td class="busy" data-busy></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="field">
+          <span>Unterstützung</span>
+          <details class="multi" data-support {% if people_off %}inert{% endif %}>
+            <summary data-support-summary>{% for key, name in pickable if key in supports %}{{ name }}{% if not loop.last %}, {% endif %}{% else %}– niemand –{% endfor %}</summary>
+            <div class="multi-options">
+              {% for key, name in pickable %}
+              <label class="check" data-person="{{ key }}"><input type="checkbox" name="support" value="{{ key }}" data-name="{{ name }}" {% if key in supports %}checked{% endif %} {% if people_off %}disabled{% endif %}> {{ name }} <span class="busy" data-busy></span></label>
+              {% endfor %}
+            </div>
+          </details>
+          <span class="busy-note" data-support-note></span>
+        </div>
+        <p class="hint team-hint">Wer zur selben Zeit schon eingeplant ist, wird in der Auswahl als „belegt“ markiert.</p>
       </div>
 
       <label class="field wide">Notiz

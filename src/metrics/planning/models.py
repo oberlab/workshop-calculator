@@ -59,7 +59,8 @@ class Course(PlanningBase):
     end_time: Mapped[dt.time | None]
     duration_hours: Mapped[float | None] = mapped_column(Float)
     course_name: Mapped[str | None] = mapped_column(Text)
-    # Klasse/Alter, structured: kind is "klasse", "band" or "lehrkraefte".
+    # Klasse/Alter, structured: kind is "klasse", "alter" (children, average age), "band" (adults)
+    # or "lehrkraefte".
     class_kind: Mapped[str | None] = mapped_column(String(16))
     class_level: Mapped[int | None] = mapped_column(Integer)
     age: Mapped[int | None] = mapped_column(Integer)
@@ -106,6 +107,8 @@ class Course(PlanningBase):
             return "Lehrkräfte"
         if self.class_kind == "band":
             return self.age_band
+        if self.class_kind == "alter":
+            return f"{self.age} Jahre" if self.age is not None else None
         if self.class_kind == "klasse" and self.class_level is not None and self.age is not None:
             return f"Kl. {self.class_level} / {self.age} Jahre"
         if self.class_kind == "klasse" and self.class_level is not None:
