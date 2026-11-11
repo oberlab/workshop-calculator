@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% from "_planung.html" import badge, prototype_note, datalist, day, people_list %}
+
+{% block title %}{% if course.id %}{{ course.title }}{% else %}Neuer Kurs{% endif %}{% endblock %}
+{% block heading %}{% if course.id %}{{ course.title }}{% else %}Neuer Kurs{% endif %} <span class="stage-pill stage-{{ course.stage }}">{{ stages[course.stage] }}</span>{% endblock %}
+{% block subheading %}<p class="subheading"><a href="/planung?stage={{ course.stage }}">← Kursliste</a></p>{{ prototype_note(calendar_name) }}{% endblock %}
+
+{% macro field(name, label, value, type="text", list=None, required=false, extra="") %}
+{% set on = name in editable %}
+<label class="field"><span>{{ label }}{% if required %}<span class="req" title="Pflicht ab „Bestätigt“"> *</span>{% endif %}</span>
+  <input type="{{ type }}" name="{{ name }}" value="{{ value if value is not none else '' }}" {% if list %}list="{{ list }}"{% endif %} {% if not on %}disabled{% endif %} {{ extra|safe }}>
+</label>
+{% endmacro %}
+
+{% block content %}
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if errors %}
+<div class="notice error-box" role="alert">
+  {% for e in errors %}<p>{{ e }}</p>{% endfor %}
+</div>
+{% endif %}
+
+{% set confirmed = course.stage != "geplant" %}
+{% set locked = course.stage in ("abgeschlossen", "abgesagt") %}
+<div class="course-layout">
+  <form id="course-form" class="course-form" method="post" action="{% if course.id %}/planung/{{ course.id }}{% else %}/planung/neu{% endif %}" data-course="{{ course.id or '' }}">
+    <section class="panel">
+      <h2>Eckdaten</h2>
+      <p class="hint">{% if course.stage == "geplant" %}In „Geplant“ ist nichts Pflicht. Ab „Bestätigt“ braucht es die markierten Felder.{% else %}Die markierten Felder sind Pflicht.{% endif %}</p>
+      <div class="grid">
+        {{ field("date", "Datum", course.date, "date", required=true) }}
+        {{ field("start_time", "Beginn", course.start_time.strftime("%H:%M") if course.start_time else "", "time", required=true) }}
+        {{ field("end_time", "Ende", course.end_time.strftime("%H:%M") if course.end_time else "", "time", required=true) }}
+      </div>
+      {% if course.stage == "geplant" %}
+      <div class="alternatives" data-alternatives>
+        <span class="field-label">Alternativdaten</span>
+        {% for a in course.alternatives %}
+        <span class="alt-row"><input type="date" name="alt_date" value="{{ a.date }}"> <button type="button" class="link" data-remove>entfernen</button></span>
+        {% endfor %}
+        <button type="button" class="button secondary small" data-add-alternative>+ Alternativdatum</button>
+      </div>
+      {% endif %}
+
+      <div class="grid">
+        {{ field("context", "Kontext", course.context, list="dl-context", required=true) }}
+        {{ field("location", "Ort", course.location, list="dl-location", required=true) }}
+        {{ field("course_name", "Kursname", course.course_name, list="dl-course") }}
+      </div>
+
+      <fieldset class="class-age" {% if "class_kind" not in editable %}disabled{% endif %}>
+        <legend class="field-label required">Klasse/Alter</legend>
+        <label class="check"><input type="radio" name="class_kind" value="klasse" {% if course.class_kind == "klasse" %}checked{% endif %}> Schulklasse</label>
+        <label class="check"><input type="radio" name="class_kind" value="band" {% if course.class_kind == "band" %}checked{% endif %}> Altersgruppe (Erwachsene)</label>
+        <label class="check"><input type="radio" name="class_kind" value="lehrkraefte" {% if course.class_kind == "lehrkraefte" %}checked{% endif %}> Lehrkräfte</label>
+        <div class="grid" data-kind="klasse">
+          <label class="field">Klassenstufe <input type="number" min="1" max="13" name="class_level" value="{{ course.class_level or '' }}"></label>
+          <label class="field">Durchschnittsalter <input type="number" min="3" max="99" name="age" value="{{ course.age or '' }}"></label>
+        </div>
+        <div class="grid" data-kind="band">
+          <label class="field">Altersgruppe
+            <select name="age_band">
+              <option value=""></option>
+              {% for b in age_bands %}<option {% if course.age_band == b %}selected{% endif %}>{{ b }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="people-picker" data-people>
+        <div class="people-head">
+          <span class="field-label">Team</span>
+          <span class="hint" data-availability-note>Personen, die zur selben Zeit schon eingeplant sind, werden markiert.</span>
+        </div>
+        <table class="people">
+          <thead><tr><th>Person</th><th>Kursleitung</th><th>Unterstützung</th><th></th></tr></thead>
+          <tbody>
+            {% for p in people %}
+            <tr data-person="{{ p.key }}">
+              <td>{{ p.name }}</td>
+              <td><input type="checkbox" name="lead" value="{{ p.key }}" {% if p.key in leads %}checked{% endif %} {% if "people" not in editable %}disabled{% endif %} aria-label="{{ p.name }} leitet"></td>
+              <td><input type="checkbox" name="support" value="{{ p.key }}" {% if p.key in supports %}checked{% endif %} {% if "people" not in editable %}disabled{% endif %} aria-label="{{ p.name }} unterstützt"></td>
+              <td class="busy" data-busy></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <label class="field wide">Notiz
+        <textarea name="note" rows="2" {% if "note" not in editable %}disabled{% endif %}>{{ course.note or "" }}</textarea>
+      </label>
+    </section>
+
+    <section class="panel {% if not confirmed %}section-later{% endif %}">
+      <h2>Durchführung {% if not confirmed %}<span class="later">ab „Bestätigt“</span>{% endif %}</h2>
+      <div class="grid">
+        <label class="field">Kurskategorie
+          <select name="category" {% if "category" not in editable %}disabled{% endif %}>
+            <option value=""></option>
+            {% for c in suggest.category %}<option {% if course.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select>
+        </label>
+        {{ field("duration_hours", "Dauer (h)", course.duration_hours, "number", extra='step="0.25" min="0" placeholder="aus Beginn/Ende"') }}
+        {{ field("session_number", "Terminnummer", course.session_number, "number", extra='min="1"') }}
+      </div>
+    </section>
+
+    <section class="panel {% if not confirmed %}section-later{% endif %}">
+      <h2>Teilnehmende {% if not confirmed %}<span class="later">ab „Bestätigt“</span>{% endif %}</h2>
+      <div class="grid">
+        {{ field("participants_female", "TN weiblich", course.participants_female, "number", extra='min="0"') }}
+        {{ field("participants_male", "TN männlich", course.participants_male, "number", extra='min="0"') }}
+      </div>
+      {% if wants_municipalities %}
+      <div class="municipalities" data-municipalities>
+        <span class="field-label">Herkunft der Teilnehmenden</span>
+        <p class="hint">Projektfeld: die Summen müssen zu TN weiblich und männlich passen.</p>
+        <table class="mun">
+          <thead><tr><th>Gemeinde</th><th>weiblich</th><th>männlich</th><th></th></tr></thead>
+          <tbody data-mun-rows>
+            {% for m in course.municipalities %}
+            <tr>
+              <td><input name="mun_name" list="dl-municipality" value="{{ m.municipality }}" {% if "municipalities" not in editable %}disabled{% endif %}></td>
+              <td><input type="number" min="0" name="mun_female" value="{{ m.female or 0 }}" {% if "municipalities" not in editable %}disabled{% endif %}></td>
+              <td><input type="number" min="0" name="mun_male" value="{{ m.male or 0 }}" {% if "municipalities" not in editable %}disabled{% endif %}></td>
+              <td>{% if "municipalities" in editable %}<button type="button" class="link" data-remove>entfernen</button>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if "municipalities" in editable %}
+        <input type="hidden" name="mun_name" value=""><input type="hidden" name="mun_female" value=""><input type="hidden" name="mun_male" value="">
+        <button type="button" class="button secondary small" data-add-municipality>+ Gemeinde</button>
+        {% endif %}
+        {{ datalist("dl-municipality", municipality_options) }}
+      </div>
+      {% elif not course.id %}
+      <p class="hint">Bei Projekten mit Herkunftsangabe (z.&nbsp;B. JugendLab) erscheint hier ab „Bestätigt“ eine Tabelle für die Gemeinden.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>Abrechnung</h2>
+      <label class="check"><input type="checkbox" name="billed" value="1" {% if course.billed %}checked{% endif %} {% if locked %}disabled{% endif %}> Abgerechnet</label>
+      <p class="hint">Bleibt in der Planung; wird nie in die Kennzahlen übernommen.</p>
+    </section>
+
+    {% if not locked %}
+    <div class="form-actions">
+      <button type="submit" class="button">{% if course.id %}Speichern{% else %}Kurs anlegen{% endif %}</button>
+      {% if course.id %}<a class="reset" href="/planung/{{ course.id }}">Änderungen verwerfen</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {{ datalist("dl-context", suggest.context) }}{{ datalist("dl-location", suggest.location) }}{{ datalist("dl-course", suggest.course_name) }}
+  </form>
+
+  <aside class="course-side">
+    {% if course.id %}
+    <section class="panel">
+      <h2>Phase</h2>
+      {% set order = ["geplant", "bestaetigt", "durchgefuehrt", "abgeschlossen"] %}
+      {% set position = order.index(course.stage) if course.stage in order else 1 %}
+      <ol class="stepper">
+        {% for key in order %}
+        <li class="{% if key == course.stage %}current{% elif loop.index0 < position %}done{% endif %}">{{ stages[key] }}</li>
+        {% endfor %}
+      </ol>
+      {% if course.stage == "abgesagt" %}<p class="cancelled">Abgesagt: {{ course.cancel_reason }}</p>{% endif %}
+
+      {% if course.stage == "geplant" %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="confirm">
+        {% if course.alternatives %}
+        <p class="hint">An welchem Datum findet der Kurs statt? Die anderen Daten werden verworfen.</p>
+        {% for d in [course.date] + course.alternatives|map(attribute="date")|list if d %}
+        <label class="check"><input type="radio" name="chosen" value="{{ d }}" {% if loop.first %}checked{% endif %}> {{ day(d) }}</label>
+        {% endfor %}
+        {% endif %}
+        <button type="submit" class="button">Bestätigen</button>
+      </form>
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="done">
+        <button type="submit" class="button secondary">Als durchgeführt markieren</button>
+      </form>
+      <details class="danger">
+        <summary>Löschen…</summary>
+        <form method="post" action="/planung/{{ course.id }}/aktion">
+          <input type="hidden" name="action" value="delete">
+          <label class="check"><input type="checkbox" name="really" value="1" required> Ja, diesen geplanten Kurs löschen</label>
+          <button type="submit" class="button danger">Endgültig löschen</button>
+        </form>
+      </details>
+
+      {% elif course.stage == "bestaetigt" %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="done">
+        <button type="submit" class="button">Als durchgeführt markieren</button>
+        <p class="hint">Passiert sonst automatisch am Tag nach dem Kurs.</p>
+      </form>
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="back">
+        <button type="submit" class="button secondary">Zurück zu „Geplant“</button>
+      </form>
+      <details class="danger">
+        <summary>Absagen…</summary>
+        <form method="post" action="/planung/{{ course.id }}/aktion">
+          <input type="hidden" name="action" value="cancel">
+          <label class="field">Grund<textarea name="reason" rows="2" required></textarea></label>
+          <button type="submit" class="button danger">Kurs absagen</button>
+        </form>
+      </details>
+
+      {% elif course.stage == "durchgefuehrt" %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="final">
+        {% if blocking %}
+        <p class="hint">Final bestätigen geht, sobald alles ausgefüllt ist:</p>
+        <ul class="problems">{% for p in blocking %}<li>{{ p.text }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if warnings %}
+        <ul class="problems warn">{% for p in warnings %}<li>{{ p.text }}</li>{% endfor %}</ul>
+        <label class="check"><input type="checkbox" name="checked" value="1"> Hinweise geprüft</label>
+        {% endif %}
+        <button type="submit" class="button" {% if blocking %}disabled{% endif %}>Final bestätigen</button>
+        <p class="hint">Übernimmt den Kurs in die Kennzahlen-Datenbank (im Prototyp: in eine Demo-Tabelle).</p>
+      </form>
+      {% if course.date and course.date >= today %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="undone">
+        <button type="submit" class="button secondary">Zurück zu „Bestätigt“</button>
+      </form>
+      {% endif %}
+
+      {% else %}
+      {% if final %}
+      <p class="hint">Final bestätigt von {{ final.confirmed_by }} am {{ final.confirmed_at.strftime("%d.%m.%Y") }}.</p>
+      <details><summary>Datensatz für die Kennzahlen ansehen</summary><pre class="record">{{ final.record_json }}</pre></details>
+      {% endif %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+        <input type="hidden" name="action" value="billed">
+        <label class="check"><input type="checkbox" name="billed" value="1" {% if course.billed %}checked{% endif %}> Abgerechnet</label>
+        <button type="submit" class="button secondary small">Speichern</button>
+      </form>
+      {% endif %}
+    </section>
+
+    {% if flags %}
+    <section class="panel">
+      <h2>Hinweise</h2>
+      <ul class="flag-list">
+        {% for f in flags %}
+        <li>{{ badge(f.severity, severity_labels) }} {{ f.text }}{% if f.link %} · <a href="/planung/{{ f.link }}">ansehen</a>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if course.stage in ("geplant", "bestaetigt") %}
+    <section class="panel">
+      <h2>Kalender</h2>
+      {% set has_times = course.date and course.start_time and course.end_time %}
+      <form method="post" action="/planung/{{ course.id }}/aktion">
+        <input type="hidden" name="action" value="calendar">
+        {% if course.calendar_state == "ok" %}
+        <p class="hint">Steht im Kalender.</p>
+        <button type="submit" class="button secondary" disabled>Im Kalender eingetragen</button>
+        {% elif course.calendar_state == "outdated" %}
+        <p class="hint">Der Kalendereintrag weicht vom Kurs ab.</p>
+        <button type="submit" class="button">Kalender aktualisieren</button>
+        {% else %}
+        {% if course.calendar_state == "missing" %}<p class="hint">Der Kalendereintrag ist verschwunden.</p>{% endif %}
+        <button type="submit" class="button" {% if not has_times %}disabled{% endif %}>In Kalender eintragen</button>
+        {% if not has_times %}<p class="hint">Braucht Datum, Beginn und Ende.</p>{% endif %}
+        {% endif %}
+      </form>
+      <p class="hint small">{{ calendar_name }}</p>
+    </section>
+    {% endif %}
+
+    <section class="panel">
+      <h2>Verlauf</h2>
+      <ul class="history">
+        {% for h in history %}
+        <li>
+          <span class="muted">{{ h.at.strftime("%d.%m.%Y %H:%M") }} · {{ h.user }}</span><br>
+          {{ h.action }}{% if h.field %} {{ h.field }}{% endif %}{% if h.old or h.new %}: {% if h.old %}<del>{{ h.old }}</del> {% endif %}{% if h.new %}→ {{ h.new }}{% endif %}{% endif %}
+        </li>
+        {% else %}<li class="muted">Noch keine Einträge.</li>{% endfor %}
+      </ul>
+    </section>
+    {% else %}
+    <section class="panel">
+      <h2>Neuer Kurs</h2>
+      <p class="hint">Startet in „Geplant“. Danach: Bestätigen, Durchführen, Final bestätigen.</p>
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', path='planning.js') }}"></script>{% endblock %}

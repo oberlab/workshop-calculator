@@ -22,6 +22,11 @@ class Settings:
     oidc_admin_group: str | None = None
     oidc_groups_claim: str = "groups"
     public_url: str | None = None
+    # Planning prototype: its own database (never the metrics database) and an optional calendar.
+    planning_database_url: str = "sqlite:///planung-prototyp.sqlite"
+    caldav_url: str | None = None
+    caldav_username: str | None = None
+    caldav_password: str | None = None
 
 
 AUTH_MODES = ("password", "oidc", "off")
@@ -46,6 +51,10 @@ def get_settings() -> Settings:
         oidc_admin_group=os.environ.get("OIDC_ADMIN_GROUP") or None,
         oidc_groups_claim=os.environ.get("OIDC_GROUPS_CLAIM") or "groups",
         public_url=(os.environ.get("PUBLIC_URL") or "").rstrip("/") or None,
+        planning_database_url=os.environ.get("PLANNING_DATABASE_URL") or "sqlite:///planung-prototyp.sqlite",
+        caldav_url=os.environ.get("CALDAV_URL") or None,
+        caldav_username=os.environ.get("CALDAV_USERNAME") or None,
+        caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
     )
 
 

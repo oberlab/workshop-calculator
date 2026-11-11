@@ -105,7 +105,7 @@ def _page_context(filters: analytics.Filters, **extra) -> dict:
     return {"filters": filters, "bins": analytics.BINS, "presets": analytics.PRESETS, **extra}
 
 
-def _page(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
+def page(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
     """A page with the sidebar: login state and the links this person may open."""
     login = current_login(request)
     sidebar = {
@@ -117,10 +117,15 @@ def _page(request: Request, template: str, context: dict, status_code: int = 200
     return templates.TemplateResponse(request, template, {**sidebar, **context}, status_code=status_code)
 
 
+def public_base(request: Request) -> str:
+    """The address people use to open the app (for links in calendar entries)."""
+    return auth.get_settings().public_url or str(request.base_url).rstrip("/")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     filters = parse_filters(request.query_params, detailed=False)
-    return _page(request, "index.html", _page_context(filters, api="/api/sessions-over-time"))
+    return page(request, "index.html", _page_context(filters, api="/api/sessions-over-time"))
 
 
 def _analysis_page(request: Request, project: Project | None = None) -> HTMLResponse:
@@ -130,7 +135,7 @@ def _analysis_page(request: Request, project: Project | None = None) -> HTMLResp
         with get_sessionmaker()() as session:
             options = _options(session)
     instance = get_instance()
-    return _page(
+    return page(
         request,
         "analyse.html",
         _page_context(
@@ -168,7 +173,9 @@ def review(request: Request):
     login = current_login(request)
     if login is None:
         return RedirectResponse("/login", status_code=303)
-    return _page(request, "review.html", {}, status_code=200 if login.admin else 403)
+    if not login.admin:
+        return page(request, "review.html", {}, status_code=403)
+    return page(request, "review.html", {"planning": planning.review_context(request)})
 
 
 def _secure(request: Request) -> bool:
@@ -191,7 +198,7 @@ def _logged_in(request: Request, login: auth.Login) -> RedirectResponse:
 
 def _login_page(request: Request, status_code: int = 200, **context) -> HTMLResponse:
     defaults = {"mode": auth.mode(), "configured": False, "failed": False, "error": None}
-    return _page(request, "login.html", {**defaults, **context}, status_code=status_code)
+    return page(request, "login.html", {**defaults, **context}, status_code=status_code)
 
 
 def _callback_url(request: Request) -> str:
@@ -421,3 +428,9 @@ def healthz() -> JSONResponse:
             "version": os.environ.get("APP_VERSION", "dev"),
         }
     )
+
+
+# Planning prototype; imported last because its routes use the helpers above.
+from metrics.web import planning  # noqa: E402
+
+app.include_router(planning.router)

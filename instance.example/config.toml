@@ -38,6 +38,7 @@ instructor_ranking = false
 # to the project's contexts, without the category, target group and context filters.
 # slug (optional, default: lowercase title) is the address /projekte/<slug>;
 # contexts (optional, default: [title]) are the "Kontext" values that belong to the project.
+# participant_municipalities (optional): planning asks for the participants per home municipality.
 [[projects]]
 title = "Projekt A"
 slug = "projekt-a"

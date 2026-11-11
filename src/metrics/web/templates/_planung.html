@@ -1,0 +1,16 @@
+{# Shared bits of the planning pages. #}
+{% macro badge(severity, labels) %}
+{% if severity %}<span class="flag flag-{{ severity }}" title="Hinweis: {{ labels[severity] }}">{{ labels[severity] }}</span>{% endif %}
+{% endmacro %}
+
+{% macro prototype_note(calendar_name) %}
+<p class="prototype-note"><strong>Prototyp.</strong> Alles hier landet in einer eigenen Demo-Datenbank, nicht in den Kennzahlen und nicht in Slack. Kalender: {{ calendar_name }}.</p>
+{% endmacro %}
+
+{% macro datalist(id, values) %}
+<datalist id="{{ id }}">{% for v in values %}<option value="{{ v }}">{% endfor %}</datalist>
+{% endmacro %}
+
+{% macro day(d) %}{% if d %}{{ ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][d.weekday()] }} {{ d.strftime("%d.%m.%Y") }}{% else %}–{% endif %}{% endmacro %}
+
+{% macro people_list(course, role, names) %}{% for k in course.keys(role) %}{{ names.get(k, k) }}{% if not loop.last %}, {% endif %}{% else %}–{% endfor %}{% endmacro %}

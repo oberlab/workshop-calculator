@@ -5,6 +5,7 @@
 PROPOSAL.md
 IMPLEMENTATION_PLAN.md
 TICKETS.md
+PLANUNG_PLAN.md
 
 # Claude Code
 .claude/
@@ -35,3 +36,6 @@ instance/
 
 # Database dumps written by ops/update.sh on the server
 backups/
+
+# Planning prototype database (local runs)
+planung-prototyp.sqlite

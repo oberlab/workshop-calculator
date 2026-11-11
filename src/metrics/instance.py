@@ -119,6 +119,8 @@ class Project:
     slug: str
     title: str
     contexts: tuple[str, ...]
+    # Planning: courses of this project record their participants per home municipality.
+    participant_municipalities: bool = False
 
 
 def load_projects(config: dict) -> list[Project]:
@@ -129,7 +131,7 @@ def load_projects(config: dict) -> list[Project]:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug):
             raise ValueError(f"[[projects]] {title!r}: slug must be lowercase letters, digits and dashes")
         contexts = tuple(entry.get("contexts") or [title])
-        projects.append(Project(slug, title, contexts))
+        projects.append(Project(slug, title, contexts, bool(entry.get("participant_municipalities", False))))
     if len({p.slug for p in projects}) != len(projects):
         raise ValueError("[[projects]]: every project needs its own slug")
     return projects

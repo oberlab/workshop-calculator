@@ -18,7 +18,7 @@ COPY migrations ./migrations
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-RUN useradd --system --uid 10001 app
+RUN useradd --system --uid 10001 app && mkdir /data && chown app /data
 USER app
 
 # Release tag the image was built from (ops/update.sh passes it); /healthz reports it.

@@ -6,6 +6,8 @@ from metrics import auth, oidc
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
 from metrics.instance import Instance, get_instance, load_instance
+from metrics.planning import vocabulary
+from metrics.planning.models import get_planning_sessionmaker
 
 ROOT = Path(__file__).parent.parent
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -26,16 +28,28 @@ _ENVIRONMENT = (
     "OIDC_GROUPS_CLAIM",
     "PUBLIC_URL",
     "APP_VERSION",
+    "PLANNING_DATABASE_URL",
+    "CALDAV_URL",
+    "CALDAV_USERNAME",
+    "CALDAV_PASSWORD",
 )
 
 
 # The cached functions as imported; tests may replace them on the module while they run.
-_CACHED = (get_settings, get_instance, get_sessionmaker, auth._secret, oidc.discovery)
+_CACHED = (
+    get_settings,
+    get_instance,
+    get_sessionmaker,
+    get_planning_sessionmaker,
+    auth._secret,
+    oidc.discovery,
+)
 
 
 def _clear_caches() -> None:
     for cached in _CACHED:
         cached.cache_clear()
+    vocabulary.clear_cache()
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +65,8 @@ def public_example_only(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("INSTANCE_DIR", str(EXAMPLE_INSTANCE))
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://test:test@127.0.0.1:9/none")
+    # The planning prototype gets a fresh in-memory database per test.
+    monkeypatch.setenv("PLANNING_DATABASE_URL", "sqlite://")
     _clear_caches()
     yield
     _clear_caches()

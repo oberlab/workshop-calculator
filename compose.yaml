@@ -36,14 +36,22 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # Planning prototype: its own SQLite database (never the metrics database) and calendar.
+      PLANNING_DATABASE_URL: sqlite:////data/planung-prototyp.sqlite
+      CALDAV_URL: ${CALDAV_URL:-}
+      CALDAV_USERNAME: ${CALDAV_USERNAME:-}
+      CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
     volumes:
       # Private, organisation-specific config and theme (see instance.example/).
       - ${INSTANCE_DIR:-./instance.example}:/instance:ro
       # Legacy CSV files, only needed for `metrics load-legacy`.
       - ${LEGACY_DATA_DIR:-./tests/fixtures}:/legacy:ro
+      # Planning prototype database.
+      - planning:/data
     ports:
       # Bound to localhost by default; set APP_BIND to expose it on another interface.
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
 
 volumes:
   pgdata:
+  planning:

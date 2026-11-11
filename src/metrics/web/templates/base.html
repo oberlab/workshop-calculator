@@ -40,6 +40,8 @@
       <div class="nav-group">Projekte</div>
       {% for p in projects %}{{ nav_link("/projekte/" ~ p.slug, p.title) }}{% endfor %}
       {% endif %}
+      <div class="nav-group">Planung <span class="tag">Prototyp</span></div>
+      {{ nav_link("/planung", "Kurse", exact=false) }}
       {% if login.admin %}
       <div class="nav-group">Verwaltung</div>
       {{ nav_link("/review", "Review") }}

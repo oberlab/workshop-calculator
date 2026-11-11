@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_planung.html" import badge, prototype_note, datalist, day, people_list %}
+
+{% block title %}Kurse planen{% endblock %}
+{% block heading %}Kurse planen <span class="internal">Prototyp</span>{% endblock %}
+{% block subheading %}{{ prototype_note(calendar_name) }}{% endblock %}
+
+{% block content %}
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+
+<form class="panel planning-filters" method="get" action="/planung">
+  <input type="hidden" name="stage" value="{{ stage }}">
+  <label class="filter-person">Person
+    <select name="person">
+      <option value="">Alle</option>
+      <option value="me" {% if params.person == "me" %}selected{% endif %}>Meine Kurse{% if not me %} (Login nicht verknüpft){% endif %}</option>
+      {% for p in people %}<option value="{{ p.key }}" {% if params.person == p.key %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>von <input type="date" name="from" value="{{ params.from }}"></label>
+  <label>bis <input type="date" name="to" value="{{ params.to }}"></label>
+  <label>Kontext <input name="context" list="dl-context" value="{{ params.context }}" placeholder="alle"></label>
+  <label>Ort <input name="location" list="dl-location" value="{{ params.location }}" placeholder="alle"></label>
+  <label>Kategorie <input name="category" list="dl-category" value="{{ params.category }}" placeholder="alle"></label>
+  <div class="filter-checks">
+    <label class="check"><input type="checkbox" name="flagged" value="1" {% if params.flagged %}checked{% endif %}> nur mit Hinweisen</label>
+    <label class="check"><input type="checkbox" name="unbilled" value="1" {% if params.unbilled %}checked{% endif %}> nicht abgerechnet</label>
+  </div>
+  <div class="filter-actions">
+    <button type="submit" class="button secondary">Filtern</button>
+    <a class="reset" href="/planung?stage={{ stage }}">Zurücksetzen</a>
+  </div>
+  {{ datalist("dl-context", suggest.context) }}{{ datalist("dl-location", suggest.location) }}{{ datalist("dl-category", suggest.category) }}
+</form>
+
+<div class="panel tabbed">
+  <div class="tabs planning-tabs">
+    {% for key, label in stages.items() %}
+    <a role="tab" href="/planung?stage={{ key }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}" aria-selected="{{ 'true' if key == stage else 'false' }}">
+      {{ label }} <span class="count">{{ counts[key] }}</span>{% if high[key] %} <span class="flag flag-high" title="mit hohem Hinweis">{{ high[key] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+    <a class="button new-course" href="/planung/neu">+ Neuer Kurs</a>
+  </div>
+
+  <div class="view">
+    {% if rows %}
+    <div class="table-wrap">
+    <table class="courses">
+      <thead>
+        <tr><th></th><th>Datum</th><th>Zeit</th><th>Kurs</th><th>Kontext</th><th>Ort</th><th>Klasse/Alter</th><th>Kursleitung</th><th>Unterstützung</th><th>Kalender</th><th>Abgerechnet</th></tr>
+      </thead>
+      <tbody>
+        {% for c in rows %}
+        {% set f = flags[c.id] %}
+        <tr>
+          <td>{{ badge(f[0].severity if f else None, severity_labels) }}</td>
+          <td class="nowrap">{{ day(c.date) }}{% if c.alternatives %}<div class="muted">+ {{ c.alternatives|length }} Alternative{% if c.alternatives|length > 1 %}n{% endif %}</div>{% endif %}</td>
+          <td class="nowrap">{% if c.start_time %}{{ c.start_time.strftime("%H:%M") }}–{{ c.end_time.strftime("%H:%M") if c.end_time else "?" }}{% else %}–{% endif %}</td>
+          <td><a href="/planung/{{ c.id }}">{{ c.title }}</a>{% if f %}<div class="muted flag-text">{{ f[0].text }}{% if f|length > 1 %} (+{{ f|length - 1 }}){% endif %}</div>{% endif %}</td>
+          <td>{{ c.context or "–" }}</td>
+          <td>{{ c.location or "–" }}</td>
+          <td class="nowrap">{{ c.class_age_text or "–" }}</td>
+          <td>{{ people_list(c, "lead", names) }}</td>
+          <td>{{ people_list(c, "support", names) }}</td>
+          <td class="nowrap">
+            {% if c.stage in ("geplant", "bestaetigt") %}
+              {% if c.calendar_state == "ok" %}<span class="cal cal-ok">✓ eingetragen</span>
+              {% elif c.calendar_state == "outdated" %}<span class="cal cal-warn">weicht ab</span>
+              {% elif c.calendar_state == "missing" %}<span class="cal cal-warn">fehlt</span>
+              {% else %}<span class="cal">nicht eingetragen</span>{% endif %}
+            {% else %}–{% endif %}
+          </td>
+          <td>{{ "ja" if c.billed else "nein" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">Keine Kurse in „{{ stages[stage] }}“ für diese Auswahl.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
