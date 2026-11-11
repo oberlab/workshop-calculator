@@ -59,12 +59,14 @@ BASIC = [
     "course_name",
     "note",
 ]
-DETAILS = ["category", "session_number", "participants_female", "participants_male"]
-# Every field can be filled in from the start; requirements only grow with the stage.
+DETAILS = ["category", "session_number"]
+HELD = ["participants_female", "participants_male", "municipalities", "billed"]
+# Requirements grow with the stage. Teilnehmende and Abrechnung only exist once the course
+# took place (decided 2026-11-11); everything else can be filled in from the start.
 EDITABLE = {
-    GEPLANT: set(BASIC + DETAILS) | {"alternatives", "people", "municipalities"},
-    BESTAETIGT: set(BASIC + DETAILS) | {"people", "municipalities"},
-    DURCHGEFUEHRT: set(BASIC + DETAILS) | {"people", "municipalities"},
+    GEPLANT: set(BASIC + DETAILS) | {"alternatives", "people"},
+    BESTAETIGT: set(BASIC + DETAILS) | {"people"},
+    DURCHGEFUEHRT: set(BASIC + DETAILS + HELD) | {"people"},
     ABGESCHLOSSEN: set(),
     ABGESAGT: set(),
 }
@@ -176,8 +178,8 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
             _int(_one(form, "class_level"), "Klassenstufe", errors) if kind == "klasse" else None
         )
         # Separate inputs per kind, so a hidden one never overwrites the visible one.
-        age_input = {"klasse": "class_age", "alter": "child_age"}.get(kind)
-        course.age = _int(_one(form, age_input), "Alter", errors) if age_input else None
+        # Schulklasse: Klassenstufe only (decided 2026-11-11); children outside school: average age.
+        course.age = _int(_one(form, "child_age"), "Alter", errors) if kind == "alter" else None
         course.age_band = (_one(form, "age_band") or None) if kind == "band" else None
         for name in ("context", "location", "course_name"):
             setattr(course, name, _one(form, name) or None)
@@ -185,6 +187,7 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
     if "category" in editable:
         course.category = _one(form, "category") or None
         course.session_number = _int(_one(form, "session_number"), "Terminnummer", errors)
+    if "participants_female" in editable:
         course.participants_female = _int(_one(form, "participants_female"), "TN weiblich", errors)
         course.participants_male = _int(_one(form, "participants_male"), "TN männlich", errors)
     # Dauer is always end minus start: breaks are not recorded (decided 2026-11-11).
@@ -195,7 +198,8 @@ def apply_form(course: Course, form: dict, stage: str) -> None:
         )
     else:
         course.duration_hours = None
-    course.billed = "billed" in form
+    if "billed" in editable:
+        course.billed = "billed" in form
     if "alternatives" in editable:
         dates = {
             d for v in form.get("alt_date", []) if (d := _date(clean_name(v), "Alternativdatum", errors))

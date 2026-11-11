@@ -97,8 +97,8 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
             context=fields.pop("context", contexts[next(serial) % len(contexts)]),
             location=fields.pop("location", places[0]),
             class_kind=fields.pop("class_kind", "klasse"),
-            class_level=fields.pop("class_level", grade := 3 + next(serial) % 6),
-            age=fields.pop("age", grade + 5),
+            class_level=fields.pop("class_level", 3 + next(serial) % 6),
+            age=fields.pop("age", None),
             created_by=DEMO_USER,
             **fields,
         )
@@ -216,7 +216,6 @@ def _seed(session: Session, instance: Instance, today: dt.date, link) -> None:
             location=places[3 % len(places)],
             class_kind="klasse",
             class_level=7,
-            age=12,
             category=categories[1 % len(categories)],
             session_number=1,
             participants_female=4,

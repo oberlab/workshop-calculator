@@ -50,8 +50,15 @@
         {{ field("course_name", "Kursname", course.course_name, list="dl-course") }}
       </div>
 
+      <label class="field wide">Notiz
+        <textarea name="note" rows="2" {% if "note" not in editable %}disabled{% endif %}>{{ course.note or "" }}</textarea>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>Klasse/Alter und Team</h2>
       <fieldset class="class-age" data-school-places='{{ school_places|tojson|forceescape }}' {% if "class_kind" not in editable %}disabled{% endif %}>
-        <legend class="field-label required">Klasse/Alter</legend>
+        <legend class="field-label">Klasse/Alter<span class="req" title="Pflicht ab „Bestätigt“"> *</span></legend>
         <div class="kinds">
           {% for key, label in class_kinds.items() %}
           <label class="check" data-kind-option="{{ key }}" data-at-school="{{ 1 if key in at_school else 0 }}"><input type="radio" name="class_kind" value="{{ key }}" {% if course.class_kind == key %}checked{% endif %}> {{ label }}</label>
@@ -60,7 +67,6 @@
         <p class="hint" data-school-hint hidden>Der Ort ist eine Schule: nur Schulklasse oder Lehrkräfte.</p>
         <div class="grid" data-kind="klasse">
           <label class="field">Klassenstufe <input type="number" min="1" max="13" name="class_level" value="{{ course.class_level or '' }}"></label>
-          <label class="field">Durchschnittsalter <input type="number" min="3" max="25" name="class_age" value="{{ course.age if course.class_kind == 'klasse' and course.age else '' }}"></label>
         </div>
         <div class="grid" data-kind="alter">
           <label class="field">Durchschnittsalter <input type="number" min="1" max="18" name="child_age" value="{{ course.age if course.class_kind == 'alter' and course.age else '' }}"></label>
@@ -99,10 +105,6 @@
         </div>
         <p class="hint team-hint">Wer zur selben Zeit schon eingeplant ist, wird in der Auswahl als „belegt“ markiert.</p>
       </div>
-
-      <label class="field wide">Notiz
-        <textarea name="note" rows="2" {% if "note" not in editable %}disabled{% endif %}>{{ course.note or "" }}</textarea>
-      </label>
     </section>
 
     <section class="panel">
@@ -119,8 +121,9 @@
       </div>
     </section>
 
+    {% if course.stage in ("durchgefuehrt", "abgeschlossen") %}
     <section class="panel">
-      <h2>Teilnehmende {% if course.stage in ("geplant", "bestaetigt") %}<span class="later">Pflicht für den Abschluss</span>{% endif %}</h2>
+      <h2>Teilnehmende</h2>
       <div class="grid">
         {{ field("participants_female", "TN weiblich", course.participants_female, "number", extra='min="0"') }}
         {{ field("participants_male", "TN männlich", course.participants_male, "number", extra='min="0"') }}
@@ -148,16 +151,17 @@
         {% endif %}
         {{ datalist("dl-municipality", municipality_options) }}
       </div>
-      {% elif not course.id %}
-      <p class="hint">Bei Projekten mit Herkunftsangabe (z.&nbsp;B. JugendLab) erscheint hier nach dem Speichern eine Tabelle für die Gemeinden.</p>
       {% endif %}
     </section>
+    {% endif %}
 
+    {% if course.stage == "durchgefuehrt" %}
     <section class="panel">
       <h2>Abrechnung</h2>
-      <label class="check"><input type="checkbox" name="billed" value="1" {% if course.billed %}checked{% endif %} {% if locked %}disabled{% endif %}> Abgerechnet</label>
+      <label class="check"><input type="checkbox" name="billed" value="1" {% if course.billed %}checked{% endif %}> Abgerechnet</label>
       <p class="hint">Bleibt in der Planung; wird nie in die Kennzahlen übernommen.</p>
     </section>
+    {% endif %}
 
     {% if not locked %}
     <div class="form-actions">

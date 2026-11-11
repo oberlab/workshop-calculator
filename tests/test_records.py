@@ -9,6 +9,7 @@ from metrics.ingest import records as r
         ("Kl. 3 / 8 Jahre", r.ClassAge(class_level=3, age=8)),
         ("Kl. 10 / 15 Jahre", r.ClassAge(class_level=10, age=15)),
         ("12 Jahre", r.ClassAge(age=12)),
+        ("Kl. 7", r.ClassAge(class_level=7)),
         ("19 - 24 Jahre", r.ClassAge(age_band="19 - 24 Jahre")),
         ("über 65 Jahre", r.ClassAge(age_band="über 65 Jahre")),
         ("Lehrkräfte", r.ClassAge(teachers=True)),

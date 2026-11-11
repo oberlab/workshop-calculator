@@ -97,7 +97,7 @@ def _form(**values) -> dict[str, list[str]]:
 
 BASIC = _form(
     date="2026-11-20", start_time="09:00", end_time="11:30", context="Projekt A",
-    location="Grundschule Musterstadt", class_kind="klasse", class_level="3", class_age="8", lead="kim",
+    location="Grundschule Musterstadt", class_kind="klasse", class_level="3", lead="kim",
 )  # fmt: skip
 
 
@@ -190,7 +190,7 @@ def test_final_confirmation_builds_the_session_record(instance):
     record = json.loads(final.record_json)
     assert course.stage == ABGESCHLOSSEN
     assert (final.target_group, final.participants_total) == ("Schulklasse", 22)
-    assert record["class_age_text"] == "Kl. 3 / 8 Jahre" and record["instructor"] == "kim"
+    assert record["class_age_text"] == "Kl. 3" and record["instructor"] == "kim"
     assert record["source_key"] == f"planung:{course.id}" and "billed" not in record
 
 
@@ -357,11 +357,13 @@ def test_demo_data_and_review_page(team):
         assert team.get(f"/planung/{course_id}").status_code == 200
 
 
-def test_every_field_can_be_filled_while_planned_and_dauer_follows_the_times(instance):
+def test_planned_takes_details_but_not_participants_and_dauer_follows_the_times(instance):
     course = make(1, None)
+    course.billed = True
     form = {**BASIC, **_form(participants_female="3", category="Code", duration_hours="7")}
     service.apply_form(course, form, GEPLANT)
-    assert (course.participants_female, course.category) == (3, "Code")
+    assert (course.participants_female, course.category) == (None, "Code")  # Teilnehmende: from Durchgeführt
+    assert course.billed is True  # Abrechnung is not part of the form before Durchgeführt
     assert course.duration_hours == 2.5  # from 09:00 to 11:30; a typed value is ignored
 
 

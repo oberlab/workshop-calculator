@@ -17,6 +17,7 @@ TARGET_GROUPS = [SCHOOL_CLASS, CHILDREN_OUTSIDE_SCHOOL, ADULTS, TEACHERS, UNKNOW
 ADULT_MIN_AGE = 19
 
 _CLASS_AGE = re.compile(r"^Kl\.\s*(\d+)\s*/\s*(\d+)\s*Jahre$")
+_CLASS_ONLY = re.compile(r"^Kl\.\s*(\d+)$")  # planning: class level without an age
 _AGE_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)\s*Jahre$")
 _AGE_OVER = re.compile(r"^über\s*(\d+)\s*Jahre$")
 _AGE_ONLY = re.compile(r"^(\d+)\s*Jahre$")  # average age without a class (planning: children outside school)
@@ -34,7 +35,7 @@ class ClassAge:
 def parse_class_age(text: str | None) -> ClassAge:
     """Parse the Slack 'Klassenstufe/Durchschnittsalter' value.
 
-    'Kl. 3 / 8 Jahre' -> class 3, age 8; '12 Jahre' -> age 12 (no class);
+    'Kl. 3 / 8 Jahre' -> class 3, age 8; 'Kl. 3' -> class 3; '12 Jahre' -> age 12 (no class);
     '19 - 24 Jahre' and 'über 65 Jahre' -> age band; 'Lehrkräfte' -> teachers;
     empty -> nothing; anything else -> parsed=False.
     """
@@ -43,6 +44,8 @@ def parse_class_age(text: str | None) -> ClassAge:
         return ClassAge()
     if value == TEACHERS:
         return ClassAge(teachers=True)
+    if match := _CLASS_ONLY.match(value):
+        return ClassAge(class_level=int(match[1]))
     if match := _CLASS_AGE.match(value):
         return ClassAge(class_level=int(match[1]), age=int(match[2]))
     if match := _AGE_ONLY.match(value):

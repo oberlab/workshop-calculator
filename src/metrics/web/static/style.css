@@ -426,3 +426,5 @@ details.multi[inert] summary { opacity: 0.6; cursor: default; }
 .kinds { display: flex; flex-wrap: wrap; gap: 4px 0; }
 .kinds [hidden] { display: none; }
 .field[hidden] { display: none; }
+.class-age { border: 0; padding: 0; margin: 0 0 4px; }
+.course-form .class-age .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 240px)); }

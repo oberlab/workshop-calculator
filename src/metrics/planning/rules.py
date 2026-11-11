@@ -60,8 +60,6 @@ def wants_municipalities(course: Course, instance: Instance) -> bool:
 def final_problems(course: Course, instance: Instance, vocabulary: dict[str, set[str]]) -> list[Problem]:
     """Everything that stands between a held course and its final confirmation."""
     problems = [Problem(f"Fehlt: {', '.join(m)}") for m in [missing(course, FINAL_FIELDS)] if m]
-    if course.class_kind == "klasse" and course.class_level is not None and course.age is None:
-        problems.append(Problem("Bei einer Schulklasse fehlt das Durchschnittsalter"))
     if course.class_kind == "alter" and course.age is not None and course.age >= ADULT_MIN_AGE:
         problems.append(Problem("Durchschnittsalter (Kinder) ist 19 oder mehr: Altersgruppe wählen"))
     if course.start_time and course.end_time and course.end_time <= course.start_time:

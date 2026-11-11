@@ -109,8 +109,6 @@ class Course(PlanningBase):
             return self.age_band
         if self.class_kind == "alter":
             return f"{self.age} Jahre" if self.age is not None else None
-        if self.class_kind == "klasse" and self.class_level is not None and self.age is not None:
-            return f"Kl. {self.class_level} / {self.age} Jahre"
         if self.class_kind == "klasse" and self.class_level is not None:
             return f"Kl. {self.class_level}"
         return None
