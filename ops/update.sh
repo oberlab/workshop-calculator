@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install or update the app on the server to a release tag, e.g.  ops/update.sh v1.0.0
+# A tag from another branch (a prototype) needs the branch named:
+#   ops/update.sh v0.2.0-planung.1 --from planung-prototyp
 #
-# 1. checks the tag (exists, is on main, no local changes to tracked files)
+# 1. checks the tag (exists, is on main or the named branch, no local changes to tracked files)
 # 2. dumps the database into backups/ (skipped on the first install)
 # 3. checks out the tag and builds the image workshop-calculator-app:<tag>
 # 4. records APP_VERSION=<tag> in .env and restarts the app (migrations run on start)
@@ -12,19 +14,25 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-VERSION="${1:-}"
-
 die() { echo "update: $*" >&2; exit 1; }
 
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: ops/update.sh vX.Y.Z"
+VERSION="${1:-}"
+BRANCH=main
+if [[ "${2:-}" == "--from" ]]; then
+  BRANCH="${3:-}"
+  [[ -n "$BRANCH" ]] || die "usage: ops/update.sh vX.Y.Z[-suffix] [--from BRANCH]"
+fi
+
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "usage: ops/update.sh vX.Y.Z[-suffix] [--from BRANCH]"
 [[ -f .env ]] || die ".env missing (see ops/DEPLOY.md)"
 grep -q '^COMPOSE_FILE=.*compose.server.yaml' .env || die ".env needs COMPOSE_FILE=compose.yaml:compose.server.yaml"
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "local changes to tracked files; the server must run a tag unchanged"
 
 echo "==> Fetching tags from GitHub"
-git fetch --quiet --tags origin main
+git fetch --quiet --tags origin "$BRANCH" || die "branch $BRANCH not found on GitHub"
 git rev-parse --quiet --verify "refs/tags/$VERSION" >/dev/null || die "tag $VERSION not found on GitHub"
-git merge-base --is-ancestor "$VERSION" origin/main || die "tag $VERSION is not on main"
+git merge-base --is-ancestor "$VERSION" "origin/$BRANCH" || die "tag $VERSION is not on $BRANCH"
+[[ "$BRANCH" == main ]] || echo "==> Note: $VERSION comes from branch $BRANCH, not from main"
 
 CURRENT="$(sed -n 's/^APP_VERSION=//p' .env | tail -n 1)"
 echo "==> Installed: ${CURRENT:-nothing}, installing: $VERSION"
