@@ -34,6 +34,18 @@ ops/update.sh v1.0.0
 
 The script refuses tags that are not on `main` and a checkout with local changes. It dumps the database into `backups/`, builds `workshop-calculator-app:v1.0.0`, restarts the app (database migrations run on start) and waits until `/healthz` reports the new version. `curl -s http://<APP_BIND>:8000/healthz` shows the running version at any time.
 
+## Installing a prototype from a branch
+
+A prototype that is not on `main` yet gets a tag with a suffix on its own branch, e.g. `v0.2.0-planung.1` on `planung-prototyp`. On the server, check out that tag first (so the script that knows `--from` is used), then install it:
+
+```sh
+git fetch origin planung-prototyp --tags
+git -c advice.detachedHead=false checkout v0.2.0-planung.1
+ops/update.sh v0.2.0-planung.1 --from planung-prototyp
+```
+
+Going back to a release from `main` works the same way with `ops/update.sh vX.Y.Z`. The planning prototype keeps its data in its own volume (`planning`), never in the metrics database.
+
 ## Rollback
 
 Run the script with the previous tag: `ops/update.sh v0.9.0`. Its image is still on the server, so this is quick.
