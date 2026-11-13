@@ -212,13 +212,19 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
     assert body["jobs"] == {
         "stage-moves": {"state": "overdue", "last_ok": None},
         "backup": {"state": "overdue", "last_ok": None},
+        "login-sessions": {"state": "overdue", "last_ok": None},
     }
 
     record(db, "stage-moves", now - timedelta(hours=2), True)
     record(db, "backup", now - timedelta(hours=3), True)
+    record(db, "login-sessions", now - timedelta(hours=3), True)
     body = healthz()
     assert body["status"] == "ok"
-    assert {name: job["state"] for name, job in body["jobs"].items()} == {"stage-moves": "ok", "backup": "ok"}
+    assert {name: job["state"] for name, job in body["jobs"].items()} == {
+        "stage-moves": "ok",
+        "backup": "ok",
+        "login-sessions": "ok",
+    }
 
     # The latest backup failed: failed, until a later run succeeds.
     record(db, "backup", now - timedelta(hours=1), False)

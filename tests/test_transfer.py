@@ -488,3 +488,24 @@ context = "Projekt A"
     )
     with pytest.raises(ValueError, match="context"):
         load_instance(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("2026-10-14", date(2026, 10, 14)),
+        ("2026-10-14T00:00:00", date(2026, 10, 14)),
+        ("14.10.26", date(2026, 10, 14)),
+        ("4.9.2026", date(2026, 9, 4)),
+        (" 01.12.26 ", date(2026, 12, 1)),
+    ],
+)
+def test_list_dates_in_iso_and_german_form(text, expected):
+    # The JugendLab List keeps its date as text in the "Name" column (DD.MM.YY).
+    assert transfer._parse_date(text) == expected
+
+
+@pytest.mark.parametrize("text", ["JugendLab", "31.02.26", "14.10."])
+def test_unreadable_list_dates_raise(text):
+    with pytest.raises(ValueError):
+        transfer._parse_date(text)

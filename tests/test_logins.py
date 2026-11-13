@@ -64,3 +64,12 @@ def test_sessions_on_postgresql(db):
     assert logins.lookup(token, now=T0 + dt.timedelta(minutes=7)) is None
     row = db.get(logins.LoginSession, logins._hash(token))
     assert row.ended_by == "Bea" and row.ended_at.tzinfo is not None
+
+
+def test_rows_are_deleted_30_days_after_they_expired(db):
+    old = logins.start(Login("Alex K", admin=False, subject="sub-1"), now=T0)
+    recent = logins.start(Login("Bea", admin=False, subject="sub-2"), now=T0 + dt.timedelta(days=1))
+    # T0's session expired at T0 + 12 h; 30 days later plus a minute it goes, the other stays.
+    assert logins.prune(T0 + dt.timedelta(hours=12, days=30, minutes=1)) == 1
+    assert db.get(logins.LoginSession, logins._hash(old)) is None
+    assert db.get(logins.LoginSession, logins._hash(recent)) is not None

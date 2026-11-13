@@ -14,6 +14,7 @@ so nothing unconfirmed reaches the statistics. People are matched by their Slack
 """
 
 import csv
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -227,6 +228,16 @@ def _resolve(
     return columns, origins, unmapped
 
 
+def _parse_date(text: str) -> date:
+    """A List date: ISO (date columns) or German `DD.MM.YY`/`DD.MM.YYYY` (dates kept in a text
+    column, as in the JugendLab List's "Name"). Raises ValueError on anything else."""
+    text = text.strip()
+    if match := re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})", text):
+        day, month, year = (int(g) for g in match.groups())
+        return date(year + 2000 if year < 100 else year, month, day)
+    return date.fromisoformat(text[:10])
+
+
 @dataclass
 class _Item:
     """One List item, read into the fields the transfer needs."""
@@ -260,7 +271,7 @@ def _read_item(
         instance,
         source=SOURCE_SLACK,
         source_key=f"{SOURCE_SLACK}:{item['id']}",
-        session_date=date.fromisoformat(raw_date[:10]) if raw_date else None,
+        session_date=_parse_date(raw_date) if raw_date else None,
         course_name=value("course_name"),
         duration_hours=to_decimal(value("duration_hours")),
         location=value("location"),

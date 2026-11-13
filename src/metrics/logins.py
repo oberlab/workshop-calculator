@@ -4,7 +4,8 @@ The cookie holds only a random token; the database keeps a hash of it with who l
 role at login time and the times. A session lasts at most 12 hours and ends after 2 hours without a
 request; logout and an admin's "Überall abmelden" end it at once. Every request looks the session
 up, so an ended session is refused at the next request. Ended sessions are kept with the time and
-who ended them; nothing here deletes rows.
+who ended them. The scheduler deletes a session row 30 days after it expired (`prune`, decided by
+Alex on 2026-11-13); nothing else deletes rows.
 """
 
 import datetime as dt
@@ -13,7 +14,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 
-from sqlalchemy import Boolean, DateTime, String, Text, select, update
+from sqlalchemy import Boolean, DateTime, String, Text, delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +24,7 @@ from metrics.db import Base, get_sessionmaker
 LIFETIME = dt.timedelta(hours=12)
 IDLE = dt.timedelta(hours=2)
 TOUCH = dt.timedelta(minutes=1)  # last_seen_at is written at most this often
+RETENTION = dt.timedelta(days=30)  # how long a session row is kept after it expired
 
 log = logging.getLogger(__name__)
 
@@ -148,3 +150,15 @@ def active(now: dt.datetime | None = None) -> list[Active]:
             for r in rows
             if _open(r, now)
         ]
+
+
+def prune(now: dt.datetime) -> int:
+    """Delete session rows whose lifetime ended more than RETENTION ago; returns how many.
+
+    `expires_at` is the latest moment a session can have been valid (logout, "Überall abmelden"
+    and the idle timeout only end it earlier), so every row is kept for at least 30 days after
+    its last possible use.
+    """
+    with get_sessionmaker()() as session, session.begin():
+        result = session.execute(delete(LoginSession).where(LoginSession.expires_at < now - RETENTION))
+    return result.rowcount

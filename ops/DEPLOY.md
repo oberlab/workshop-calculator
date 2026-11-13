@@ -55,10 +55,11 @@ The `scheduler` service runs from the app's image (`metrics scheduler`, code in 
 | --- | --- | --- | --- |
 | `stage-moves` | daily 00:15 | Termine in stage Bestätigt with a past date move to Durchgeführt (recorded in the Verlauf as `scheduler`); Geplant ones are not moved | no success for 26 h |
 | `backup` | daily 03:30 | `pg_dump` into `backups/nightly/`, see below | no success for 26 h |
+| `login-sessions` | daily 04:00 | deletes login session rows 30 days after they expired | no success for 26 h |
 
 A job that never ran also counts as overdue. A failed daily job is tried again an hour later. Every run is a row in `job_runs` (with the error message on failure); `/healthz` shows each job's state (`ok`, `failed`, `overdue`) and its last success, and `"status": "degraded"` (still HTTP 200) when one is not ok. Its log: `docker compose logs scheduler`. A job can be run by hand: `docker compose run --rm scheduler metrics scheduler --run backup`.
 
-**Backups.** Each night writes `metrics-daily-<date>.dump` (pg_dump custom format); the first dump of a month is also kept as `metrics-monthly-<month>.dump`. The newest 14 daily and 12 monthly dumps are kept, older ones with these exact names are deleted. This is the only automatic deletion in the application: other files in the directory (such as the `before-*.dump` files of `ops/update.sh`) are never touched, and nothing is deleted when the dump fails. The dumps sit on the same server as the database; the PBS snapshots of the VM take them off it.
+**Backups.** Each night writes `metrics-daily-<date>.dump` (pg_dump custom format); the first dump of a month is also kept as `metrics-monthly-<month>.dump`. The newest 14 daily and 12 monthly dumps are kept, older ones with these exact names are deleted. Besides the `login-sessions` job, this is the only automatic deletion in the application: other files in the directory (such as the `before-*.dump` files of `ops/update.sh`) are never touched, and nothing is deleted when the dump fails. The dumps sit on the same server as the database; the PBS snapshots of the VM take them off it (confirmed by Alex, 2026-11-13).
 
 The directory is a bind mount and the only place the scheduler writes to. Create it once, owned by the image's user (uid 10001) and readable by your group:
 

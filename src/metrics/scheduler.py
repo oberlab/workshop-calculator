@@ -32,6 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from metrics import backup as backups
+from metrics import logins
 from metrics.config import get_settings
 from metrics.db import BESTAETIGT, DURCHGEFUEHRT, Appointment, HistoryEntry, JobRun, get_sessionmaker
 
@@ -125,6 +126,11 @@ def move_past_appointments(now: datetime) -> str:
     return f"{len(appointments)} Termine moved from {BESTAETIGT} to {DURCHGEFUEHRT}"
 
 
+def prune_login_sessions(now: datetime) -> str:
+    """Login session rows are kept 30 days after they expired (Alex, 2026-11-13)."""
+    return f"{logins.prune(now)} login sessions older than 30 days deleted"
+
+
 def nightly_backup(now: datetime) -> str:
     settings = get_settings()
     day = now.astimezone(LOCAL).date()
@@ -134,6 +140,7 @@ def nightly_backup(now: datetime) -> str:
 JOBS: tuple[Job, ...] = (
     Job("stage-moves", Daily(time(0, 15)), move_past_appointments),
     Job("backup", Daily(time(3, 30)), nightly_backup),
+    Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
     # WM-110: Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 
