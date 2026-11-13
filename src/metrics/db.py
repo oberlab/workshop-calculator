@@ -6,8 +6,11 @@ Kurs = courses, Termin = appointments, Herkunft = appointment_origins, Verlauf =
 Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions.
 
 List entries (places, contexts, formats, people) carry a status: `vorgeschlagen` while a team
-member's proposal waits for an admin, `bestätigt` afterwards. Imported names become confirmed
-entries exactly as recorded; nothing is renamed or merged automatically.
+member's proposal waits for an admin, `bestätigt` afterwards. An admin may instead merge an entry
+into another one (`zusammengeführt`, `merged_into_id` names the entry that replaces it; its courses
+and Termine follow) or reject a proposal (`abgelehnt`). Both rows stay; nothing is deleted.
+Imported names become confirmed entries exactly as recorded; nothing is renamed or merged
+automatically.
 """
 
 import datetime as dt
@@ -39,10 +42,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 
 from metrics.config import get_settings
 
-# Status of a list entry.
+# Status of a list entry. Only active entries (proposed or confirmed) are offered for new choices.
 PROPOSED = "vorgeschlagen"
 CONFIRMED = "bestätigt"
-LIST_STATUSES = (PROPOSED, CONFIRMED)
+REJECTED = "abgelehnt"
+MERGED = "zusammengeführt"
+ACTIVE_STATUSES = (PROPOSED, CONFIRMED)
+LIST_STATUSES = (PROPOSED, CONFIRMED, REJECTED, MERGED)
 
 # Stage of a Termin. Abgeschlossen (finally confirmed) is what the charts count.
 GEPLANT = "Geplant"
@@ -65,6 +71,19 @@ def _status_column() -> Mapped[str]:
     return mapped_column(String(16), default=CONFIRMED, server_default=CONFIRMED)
 
 
+def _list_checks(table: str) -> tuple[CheckConstraint, CheckConstraint]:
+    """Status values of a list entry, and `merged_into_id` set exactly for a merged entry."""
+    return (
+        CheckConstraint(
+            "status IN ('vorgeschlagen', 'bestätigt', 'abgelehnt', 'zusammengeführt')",
+            name=f"ck_{table}_status",
+        ),
+        CheckConstraint(
+            "(status = 'zusammengeführt') = (merged_into_id IS NOT NULL)", name=f"ck_{table}_merged"
+        ),
+    )
+
+
 def _created_at() -> Mapped[dt.datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -83,7 +102,7 @@ class Place(Base):
     """Ort: where a course takes place. `is_school` is None for a place nobody has described yet."""
 
     __tablename__ = "places"
-    __table_args__ = (CheckConstraint("status IN ('vorgeschlagen', 'bestätigt')", name="ck_places_status"),)
+    __table_args__ = _list_checks("places")
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
@@ -94,6 +113,7 @@ class Place(Base):
     lat: Mapped[float | None] = mapped_column(Float)
     lon: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = _status_column()
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("places.id"))
     created_at: Mapped[dt.datetime] = _created_at()
 
 
@@ -105,7 +125,7 @@ class Context(Base):
     """
 
     __tablename__ = "contexts"
-    __table_args__ = (CheckConstraint("status IN ('vorgeschlagen', 'bestätigt')", name="ck_contexts_status"),)
+    __table_args__ = _list_checks("contexts")
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
@@ -115,6 +135,7 @@ class Context(Base):
     asks_municipalities: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     teacher_training: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     status: Mapped[str] = _status_column()
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("contexts.id"))
     created_at: Mapped[dt.datetime] = _created_at()
 
 
@@ -130,7 +151,7 @@ class Format(Base):
         UniqueConstraint(
             "name", "category", name="uq_formats_name_category", postgresql_nulls_not_distinct=True
         ),
-        CheckConstraint("status IN ('vorgeschlagen', 'bestätigt')", name="ck_formats_status"),
+        *_list_checks("formats"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -139,6 +160,7 @@ class Format(Base):
     duration_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     overhead_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     status: Mapped[str] = _status_column()
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("formats.id"))
     created_at: Mapped[dt.datetime] = _created_at()
 
 
@@ -146,7 +168,7 @@ class Person(Base):
     """Person: a team member, or a legacy first name without a Slack user (inactive)."""
 
     __tablename__ = "people"
-    __table_args__ = (CheckConstraint("status IN ('vorgeschlagen', 'bestätigt')", name="ck_people_status"),)
+    __table_args__ = _list_checks("people")
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text)
@@ -157,7 +179,10 @@ class Person(Base):
     image_type: Mapped[str | None] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     weekly_hours: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    # The login ("sub" of OpenID Connect) linked to this person by e-mail at its first login.
+    login_subject: Mapped[str | None] = mapped_column(Text, unique=True)
     status: Mapped[str] = _status_column()
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"))
     created_at: Mapped[dt.datetime] = _created_at()
 
     @property
