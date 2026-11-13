@@ -42,8 +42,9 @@ DEFAULT_SLACK_COLUMNS = {
 }
 
 
-# Fields a List column can be mapped to besides those above: further team members (user column).
-OPTIONAL_SLACK_FIELDS = ("support",)
+# Fields a List column can be mapped to besides those above: further team members (user column)
+# and billed (checkbox; every column with that name counts, so duplicate columns are fused).
+OPTIONAL_SLACK_FIELDS = ("support", "billed")
 
 
 def clean_name(value: str | None) -> str:

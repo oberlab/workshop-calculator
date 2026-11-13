@@ -220,7 +220,14 @@ def _resolve(
                 origins.setdefault(municipality, []).append(column)
     if missing:
         raise TransferError(f"{spec.label}: column(s) not found: {', '.join(missing)}")
+    if "billed" in columns:
+        # The Einsatztracking List has two "Abgerechnet" columns: a Termin is billed if either is
+        # ticked (Alex, 2026-11-13).
+        name = clean_name(columns["billed"]["name"])
+        same = [c["id"] for c in snapshot.schema if clean_name(c["name"]) == name]
+        columns["billed"] = {**columns["billed"], "fused": same}
     used = {c["id"] for c in columns.values()} | {c["id"] for cs in origins.values() for c in cs}
+    used |= set(columns.get("billed", {}).get("fused", []))
     ignored = {clean_name(name) for name in spec.ignored}
     unmapped = sorted(
         c["name"] for c in snapshot.schema if c["id"] not in used and clean_name(c["name"]) not in ignored
@@ -248,6 +255,7 @@ class _Item:
     team: list[str]  # Slack user IDs, the lead first
     origins: dict[str, int]
     recorded: dict[str, str | None]
+    billed: bool = False
 
 
 def _read_item(
@@ -288,6 +296,12 @@ def _read_item(
         instructor=team[0] if team else None,
     )
     counts = {m: sum(to_int(_cell_text(item, c)) or 0 for c in cs) for m, cs in origins.items()}
+    billed_ids = set(columns.get("billed", {}).get("fused", []))
+    billed = any(
+        f.get("checkbox") is True for f in item.get("fields", []) if f.get("column_id") in billed_ids
+    )
+    if billed_ids:
+        recorded["billed"] = "ja" if billed else None
     return _Item(
         item_id=item["id"],
         record=record,
@@ -295,6 +309,7 @@ def _read_item(
         team=team,
         origins={m: n for m, n in counts.items() if n},
         recorded=recorded | {f"Herkunft {m}": str(n) for m, n in counts.items() if n},
+        billed=billed,
     )
 
 
@@ -420,6 +435,7 @@ def transfer(
                 participants_female=record.participants_female,
                 participants_male=record.participants_male,
                 participants_total=record.participants_total,
+                billed=item.billed,
                 source=SOURCE_SLACK,
                 source_key=record.source_key,
                 source_data={

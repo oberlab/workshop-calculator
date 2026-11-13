@@ -47,7 +47,7 @@ def item(item_id, **cells):
     for cid, (kind, value) in cells.items():
         values = value if isinstance(value, list) else [value]
         f = {"column_id": cid, "key": cid, "value": values[0]}
-        f[kind] = value if kind == "text" else values
+        f[kind] = value if kind in ("text", "checkbox") else values  # as Slack sends them
         fields.append(f)
     return {"id": item_id, "fields": fields, "updated_timestamp": "1763000000"}
 
@@ -204,6 +204,27 @@ def test_stages_and_cutoff(db, instance, cutoff):
     text = transfer.format_report(report)
     assert "Neue Termine: 6" in text and "'Vielleicht'" in text
     assert "Spalten ohne Zuordnung" not in text  # Abgerechnet is ignored on purpose
+
+
+def test_billed_fuses_every_column_of_that_name(db, instance, cutoff):
+    # The real List has two "Abgerechnet" columns; a Termin is billed if either is ticked.
+    schema = [*MAIN_SCHEMA, column("C14", "Abgerechnet", "checkbox")]
+    configured = dataclasses.replace(
+        instance, slack_columns={**instance.slack_columns, "billed": "Abgerechnet"}
+    )
+    day = cutoff + timedelta(days=2)
+    first, second, both, none = (main_item(i, day) for i in ("R1", "R2", "R3", "R4"))
+    for it in (second, none):
+        it["fields"] = [f for f in it["fields"] if f["column_id"] != "C13"]
+    for it in (second, both):
+        it["fields"].append({"column_id": "C14", "key": "C14", "value": True, "checkbox": True})
+    snapshot = ListSnapshot(schema, [first, second, both, none])
+    report = transfer.transfer(db, {transfer.MAIN: ("F0MAIN", snapshot)}, configured, TODAY)
+    db.commit()
+    termine = slack_termine(db)
+    assert {k: t.billed for k, t in termine.items()} == {"R1": True, "R2": True, "R3": True, "R4": False}
+    assert termine["R1"].source_data["recorded"]["billed"] == "ja"
+    assert report.unmapped_columns[transfer.MAIN_LABEL] == []
 
 
 def test_stages_from_the_instance_config(db, instance, cutoff):
