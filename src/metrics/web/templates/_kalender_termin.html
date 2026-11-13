@@ -1,6 +1,7 @@
 {# The side panel of the calendar: a Termin's course in short (htmx partial, no page around it). #}
 {% import "_ui.html" as ui %}
 {% set course = t.course %}
+<div class="cal-termin">
 <div class="cal-summary">
   <h3>{{ title }}</h3>
   <p>{{ ui.stage_pill(t.stage|stage_key, t.stage) }}{% if termine > 1 and t.number %} <span class="muted small">Termin {{ t.number }} von {{ termine }}</span>{% endif %}</p>
@@ -23,3 +24,4 @@
 </section>
 {% endif %}
 <p>{{ ui.button("Kurs öffnen", href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) }}</p>
+</div>

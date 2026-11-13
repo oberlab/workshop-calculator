@@ -49,6 +49,11 @@ class Week:
     def number(self) -> int:
         return self.monday.isocalendar().week
 
+    @property
+    def weekend_free(self) -> bool:
+        """No Termin on Saturday or Sunday: the page draws those columns narrow."""
+        return not any(lane.days[5] or lane.days[6] for lane in self.lanes)
+
     def by_day(self) -> list[tuple[dt.date, list[Appointment]]]:
         """Each day's Termine once, sorted by time (the phone list)."""
         found: dict[dt.date, dict[int, Appointment]] = {d: {} for d in self.days}

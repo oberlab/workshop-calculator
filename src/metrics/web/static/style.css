@@ -932,6 +932,7 @@ table.mun input[type="number"] { width: 90px; }
 .weeks { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
 .weeks li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
 .weeks-label { font-weight: 600; font-size: 0.9rem; }
+.weeks .workload-label { min-width: 10.5rem; }
 @media (max-width: 640px) {
   .weeks li { grid-template-columns: 4rem minmax(0, 1fr); }
   .weeks-note { grid-column: 2; }
@@ -967,7 +968,9 @@ table.mun input[type="number"] { width: 90px; }
   overflow: hidden;
 }
 .cal-item:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
-.cal-grid .cal-item { white-space: nowrap; text-overflow: ellipsis; }
+.cal-grid th.is-quiet { width: 3.8rem; white-space: nowrap; }
+.cal-grid .cal-item { overflow-wrap: break-word; hyphens: auto; }
+.cal-grid .cal-time { display: block; }
 .cal-item .cal-time { font-size: 0.75rem; color: var(--text-muted); margin-right: 4px; }
 .cal-item .cal-name { font-weight: 600; }
 .cal-item.stage-geplant { border-left-color: var(--line-control); background: var(--surface-sunken); }
@@ -1001,6 +1004,7 @@ table.mun input[type="number"] { width: 90px; }
   .cal-days { display: block; }
   .cal-week + .cal-week { margin-top: 8px; }
 }
+.cal-termin { display: grid; gap: 16px; align-content: start; }
 .cal-summary h3 { margin: 0 0 6px; font-size: 1.15rem; }
 .cal-summary p { margin: 0; }
 .cal-hints { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
