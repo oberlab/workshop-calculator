@@ -213,9 +213,8 @@ def course_list(request: Request):
     with get_sessionmaker()() as session:
         me = _me(session, request)
         base = _filtered(session, params, me)
-        counted = session.execute(
-            select(Appointment.stage, func.count()).select_from(base.subquery()).group_by("stage")
-        ).all()
+        filtered = base.subquery()
+        counted = session.execute(select(filtered.c.stage, func.count()).group_by(filtered.c.stage)).all()
         counts = dict(counted)
         counts[OPEN] = sum(counts.get(s, 0) for s in workflow.OPEN_STAGES)
         stages = _stages(tab)

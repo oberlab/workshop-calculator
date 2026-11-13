@@ -48,9 +48,9 @@ def test_header_token_for_htmx(monkeypatch):
     assert response.status_code == 303
 
 
-def test_pages_set_the_token_and_every_form_carries_it(monkeypatch):
+def test_pages_set_the_token_and_every_form_carries_it(db, monkeypatch):
     client = _client(monkeypatch, auth_mode="off", csrf=False)
-    response = client.get("/review")
+    response = client.get("/planung/neu")
     token = response.cookies[security.CSRF_COOKIE]
     assert response.text.count("<form") == response.text.count(f'name="csrf_token" value="{token}"')
     assert f'"X-CSRF-Token": "{token}"' in response.text  # htmx sends it as a header
@@ -127,24 +127,24 @@ def test_password_login_is_off_unless_allowed(monkeypatch):
     assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405
 
 
-def test_ended_admin_session_is_refused_at_the_next_request(monkeypatch):
+def test_ended_admin_session_is_refused_at_the_next_request(db, monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_admin_group="admins")
     seen = _fake_provider(monkeypatch, claims_override={"sub": "sub-alex"}, groups=("/admins",))
     assert _oidc_login(client, seen).status_code == 303
-    assert client.get("/review").status_code == 200
+    assert client.get("/pruefen").status_code == 200
 
-    # A second admin ends all of Alex's sessions on the review page.
+    # A second admin ends all of Alex's sessions on the Personen page.
     other = _client(monkeypatch, login_db=False, **OIDC, oidc_admin_group="admins")
     seen = _fake_provider(monkeypatch, claims_override={"sub": "sub-bea", "name": "Bea"}, groups=("/admins",))
     _oidc_login(other, seen)
-    review = other.get("/review").text
-    assert 'value="sub-alex"' in review and "Überall abmelden" in review
-    ended = other.post("/review/abmelden", data={"subject": "sub-alex"}, follow_redirects=False)
+    people = other.get("/stammdaten/personen").text
+    assert 'value="sub-alex"' in people and "Überall abmelden" in people
+    ended = other.post("/stammdaten/personen/abmelden", data={"subject": "sub-alex"}, follow_redirects=False)
     assert ended.status_code == 303
 
-    response = client.get("/review", follow_redirects=False)
+    response = client.get("/pruefen", follow_redirects=False)
     assert (response.status_code, response.headers["location"]) == (303, "/login")
-    assert other.get("/review").status_code == 200
+    assert other.get("/pruefen").status_code == 200
 
 
 def test_access_log_without_address_or_query():

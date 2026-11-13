@@ -3,7 +3,8 @@
 `GET /pruefen` shows three sections: list entries waiting for a decision (taken on their Stammdaten
 page), proposed corrections (WM-132 adds them; until then the section is empty) and the stored
 hints with filters `stufe`, `regel`, `kontext`, `von`, `bis` and `status` (offen, akzeptiert, alle).
-`POST /pruefen/akzeptieren` accepts a warning with a reason (`termin`, `regel`, `grund`); blocking
+`POST /pruefen/akzeptieren` accepts a warning with a reason (`termin`, `regel`, `schluessel` for the
+finding, `grund`); blocking
 hints cannot be accepted. Both are admin routes in `access.py`.
 """
 
@@ -164,7 +165,12 @@ async def accept(request: Request):
             raise hints.HintError("Unbekannter Hinweis.")
         with get_sessionmaker()() as session, session.begin():
             hints.accept(
-                session, int(appointment_id), rule_id, form.get("grund") or "", current_login(request).user
+                session,
+                int(appointment_id),
+                rule_id,
+                form.get("grund") or "",
+                current_login(request).user,
+                key=form.get("schluessel") or None,
             )
     except hints.HintError as error:
         return _queue_page(request, error=str(error), status_code=422)

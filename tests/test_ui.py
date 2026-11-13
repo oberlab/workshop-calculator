@@ -26,10 +26,10 @@ def test_public_sees_only_the_overview():
 def test_team_and_admin_entries_in_their_groups():
     team = _links(nav.sidebar(TEAM, "/analyse", {}, PROJECTS))
     assert team["Kurse"][0] == nav.PLANUNG and team["Projekt A"][0] == nav.AUSWERTUNG
-    assert team["Analyse"][1].active and "Review" not in team
+    assert team["Analyse"][1].active and "Prüfen" not in team
     assert team["Übersicht"][1].note == "öffentlich"
-    admin = _links(nav.sidebar(ADMIN, "/review", {}, PROJECTS))
-    assert admin["Review"] == (nav.VERWALTUNG, admin["Review"][1]) and admin["Review"][1].active
+    admin = _links(nav.sidebar(ADMIN, "/pruefen", {}, PROJECTS))
+    assert admin["Prüfen"] == (nav.VERWALTUNG, admin["Prüfen"][1]) and admin["Prüfen"][1].active
 
 
 def test_planned_pages_stay_hidden():

@@ -93,7 +93,7 @@
           <span>{{ titles[t.id] }}</span>
           {% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}
           {{ ui.stage_pill(stage_pills[t.stage], t.stage) }}
-          <span>Termin {{ t.id }}{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span>
+          <span><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">Termin {{ t.id }}</a>{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span>
           <span>{{ rules[h.rule].title if h.rule in rules else h.rule }}</span>
         </p>
         {% if row.decision %}
@@ -104,7 +104,7 @@
         <details class="queue-accept">
           <summary>Akzeptieren</summary>
           <form method="post" action="/pruefen/akzeptieren"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="termin" value="{{ t.id }}"><input type="hidden" name="regel" value="{{ h.rule }}"><input type="hidden" name="zurueck" value="{{ filter_query }}">
+            <input type="hidden" name="termin" value="{{ t.id }}"><input type="hidden" name="regel" value="{{ h.rule }}"><input type="hidden" name="schluessel" value="{{ h.key or '' }}"><input type="hidden" name="zurueck" value="{{ filter_query }}">
             {{ ui.field("Grund", "grund", type="textarea", required=true, help="Der Hinweis zählt dann nicht mehr, bleibt aber als akzeptiert sichtbar.") }}
             <div class="row">{{ ui.button("Akzeptieren", type="submit", kind="secondary", size="sm") }}</div>
           </form>

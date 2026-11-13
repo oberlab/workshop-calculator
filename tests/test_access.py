@@ -10,6 +10,7 @@ from tests.test_web import _client
 PARAMS = {
     "{slug}": "projekt-a",
     "{course_id:int}": "1",
+    "{appointment_id:int}": "1",
     "{key}": "U1",
     "{name}": "x",
     "{kind}": "orte",
