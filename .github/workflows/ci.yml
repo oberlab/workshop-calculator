@@ -64,3 +64,21 @@ jobs:
 
       - name: Tests
         run: uv run pytest
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.28"
+
+      # The runtime dependencies exactly as locked (the image installs the same set).
+      - name: Export the locked dependencies
+        run: uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
+
+      - name: pip-audit
+        run: uvx pip-audit --disable-pip --require-hashes -r requirements.txt

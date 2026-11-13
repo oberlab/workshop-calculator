@@ -1,7 +1,19 @@
+# Hardened containers (PROPOSAL section 7): read-only root file system, no extra privileges or
+# capabilities, non-root users. compose.server.yaml builds on this file, so the server gets the same.
+x-hardened: &hardened
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
 services:
   db:
     image: postgres:17
     restart: unless-stopped
+    <<: *hardened
+    # Runs as the image's postgres user from the start, so the entrypoint needs no root rights.
+    user: postgres
+    tmpfs: [/tmp, /var/run/postgresql]
+    # No published port: only the app reaches the database, over the Compose network.
     environment:
       POSTGRES_DB: metrics
       POSTGRES_USER: metrics
@@ -17,6 +29,8 @@ services:
   app:
     build: .
     restart: unless-stopped
+    <<: *hardened
+    tmpfs: [/tmp]
     depends_on:
       db:
         condition: service_healthy
@@ -27,6 +41,7 @@ services:
       SLACK_LIST_ID: ${SLACK_LIST_ID:-}
       AUTH_MODE: ${AUTH_MODE:-password}
       TEAM_PASSWORD_HASH: ${TEAM_PASSWORD_HASH:-}
+      ALLOW_PASSWORD_LOGIN: ${ALLOW_PASSWORD_LOGIN:-false}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}

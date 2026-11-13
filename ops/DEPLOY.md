@@ -103,6 +103,8 @@ SLACK_BOT_TOKEN=<same as on the PC>
 SLACK_LIST_ID=<same as on the PC>
 
 AUTH_MODE=oidc
+# The shared team password stays off on the server.
+ALLOW_PASSWORD_LOGIN=false
 OIDC_ISSUER=<same as on the PC>
 OIDC_CLIENT_ID=<same as on the PC>
 OIDC_CLIENT_SECRET=<same as on the PC>
@@ -122,6 +124,8 @@ FORWARDED_ALLOW_IPS=<proxy IP>
 ```
 
 `chmod 600 .env`. `APP_VERSION` is added by `ops/update.sh`.
+
+The containers run hardened (`compose.yaml`): read-only root file system with `/tmp` as tmpfs, `no-new-privileges`, all capabilities dropped, non-root users (the database runs as the image's `postgres` user). The database publishes no port. The access log leaves out client addresses and query strings; Caddy keeps its own log.
 
 **Without a reverse proxy** (the app is opened directly by IP address, e.g. the server's local IP and its Tailscale IP, plain HTTP): change these lines.
 

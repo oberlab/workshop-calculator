@@ -1,0 +1,21 @@
+# Weekly update pull requests for the Python dependencies (uv.lock), the Docker base images
+# and the GitHub Actions. CI (tests and pip-audit) runs on each of them.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,6 +1,8 @@
 # Additions for the server, on top of compose.yaml. The server's .env selects both files:
 #   COMPOSE_FILE=compose.yaml:compose.server.yaml
 # ops/update.sh builds the image from a release tag; see ops/DEPLOY.md.
+# The container hardening (read-only, no-new-privileges, cap_drop, non-root, no database port)
+# comes from compose.yaml and applies here unchanged; nothing below may weaken it.
 
 services:
   app:
