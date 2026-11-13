@@ -460,7 +460,7 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
     PEOPLE: (
         Field("name", "Name", required=True),
         Field("email", "E-Mail", "email", help="Verknüpft die Anmeldung beim ersten Login"),
-        Field("slack_id", "Slack-ID"),
+        Field("slack_id", "Slack-ID", help="Mitglieds-ID aus dem Slack-Profil, z. B. U012AB3CD"),
         Field("kimai_user", "Kimai-Nutzer"),
         Field("active", "Aktiv im Team", "bool"),
         Field("weekly_hours", "Wochenstunden", "number"),
@@ -477,6 +477,7 @@ PROPOSAL_FIELDS: dict[Kind, tuple[str, ...]] = {
 
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+SLACK_ID = re.compile(r"[UW][A-Z0-9]{8,20}")
 
 
 def form_values(kind: Kind, entry) -> dict[str, str]:
@@ -565,8 +566,12 @@ def parse(
         errors["duration_hours"] = "Bitte die übliche Dauer angeben."
     if kind is PEOPLE:
         email = values.get("email")
-        if email and not _EMAIL.fullmatch(str(email)):
+        if email and (len(str(email)) > 254 or not _EMAIL.fullmatch(str(email))):
             errors["email"] = "Keine gültige E-Mail-Adresse."
+        if values.get("slack_id"):
+            values["slack_id"] = str(values["slack_id"]).upper()
+            if not SLACK_ID.fullmatch(values["slack_id"]):
+                errors["slack_id"] = "Keine gültige Slack-ID (beginnt mit U oder W, z. B. U012AB3CD)."
         if not new and values.get("weekly_hours") is not None and values["weekly_hours"] > 80:
             errors["weekly_hours"] = "Höchstens 80 Stunden."
     return values, errors
@@ -593,6 +598,24 @@ def _duplicate(session: Session, kind: Kind, values: dict, exclude_id: int | Non
     if exclude_id is not None:
         stmt = stmt.where(model.id != exclude_id)
     return session.scalars(stmt).first()
+
+
+def person_conflicts(session: Session, values: dict, exclude_id: int | None = None) -> dict[str, str]:
+    """Errors per field for an e-mail (case ignored) or Slack ID another person already has."""
+    errors = {}
+    checks = (
+        ("email", func.lower(Person.email) == str(values.get("email") or "").lower(), "E-Mail-Adresse"),
+        ("slack_id", Person.slack_id == values.get("slack_id"), "Slack-ID"),
+    )
+    for field, condition, what in checks:
+        if not values.get(field):
+            continue
+        stmt = select(Person).where(condition)
+        if exclude_id is not None:
+            stmt = stmt.where(Person.id != exclude_id)
+        if (other := session.scalars(stmt).first()) is not None:
+            errors[field] = f"Die {what} gehört schon zu „{label(other)}“."
+    return errors
 
 
 # --- Writing ---------------------------------------------------------------------------------
