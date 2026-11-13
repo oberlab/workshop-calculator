@@ -3,8 +3,10 @@ availability and what is still missing. Ported from the prototype's `service.py`
 
 The stage lives on the Termin (`Appointment.stage`). The shared fields (format, context, place,
 class/age, note) are on the course; date, times, alternatives, team, participants, Herkunft and
-`billed` on the Termin. A course has one Termin for now; series (WM-111) add more, and every
-function here takes the Termin it acts on, so they work per Termin of a series as well.
+`billed` on the Termin. Every function here takes the Termin it acts on, so they work per Termin
+of a series; adding Termine, "dieser und alle folgenden" and the bulk actions are in
+`metrics.planning.series` (WM-111). Saving, cancelling and deleting recompute the Terminnummer of
+the course (`courses.renumber`: by date, cancelled Termine have none).
 
 Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
 - Geplant enforces nothing (a day without times is fine) and allows alternative dates;
@@ -90,6 +92,7 @@ LABELS = {
     "class_age_text": "Klasse/Alter",
     "note": "Notiz",
     "target_group": "Zielgruppe",
+    "number": "Terminnummer",
     "date": "Datum",
     "start_time": "Beginn",
     "end_time": "Ende",
@@ -213,12 +216,14 @@ def appointment_snapshot(t: Appointment) -> dict[str, str]:
     }
 
 
-def _record(session: Session, table: str, row_id: int, before: dict, after: dict, by: str) -> list[str]:
+def _record(
+    session: Session, table: str, row_id: int, before: dict, after: dict, by: str, reason: str | None = None
+) -> list[str]:
     changed = []
     for name, new in after.items():
         old = before.get(name, "")
         if old != new:
-            lists._log(session, table, row_id, name, old or None, new or None, by)
+            lists._log(session, table, row_id, name, old or None, new or None, by, reason)
             changed.append(name)
     return changed
 
@@ -410,6 +415,7 @@ def save(session: Session, t: Appointment, form: Form, by: str) -> list[str]:
     _required_for_stage(t)
     changed = _record(session, "courses", course.id, before_course, course_snapshot(course), by)
     changed += _record(session, "appointments", t.id, before, appointment_snapshot(t), by)
+    courses.renumber(session, course, by)
     hints.refresh(session, [a.id for a in course.appointments])
     return changed
 
@@ -481,6 +487,8 @@ def cancel(session: Session, t: Appointment, reason: str, by: str) -> None:
     t.cancel_reason = reason
     log(session, t, "cancel_reason", None, reason, by)
     _move(session, t, ABGESAGT, by, reason)
+    if courses.renumber(session, t.course, by):
+        hints.refresh(session, [a.id for a in t.course.appointments])
 
 
 def summary(t: Appointment) -> str:
@@ -523,6 +531,8 @@ def delete(session: Session, t: Appointment, by: str, really: bool) -> int:
         lists._log(session, "courses", course.id, None, title_of_course(course), None, by, "Kurs gelöscht")
         session.delete(course)
         session.flush()
+    else:
+        courses.renumber(session, course, by)
     hints.refresh(session, [*others, *neighbours])
     return course.id
 

@@ -140,6 +140,8 @@ class Facts:
     same_day: dict[dt.date, list[Appointment]] = field(default_factory=dict)  # not Abgesagt
     confirmed_names: dict[str, set[str]] = field(default_factory=dict)  # list slug -> names
     calendar: bool = False  # a course calendar is configured (CALDAV_URL)
+    # course ID -> (Terminnummer, Termin ID, date) of its numbered Termine that are not Abgesagt
+    numbers: dict[int, list[tuple[int, int, dt.date | None]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -294,6 +296,24 @@ def no_participants(t: Appointment, facts: Facts):
 @rule("terminnummer", KRITISCH, "Terminnummer kleiner als 1", stages=ALL, blocking=True)
 def session_number(t: Appointment, facts: Facts):
     return [f"Terminnummer {t.number} ist kleiner als 1"] if t.number is not None and t.number < 1 else []
+
+
+@rule("terminnummer-doppelt", KRITISCH, "Terminnummer im Kurs doppelt", stages=ALL, blocking=True)
+def duplicate_number(t: Appointment, facts: Facts):
+    """Two Termine of a course with the same number would both count (WM-111): this happens only
+    when a Termin is dated before one that is already counted, whose number is frozen."""
+    if t.number is None or t.course is None:
+        return []
+    return [
+        Finding(
+            f"Terminnummer {t.number} hat auch der Termin am {day:%d.%m.%Y}"
+            if day
+            else f"Terminnummer {t.number} hat auch Termin {other}",
+            other,
+        )
+        for number, other, day in facts.numbers.get(t.course.id, [])
+        if number == t.number and other != t.id
+    ]
 
 
 @rule("klasse-unlesbar", KRITISCH, "Klasse/Alter nicht lesbar", stages=ALL, blocking=True)
@@ -604,7 +624,19 @@ def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -
     if dates:
         for t in _load(session, Appointment.date.in_(dates) & (Appointment.stage != ABGESAGT)):
             same_day[t.date].append(t)
-    return Facts(day, dict(same_day), _confirmed_names(session), _calendar_on())
+    numbers: dict[int, list[tuple[int, int, dt.date | None]]] = defaultdict(list)
+    course_ids = {t.course_id for t in appointments}
+    if course_ids:
+        rows = session.execute(
+            select(Appointment.course_id, Appointment.number, Appointment.id, Appointment.date).where(
+                Appointment.course_id.in_(course_ids),
+                Appointment.number.is_not(None),
+                Appointment.stage != ABGESAGT,
+            )
+        )
+        for course_id, number, appointment_id, date in rows:
+            numbers[course_id].append((number, appointment_id, date))
+    return Facts(day, dict(same_day), _confirmed_names(session), _calendar_on(), dict(numbers))
 
 
 def compute(session: Session, appointments: list[Appointment], day: dt.date | None = None) -> list[Found]:

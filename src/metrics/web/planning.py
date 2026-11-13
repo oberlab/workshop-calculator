@@ -4,11 +4,16 @@
   `person` (an ID or `ich` for the person linked to the login), `von`, `bis`, `kontext`, `ort`,
   `kategorie`, `hinweise` (`kritisch`, `wichtig`, `alle`) and `abrechnung` (`offen`, `ja`).
   A table on wide screens, cards on phones.
-- `GET /planung/neu` and `POST /planung/neu`: a new course with one Termin in Geplant.
+- `GET /planung/neu` and `POST /planung/neu`: a new course in Geplant, with one Termin or as a
+  weekly series in one step (`reihe_rhythmus`, `reihe_anzahl`; WM-111).
 - `GET /planung/{course_id}` (`?termin=` picks the Termin of a series; default the first open one):
   stage bar with the next action, the course form, the Termine, "Was fehlt noch", hints, calendar
-  and Verlauf. `POST` saves the form and then, if `dann` names one, takes the next step (confirm,
-  done, final); `POST .../aktion` the other actions (back, cancel, delete, billed, calendar).
+  and Verlauf. `POST` saves the form (`umfang=folgende`: date, times and team for the following
+  Termine too) and then, if `dann` names one, takes the next step (confirm, done, final);
+  `POST .../aktion` the other actions (back, cancel, delete, billed, calendar).
+- `POST /planung/{course_id}/termine`: "Termine hinzufügen" (weekly, every two weeks, or dates).
+- `POST /planung/{course_id}/alle`: bulk actions over the course's Termine (`action`: `confirm`,
+  `calendar`, `cancel`); the calendar gets one update per changed Termin.
 - `GET /planung/termin/{id}`: the course page of a Termin (links from hints and the calendar).
 - `GET /api/planung/belegt?date=&start=&end=&exclude=`: who is booked at that time, for the team
   pickers (`{person ID: Termin}`).
@@ -26,7 +31,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import hints, lists
+from metrics import courses, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -48,7 +53,7 @@ from metrics.db import (
     get_sessionmaker,
 )
 from metrics.instance import get_instance
-from metrics.planning import caldav, workflow
+from metrics.planning import caldav, series, workflow
 from metrics.planning.workflow import FormError
 from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 from metrics.web.lists import picker_context
@@ -273,7 +278,7 @@ def _get_course(session: Session, course_id: int) -> Course:
 
 
 def _termine(course: Course) -> list[Appointment]:
-    return sorted(course.appointments, key=lambda t: (t.number or 0, t.date or dt.date.max, t.id or 0))
+    return courses.in_order(course.appointments)
 
 
 def _selected(course: Course, wanted: int | None) -> Appointment:
@@ -352,11 +357,32 @@ def course_context(
         ]
         warnings = workflow.open_warnings(session, t)
     history = workflow.history(session, course) if not new else []
+    later = series.following(t) if t.id and t.stage in series.PLANNING else []
+    last = next((a for a in reversed(termine) if a.date), None)
     return {
         "course": course,
         "t": t,
         "new": new,
         "termine": termine,
+        "numbered": sum(1 for a in termine if a.number is not None and a.stage != ABGESAGT),
+        "later": later,
+        "series": {
+            "rhythms": [(key, text) for key, (text, _) in series.RHYTHMS.items()],
+            "max": series.MAX_TERMINE,
+            "next": (last.date + dt.timedelta(days=7)) if last else None,
+            "to_confirm": [a for a in termine if a.stage == GEPLANT],
+            "to_enter": [
+                a
+                for a in termine
+                if a.stage in caldav.IN_CALENDAR
+                and a.date
+                and a.start_time
+                and a.end_time
+                and (not a.calendar_uid or a.calendar_state == "missing")
+            ],
+            "remaining": series.remaining(course, today()) if not new else [],
+            "form": {},
+        },
         "title": workflow.title_of_course(course) if not new else "Neuer Kurs",
         "steps": STEPS,
         "next_action": NEXT_ACTION.get(t.stage),
@@ -416,7 +442,7 @@ async def create_course(request: Request):
     form = await _form(request)
     with get_sessionmaker()() as session:
         try:
-            t = workflow.create(session, form, _who(request))
+            t = series.create(session, form, _who(request))
         except FormError as error:
             session.rollback()
             course, t = _new_objects()
@@ -424,12 +450,21 @@ async def create_course(request: Request):
                 workflow._apply_course(session, course, form, [])
                 workflow._apply_appointment(session, t, form, workflow.EDITABLE[GEPLANT], [])
                 response = _course_page(
-                    request, session, course, t, new=True, errors=error.messages, status_code=400
+                    request,
+                    session,
+                    course,
+                    t,
+                    new=True,
+                    errors=error.messages,
+                    status_code=400,
+                    extra={"repeat": {k: workflow.one(form, k) for k in ("reihe_rhythmus", "reihe_anzahl")}},
                 )
             session.rollback()
             return response
         session.commit()
-        return RedirectResponse(f"/planung/{t.course_id}?hinweis={quote('Kurs angelegt.')}", status_code=303)
+        n = len(t.course.appointments)
+        done = "Kurs angelegt." if n == 1 else f"Kurs mit {n} Terminen angelegt."
+        return RedirectResponse(f"/planung/{t.course_id}?hinweis={quote(done)}", status_code=303)
 
 
 @router.get("/planung/termin/{appointment_id:int}")
@@ -485,9 +520,10 @@ async def save_course(course_id: int, request: Request):
     with get_sessionmaker()() as session:
         course = _get_course(session, course_id)
         t = _selected(course, termin_id)
+        others: list[Appointment] = []
         try:
             if t.stage not in (ABGESCHLOSSEN, ABGESAGT):
-                workflow.save(session, t, form, by)
+                others = series.save(session, t, form, by, workflow.one(form, "umfang"))
             if then == "confirm":
                 workflow.confirm(
                     session, t, workflow.parse_date(workflow.one(form, "chosen"), "Datum", []), by
@@ -502,7 +538,9 @@ async def save_course(course_id: int, request: Request):
             return _refused(request, session, course_id, termin_id, error, form)
         session.commit()
         note = _calendar_after(request, session, t, by)
-        return _back(t, " ".join(x for x in (THEN.get(then, "Gespeichert."), note) if x))
+        others_note = _calendar_many(request, session, others, by)
+        also = f"Auch {len(others)} folgende Termine geändert." if others else ""
+        return _back(t, " ".join(x for x in (THEN.get(then, "Gespeichert."), also, note, others_note) if x))
 
 
 @router.post("/planung/{course_id:int}/aktion", response_class=HTMLResponse)
@@ -571,6 +609,23 @@ def _calendar_after(request: Request, session: Session, t: Appointment, by: str)
     return note
 
 
+def _calendar_many(request: Request, session: Session, termine: list[Appointment], by: str) -> str | None:
+    """`_calendar_after` for several Termine: one update per Termin whose event changes."""
+    updated, failed = 0, []
+    for t in termine:
+        note = _calendar_after(request, session, t, by)
+        if note and note.startswith("Kalender nicht aktualisiert"):
+            failed.append(series.label(t))
+        elif note:
+            updated += 1
+    parts = []
+    if updated:
+        parts.append(f"Kalender: {updated} Einträge aktualisiert.")
+    if failed:
+        parts.append(f"Kalender nicht aktualisiert für {', '.join(failed)} (erscheint als Hinweis).")
+    return " ".join(parts) or None
+
+
 def _enter_calendar(request: Request, session: Session, t: Appointment, by: str) -> str:
     calendar = caldav.get_calendar()
     if calendar is None:
@@ -590,6 +645,121 @@ def _cancel_before_delete(request: Request, session: Session, t: Appointment, by
         return caldav.cancel_event(session, calendar, t, public_base(request), by) or ""
     except caldav.CalendarError as error:
         return f"Kalendereintrag nicht abgesagt ({error}); er erscheint unter „Prüfen“."
+
+
+@router.post("/planung/{course_id:int}/termine", response_class=HTMLResponse)
+async def add_termine(course_id: int, request: Request):
+    """ "Termine hinzufügen": weekly or every two weeks n times, or picked dates. The new Termine take
+    the times and team of the Termin open on the page (`termin`)."""
+    form = await _form(request)
+    termin_id = _int(workflow.one(form, "termin"))
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        template = _selected(course, termin_id)
+        errors: list[str] = []
+        dates = series.parse_dates(form, errors)
+        try:
+            if errors:
+                raise FormError(errors)
+            added = series.add(session, course, dates, template, _who(request))
+        except FormError as error:
+            session.rollback()
+            course = _get_course(session, course_id)
+            t = _selected(course, termin_id)
+            extra = {"add_form": {k: form.get(k, []) for k in ("rhythmus", "erster", "anzahl", "datum")}}
+            return _course_page(
+                request, session, course, t, errors=error.messages, status_code=400, extra=extra
+            )
+        session.commit()
+        first = added[0]
+        return _back(first, f"{len(added)} Termine hinzugefügt." if len(added) > 1 else "Termin hinzugefügt.")
+
+
+def _bulk_message(done: str, result: series.Bulk) -> str:
+    parts = [done] if result.done else []
+    if result.deleted:
+        parts.append(f"{len(result.deleted)} geplante Termine gelöscht.")
+    if result.skipped:
+        parts.append(
+            "Nicht geändert: " + "; ".join(f"{series.label(t)} {why}" for t, why in result.skipped) + "."
+        )
+    return " ".join(parts) or "Nichts geändert."
+
+
+@router.post("/planung/{course_id:int}/alle", response_class=HTMLResponse)
+async def bulk_action(course_id: int, request: Request):
+    """Bulk actions over the Termine of a course: `confirm` (alle bestätigen), `calendar` (alle in den
+    Kalender eintragen), `cancel` (restliche absagen, with `reason`; `delete_planned` deletes the
+    remaining Geplant ones). The calendar gets at most one write per Termin."""
+    form = await _form(request)
+    action = workflow.one(form, "action")
+    termin_id = _int(workflow.one(form, "termin"))
+    by = _who(request)
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
+        try:
+            if action == "confirm":
+                result = series.confirm_all(session, course, by)
+                message = _bulk_message(f"{len(result.done)} Termine bestätigt.", result)
+                changed = result.done
+            elif action == "calendar":
+                session.commit()
+                message = _enter_all(request, session, course, by)
+                return _back(t, message)
+            elif action == "cancel":
+                planned = [a for a in series.remaining(course, today()) if a.stage == GEPLANT]
+                delete_planned = "delete_planned" in form
+                if not workflow.one(form, "reason"):
+                    raise FormError("Bitte einen Grund für die Absage angeben.")
+                notes = (
+                    [_cancel_before_delete(request, session, a, by) for a in planned]
+                    if delete_planned
+                    else []
+                )
+                result = series.cancel_remaining(
+                    session, course, workflow.one(form, "reason"), by, today(), delete_planned
+                )
+                message = _bulk_message(f"{len(result.done)} Termine abgesagt.", result)
+                message = " ".join([message, *(n for n in notes if n)])
+                changed = result.done
+            else:
+                raise HTTPException(400, "Unbekannte Aktion")
+        except FormError as error:
+            return _refused(request, session, course_id, termin_id, error)
+        session.commit()
+        note = _calendar_many(request, session, changed, by)
+        message = " ".join(x for x in (message, note) if x)
+        if session.get(Course, course_id) is None:
+            return RedirectResponse(f"/planung?hinweis={quote(message)}", status_code=303)
+        keep = t if session.get(Appointment, t.id) is not None else None
+        if keep is None:
+            return RedirectResponse(f"/planung/{course_id}?hinweis={quote(message)}", status_code=303)
+        return _back(keep, message)
+
+
+def _enter_all(request: Request, session: Session, course: Course, by: str) -> str:
+    """ "Alle in den Kalender eintragen": one event per Termin that can have one and has none yet."""
+    calendar = caldav.get_calendar()
+    if calendar is None:
+        raise FormError("Es ist kein Kalender eingerichtet (CALDAV_URL).")
+    entered, failed = 0, []
+    for a in courses.in_order(course.appointments):
+        if a.stage not in caldav.IN_CALENDAR or not (a.date and a.start_time and a.end_time):
+            continue
+        if a.calendar_uid and a.calendar_state != "missing":
+            continue
+        try:
+            caldav.enter(session, calendar, a, public_base(request), by)
+            session.commit()  # each event that exists is linked at once
+            entered += 1
+        except caldav.CalendarError as error:
+            session.rollback()
+            failed.append(f"{series.label(a)}: {error}")
+    parts = [f"{entered} Termine in den Kalender eingetragen."] if entered else []
+    if failed:
+        parts.append("Nicht eingetragen: " + "; ".join(failed) + ".")
+    return " ".join(parts) or "Kein Termin zum Eintragen."
 
 
 def calendar_context(request: Request, t: Appointment) -> dict:

@@ -1009,3 +1009,12 @@ table.mun input[type="number"] { width: 90px; }
 .cal-summary p { margin: 0; }
 .cal-hints { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
 .cal-note { margin: 0; white-space: pre-line; }
+/* Series on the course page (WM-111) */
+.scope { border: 0; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; }
+.add-termine { margin-top: 12px; }
+.add-termine > summary { display: inline-flex; list-style: none; }
+.add-termine > summary::-webkit-details-marker { display: none; }
+.add-form { display: grid; gap: 10px; margin-top: 10px; }
+.add-form .kinds { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.bulk { margin-bottom: 6px; }
+.bulk form { margin: 0; }

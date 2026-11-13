@@ -226,6 +226,20 @@ def test_rule_terminnummer():
     assert only(found(termin(number=0)), "terminnummer").text == "Terminnummer 0 ist kleiner als 1"
 
 
+def test_rule_terminnummer_doppelt():
+    t = termin(1, number=1)
+    facts = hints.Facts(
+        TODAY, {}, {}, numbers={1: [(1, 1, TODAY), (1, 7, dt.date(2026, 11, 6)), (2, 8, None)]}
+    )
+    hit = only(hints.evaluate(t, facts), "terminnummer-doppelt")
+    assert (hit.text, hit.other_id, hit.blocking) == (
+        "Terminnummer 1 hat auch der Termin am 06.11.2026",
+        7,
+        True,
+    )
+    assert "terminnummer-doppelt" not in rules_of(found(t))
+
+
 def test_rule_klasse_unlesbar():
     t = termin(class_age_text="gemischt", class_level=None)
     assert only(found(t), "klasse-unlesbar").text == (

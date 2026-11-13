@@ -76,6 +76,9 @@ TEAM_ROUTES = {
     "GET /mein-bereich",
     "GET /kalender",
     "GET /kalender/termin/{appointment_id:int}",
+    # Series (WM-111): add Termine, bulk actions over the Termine of a course.
+    "POST /planung/{course_id:int}/termine",
+    "POST /planung/{course_id:int}/alle",
     # Stammdaten: read, propose, edit (proposed entries; confirmed ones only admins, checked in
     # `metrics.lists.update`), and the picker. `{kind}` never serves `personen` here (404): the
     # Personen page has its own admin routes above, which match first.

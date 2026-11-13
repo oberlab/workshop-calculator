@@ -13,7 +13,7 @@
   {% for s in steps %}<li class="{% if s == t.stage %}is-current{% elif loop.index0 < position %}is-done{% endif %}"{% if s == t.stage %} aria-current="step"{% endif %}>{{ s }}</li>{% endfor %}
   {% if t.stage == "Abgesagt" %}<li class="is-cancelled" aria-current="step">Abgesagt</li>{% endif %}
 </ol>
-<p class="subheading">{% if termine|length > 1 %}Termin {{ t.number }} von {{ termine|length }} · {% endif %}{{ t.date|day }}{% if t.stage == "Abgesagt" and t.cancel_reason %} · Abgesagt: {{ t.cancel_reason }}{% endif %}</p>
+<p class="subheading">{% if termine|length > 1 %}{% if t.number %}Termin {{ t.number }} von {{ numbered }}{% else %}Abgesagter Termin der Reihe{% endif %} · {% endif %}{{ t.date|day }}{% if t.stage == "Abgesagt" and t.cancel_reason %} · Abgesagt: {{ t.cancel_reason }}{% endif %}</p>
 {% else %}
 <p class="subheading">Startet in „Geplant“: nichts ist Pflicht, ein Tag ohne Uhrzeit genügt. Ab „Bestätigt“ braucht es die markierten Felder.</p>
 {% endif %}
@@ -89,6 +89,19 @@
         </div>
         <p class="help">Solange der Termin geplant ist, gehen mehrere mögliche Tage; „Bestätigen“ fragt, welcher es wird.</p>
         {% endif %}
+        {% if new %}
+        {% set repeat = repeat or {} %}
+        <div class="fields repeat">
+          <label class="field"><span>Wiederholen</span>
+            <select name="reihe_rhythmus">
+              <option value="einmal">nicht (ein Termin)</option>
+              {% for key, text in series.rhythms %}<option value="{{ key }}"{% if repeat.reihe_rhythmus == key %} selected{% endif %}>{{ text }}</option>{% endfor %}
+            </select>
+          </label>
+          {{ ui.field("Anzahl Termine", "reihe_anzahl", repeat.reihe_anzahl or none, type="number", help="mit dem ersten, z. B. 10", attrs={"min": 1, "max": series.max}) }}
+        </div>
+        <p class="help">Eine Reihe bekommt dieselbe Uhrzeit und dasselbe Team; Ferien werden nicht übersprungen. Einzelne Termine danach verschieben oder löschen.</p>
+        {% endif %}
       </section>
 
       <section class="panel">
@@ -115,10 +128,19 @@
           </div>
           <p class="help team-hint">Wer zur selben Zeit schon eingeplant ist, steht in der Auswahl als „belegt“.</p>
         </div>
+        {% if later and (times_on or team_on) %}
+        <fieldset class="scope">
+          <legend class="field-label">Änderungen an Datum, Zeit und Team gelten für</legend>
+          <label class="check"><input type="radio" name="umfang" value="dieser" checked> nur diesen Termin</label>
+          <label class="check"><input type="radio" name="umfang" value="folgende"> diesen und alle folgenden ({{ later|length }} weitere)</label>
+          <p class="help">Ein verschobenes Datum verschiebt die folgenden um gleich viele Tage. Durchgeführte und abgesagte Termine bleiben wie sie sind.</p>
+        </fieldset>
+        {% endif %}
       </section>
 
       <section class="panel">
         <h2>Teilnehmende {% if t.stage in ("Geplant", "Bestätigt") %}<span class="section-note">Pflicht für den Abschluss, auch vorab eintragbar</span>{% endif %}</h2>
+        {% if termine|length > 1 %}<p class="help">In den Kennzahlen zählen die Teilnehmenden von Termin 1{% if t.number and t.number != 1 %}; hier zählen sie nur als Einsatz{% endif %}.</p>{% endif %}
         <div class="fields">
           {% for name, label in participant_fields %}{{ ui.field(label, name, t[name], type="number", attrs={"min": 0, "disabled": none if held_on else true}) }}{% endfor %}
         </div>
@@ -179,7 +201,62 @@
       </tr>
       {% endfor %}
       {% endcall %}
-      <p class="help">Reihen mit mehreren Terminen kommen mit „Termine hinzufügen“ (WM-111).</p>
+      <p class="help">Die Nummer zählt die Termine nach Datum, abgesagte nicht mit. Teilnehmende zählen beim ersten Termin.</p>
+
+      {% set add = add_form or {} %}
+      <details class="add-termine" id="termine-hinzufuegen"{% if add %} open{% endif %}>
+        <summary class="btn btn-secondary btn-sm">+ Termine hinzufügen</summary>
+        <form method="post" action="/planung/{{ course.id }}/termine" class="add-form" data-add-termine><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="termin" value="{{ t.id }}">
+          <fieldset class="kinds">
+            <legend class="field-label">Wie</legend>
+            {% set chosen = (add.rhythmus or ["woechentlich"])[0] %}
+            {% for key, text in series.rhythms %}<label class="check"><input type="radio" name="rhythmus" value="{{ key }}"{% if chosen == key %} checked{% endif %}> {{ text }}</label>{% endfor %}
+            <label class="check"><input type="radio" name="rhythmus" value="daten"{% if chosen == "daten" %} checked{% endif %}> einzelne Daten</label>
+          </fieldset>
+          <div class="fields" data-rhythm="regular">
+            {{ ui.field("Erster neuer Termin", "erster", (add.erster or [series.next.isoformat() if series.next else ""])[0] or none, type="date") }}
+            {{ ui.field("Anzahl neuer Termine", "anzahl", (add.anzahl or [""])[0] or none, type="number", attrs={"min": 1, "max": series.max}) }}
+          </div>
+          <div class="alternatives" data-rhythm="dates">
+            <span class="field-label">Daten</span>
+            {% for d in (add.datum or [""]) %}<span class="alt-row"><input type="date" name="datum" value="{{ d }}" aria-label="Datum"> <button type="button" class="link-button" data-remove>entfernen</button></span>{% endfor %}
+            {{ ui.button("+ Datum", kind="secondary", size="sm", attrs={"data-add-date": ""}) }}
+          </div>
+          <p class="help">Die neuen Termine starten in „Geplant“ mit Uhrzeit und Team dieses Termins ({% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% else %}ohne Uhrzeit{% endif %}{% if t.lead %}, {{ t.lead.name }}{% endif %}). Ferien werden nicht übersprungen.</p>
+          {{ ui.button("Hinzufügen", type="submit") }}
+        </form>
+      </details>
+
+      {% if termine|length > 1 %}
+      <h3 class="field-label">Alle Termine</h3>
+      <div class="row bulk">
+        <form method="post" action="/planung/{{ course.id }}/alle" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="confirm"><input type="hidden" name="termin" value="{{ t.id }}">
+          {{ ui.button("Alle bestätigen (" ~ series.to_confirm|length ~ ")", type="submit", kind="secondary", size="sm", attrs={"disabled": none if series.to_confirm else true}) }}
+        </form>
+        {% if calendar.on %}
+        <form method="post" action="/planung/{{ course.id }}/alle" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="calendar"><input type="hidden" name="termin" value="{{ t.id }}">
+          {{ ui.button("Alle in den Kalender (" ~ series.to_enter|length ~ ")", type="submit", kind="secondary", size="sm", attrs={"disabled": none if series.to_enter else true}) }}
+        </form>
+        {% endif %}
+      </div>
+      {% if series.remaining %}
+      <details class="danger">
+        <summary>Restliche absagen …</summary>
+        <form method="post" action="/planung/{{ course.id }}/alle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="cancel"><input type="hidden" name="termin" value="{{ t.id }}">
+          <p class="help">Betrifft die {{ series.remaining|length }} Termine ab heute: bestätigte werden abgesagt (der Kalendereintrag wird abgesagt, nicht gelöscht).</p>
+          {{ ui.field("Grund", "reason", type="textarea", required=true, attrs={"rows": 2, "required": true}) }}
+          {% if series.remaining|selectattr("stage", "equalto", "Geplant")|list %}
+          <label class="check"><input type="checkbox" name="delete_planned" value="1"> Auch die geplanten Termine ab heute löschen (bleiben im Verlauf)</label>
+          {% endif %}
+          {{ ui.button("Restliche absagen", type="submit", kind="danger") }}
+        </form>
+      </details>
+      {% endif %}
+      {% endif %}
     </section>
     {% endif %}
   </div>

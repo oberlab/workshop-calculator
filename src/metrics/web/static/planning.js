@@ -125,3 +125,42 @@ if (form) {
   });
   checkAvailability();
 }
+
+// "Termine hinzufügen" (WM-111): show the fields of the chosen rhythm; add and remove date rows.
+const addForm = document.querySelector("[data-add-termine]");
+
+if (addForm) {
+  function updateRhythm() {
+    const rhythm = addForm.querySelector('input[name="rhythmus"]:checked')?.value;
+    const dates = rhythm === "daten";
+    for (const block of addForm.querySelectorAll("[data-rhythm]")) {
+      const on = (block.dataset.rhythm === "dates") === dates;
+      block.hidden = !on;
+      for (const input of block.querySelectorAll("input")) input.disabled = !on;
+    }
+  }
+  addForm.addEventListener("change", (event) => {
+    if (event.target.name === "rhythmus") updateRhythm();
+  });
+  addForm.addEventListener("click", (event) => {
+    if (event.target.matches("[data-remove]")) event.target.closest(".alt-row").remove();
+  });
+  const addDate = addForm.querySelector("[data-add-date]");
+  addDate?.addEventListener("click", () => {
+    const row = document.createElement("span");
+    row.className = "alt-row";
+    const input = document.createElement("input");
+    input.type = "date";
+    input.name = "datum";
+    input.setAttribute("aria-label", "Datum");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "link-button";
+    remove.dataset.remove = "";
+    remove.textContent = "entfernen";
+    row.append(input, " ", remove);
+    addDate.before(row);
+    input.focus();
+  });
+  updateRhythm();
+}
