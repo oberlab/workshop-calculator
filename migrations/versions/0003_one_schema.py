@@ -336,7 +336,14 @@ def _migrate_sessions(conn) -> None:
     )
     if not rows:
         return
-    ref = _reference(_instance_dir())
+    instance_dir = _instance_dir()
+    if not (instance_dir / "seeds" / "locations.csv").exists():
+        # Without the real instance the places would lose their addresses and school types, and
+        # sessions is dropped below; refuse rather than migrate with incomplete reference data.
+        raise RuntimeError(
+            f"{instance_dir} has no seeds/locations.csv: set INSTANCE_DIR to the instance before migrating"
+        )
+    ref = _reference(instance_dir)
 
     # Reference data from the instance, then every recorded name not in it, exactly as recorded.
     conn.execute(
