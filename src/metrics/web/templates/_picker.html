@@ -1,0 +1,3 @@
+{# The picker on its own, as htmx swaps it in (GET and POST /stammdaten/<liste>/auswahl). #}
+{% import "_lists.html" as lists %}
+{{ lists.picker(p, open_new=open_new, new_values=new_values, new_errors=new_errors, message=message, categories=categories, focus=not open_new) }}

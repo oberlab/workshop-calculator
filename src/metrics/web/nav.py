@@ -40,6 +40,11 @@ class Entry:
 
 PROJECTS = "projects"
 
+
+def _proposed(slug: str, label: str) -> Count:
+    return Count(f"list_{slug}", "warning", f"{label} warten auf Bestätigung")
+
+
 ENTRIES: list[Entry | str] = [
     Entry("Übersicht", "/", role=PUBLIC, note="öffentlich"),
     Entry("Mein Bereich", "/mein-bereich", planned="WM-112"),
@@ -58,9 +63,10 @@ ENTRIES: list[Entry | str] = [
     Entry("Analyse", "/analyse", AUSWERTUNG),
     PROJECTS,
     Entry("Tabelle", "/tabelle", AUSWERTUNG, planned="WM-152"),
-    Entry("Orte", "/planung/orte", STAMMDATEN, counts=(Count("places", "warning", "Orte ohne Adresse"),)),
-    Entry("Formate & Material", "/formate", STAMMDATEN, planned="WM-101"),
-    Entry("Personen", "/personen", STAMMDATEN, planned="WM-101"),
+    Entry("Orte", "/stammdaten/orte", STAMMDATEN, counts=(_proposed("orte", "Orte"),)),
+    Entry("Kontexte", "/stammdaten/kontexte", STAMMDATEN, counts=(_proposed("kontexte", "Kontexte"),)),
+    Entry("Formate", "/stammdaten/formate", STAMMDATEN, counts=(_proposed("formate", "Formate"),)),
+    Entry("Personen", "/stammdaten/personen", STAMMDATEN, counts=(_proposed("personen", "Personen"),)),
     Entry("Prüfen", "/pruefen", VERWALTUNG, role=ADMIN, planned="WM-113"),
     Entry("Review", "/review", VERWALTUNG, role=ADMIN, counts=(Count("review", "neutral", "offene Punkte"),)),
     Entry("Betrieb", "/betrieb", VERWALTUNG, role=ADMIN, planned="WM-103"),

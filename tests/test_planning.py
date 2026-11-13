@@ -424,8 +424,7 @@ def test_orte_page_and_sidebar_counters(team):
     )
     page = team.get("/planung/orte").text
     assert "Jugendzentrum Neustadt" in page and "Adresse fehlt" in page
-    sidebar = team.get("/").text
-    assert "count count-warning" in sidebar and 'title="1 Orte ohne Adresse"' in sidebar
+    # The sidebar's "Orte" is the Stammdaten page since WM-101; the prototype keeps its own page.
     saved = team.post(
         "/planung/orte",
         data={
@@ -438,7 +437,7 @@ def test_orte_page_and_sidebar_counters(team):
         follow_redirects=False,
     )
     assert saved.status_code == 303
-    assert 'title="1 Orte ohne Adresse"' not in team.get("/").text
+    assert 'Adresse fehlt <span class="count">0</span>' in team.get("/planung/orte").text
     assert (
         team.post("/planung/orte", data={"name": "Grundschule Musterstadt"}).status_code == 400
     )  # already listed

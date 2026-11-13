@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select
 
-from metrics import analytics, charts
+from metrics import analytics, charts, lists
 from metrics.db import Person, get_sessionmaker
 from metrics.ingest.records import TARGET_GROUPS
 from metrics.instance import Project, get_instance
@@ -57,7 +57,8 @@ def analysis(request: Request):
 
 @router.get("/projekte/{slug}", response_class=HTMLResponse)
 def project_page(slug: str, request: Request):
-    project = get_instance().project(slug)
+    with get_sessionmaker()() as session:
+        project = lists.project(session, slug)
     if project is None:
         raise HTTPException(404, "Unbekanntes Projekt")
     return _analysis_page(request, project)

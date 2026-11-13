@@ -7,7 +7,14 @@ from metrics.web.app import app
 from tests.test_web import _client
 
 # Values for the path parameters, so every route can be requested.
-PARAMS = {"{slug}": "projekt-a", "{course_id:int}": "1", "{key}": "U1", "{name}": "x"}
+PARAMS = {
+    "{slug}": "projekt-a",
+    "{course_id:int}": "1",
+    "{key}": "U1",
+    "{name}": "x",
+    "{kind}": "orte",
+    "{entry_id:int}": "1",
+}
 
 
 def _keys() -> list[str]:

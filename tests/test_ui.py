@@ -44,17 +44,19 @@ def test_longest_matching_address_is_active():
         return [link.label for _, links in nav.sidebar(TEAM, path, {}, []) for link in links if link.active]
 
     assert active("/planung/12") == ["Kurse"]
-    assert active("/planung/orte") == ["Orte"]
+    assert active("/stammdaten/orte") == ["Orte"]
+    assert active("/stammdaten/orte/5") == ["Orte"]
     assert active("/planung/neu") == ["+ Neuer Kurs"]
     assert active("/") == ["Übersicht"]
     assert active("/planungx") == []
 
 
 def test_counts_only_above_zero():
-    counts = {"courses_high": 2, "courses_medium": 0, "places": 1}
+    counts = {"courses_high": 2, "courses_medium": 0, "list_orte": 1, "list_formate": 0}
     links = _links(nav.sidebar(TEAM, "/", counts, []))
     assert links["Kurse"][1].counts == [(2, "critical", "Kurse mit kritischem Hinweis")]
-    assert links["Orte"][1].counts == [(1, "warning", "Orte ohne Adresse")]
+    assert links["Orte"][1].counts == [(1, "warning", "Orte warten auf Bestätigung")]
+    assert links["Formate"][1].counts == []
 
 
 def _render(source: str, **context) -> str:

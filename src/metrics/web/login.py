@@ -5,24 +5,40 @@ every login. Both login steps are rate-limited per client address.
 """
 
 import asyncio
+import logging
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.exc import SQLAlchemyError
 
-from metrics import auth, logins, oidc
+from metrics import auth, lists, logins, oidc
+from metrics.db import get_sessionmaker
 from metrics.web import security
 from metrics.web.common import current_login, page
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # Generous for people, slow for guessing: Keycloak has its own brute-force protection on top.
 LOGIN_LIMIT = security.RateLimit(limit=10, window=300)
 
 
+def _link_person(login: auth.Login) -> None:
+    """Link the login to its Person by e-mail at the first login; a failure never stops a login."""
+    if not login.email:
+        return
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            lists.link_login(session, login.subject, login.email)
+    except SQLAlchemyError:
+        log.warning("Could not link the login to a person")
+
+
 def _logged_in(request: Request, login: auth.Login) -> RedirectResponse:
     response = RedirectResponse("/analyse", status_code=303)
     token = logins.start(login)
+    _link_person(login)
     security.set_cookie(request, response, auth.COOKIE_NAME, token, int(logins.LIFETIME.total_seconds()))
     return response
 

@@ -42,6 +42,10 @@ ADMIN_ROUTES = {
     "POST /review/demo/zuruecksetzen",
     "POST /review/personen",
     "POST /review/abmelden",
+    # Stammdaten: the admin decisions on list entries (WM-101).
+    "POST /stammdaten/{kind}/{entry_id:int}/bestaetigen",
+    "POST /stammdaten/{kind}/{entry_id:int}/zusammenfuehren",
+    "POST /stammdaten/{kind}/{entry_id:int}/ablehnen",
 }
 
 TEAM_ROUTES = {
@@ -61,6 +65,13 @@ TEAM_ROUTES = {
     "GET /api/planung/belegt",
     "GET /planung/orte",
     "POST /planung/orte",
+    # Stammdaten: read, propose, edit (proposed entries; confirmed ones only admins, checked in
+    # `metrics.lists.update`), and the picker.
+    "GET /stammdaten/{kind}",
+    "POST /stammdaten/{kind}",
+    "POST /stammdaten/{kind}/{entry_id:int}",
+    "GET /stammdaten/{kind}/auswahl",
+    "POST /stammdaten/{kind}/auswahl",
 }
 
 

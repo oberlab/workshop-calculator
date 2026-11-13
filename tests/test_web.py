@@ -214,7 +214,11 @@ def test_sidebar_without_login(client):
     assert 'href="/analyse"' not in html and 'href="/projekte/' not in html and 'href="/review"' not in html
 
 
-def test_team_sidebar_and_project_page(client, monkeypatch):
+def test_team_sidebar_and_project_page(db, instance, client, monkeypatch):
+    from metrics.ingest import store
+
+    store.seed_reference(db, instance)  # the project pages come from the contexts (WM-101)
+    db.commit()
     monkeypatch.setattr(login.asyncio, "sleep", lambda _: _noop())
     client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
     html = client.get("/").text

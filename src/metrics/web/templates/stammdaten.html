@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "_lists.html" as lists %}
+
+{% block title %}{{ kind.label }}{% endblock %}
+{% block heading %}{{ kind.label }}{% endblock %}
+{% block actions %}{{ ui.button("Neu vorschlagen", href="/stammdaten/" ~ kind.slug ~ "?neu=1#eintrag") }}{% endblock %}
+{% block subheading %}<p class="subheading">{{ kind.intro }}</p>{% endblock %}
+
+{% macro readable(f, value) -%}
+{% if f.type == "bool" %}{{ "ja" if value else "nein" }}
+{%- elif f.type == "school_type" %}{{ school_types.get(value, value) if value else "–" }}
+{%- else %}{{ value or "–" }}{% endif %}
+{%- endmacro %}
+
+{% block content %}
+{{ ui.tabs(tabs, kind.slug, "Listen") }}
+
+<form class="filter-row list-filters" method="get" action="/stammdaten/{{ kind.slug }}" role="search" aria-label="{{ kind.label }} filtern">
+  <label>Suche <input type="search" name="q" value="{{ query }}" autocomplete="off"></label>
+  <label>Status
+    <select name="status">
+      {% for key, text in status_filters.items() %}<option value="{{ key }}"{% if key == status %} selected{% endif %}>{{ text }} ({{ filter_counts[key] }})</option>{% endfor %}
+    </select>
+  </label>
+  {% if kind.slug == "orte" %}<label class="check"><input type="checkbox" name="luecken" value="1"{% if gaps %} checked{% endif %}> nur Orte mit Lücken</label>{% endif %}
+  <button class="btn btn-secondary btn-sm" type="submit">Anzeigen</button>
+</form>
+
+<div class="list-detail{{ ' has-detail' if detail or new }}">
+  <section class="panel list-pane" aria-labelledby="liste-titel">
+    <h2 id="liste-titel">{{ entries|length }} {{ "Eintrag" if entries|length == 1 else "Einträge" }}</h2>
+    {% if entries %}
+    {% call ui.table(["Name", "Status", "Angaben", "Termine" if kind.slug == "personen" else "Kurse"], caption=kind.label) %}
+      {% for e in entries %}
+      {% set u = usage.get(e.id) %}
+      <tr>
+        <td><a href="/stammdaten/{{ kind.slug }}?id={{ e.id }}{{ filter_query }}#eintrag"{% if detail and detail.entry.id == e.id %} aria-current="true"{% endif %}>{{ labels[e.id] }}</a></td>
+        <td>{{ lists.status_tag(e.status) }}</td>
+        <td>
+          {% if describe[e.id] %}<span class="muted">{{ describe[e.id] }}</span>{% endif %}
+          {% for problem in problems.get(e.id, []) %} {{ ui.hint_badge("medium", problem) }}{% endfor %}
+        </td>
+        <td class="mono">{{ (u.appointments if kind.slug == "personen" else u.courses) if u else 0 }}</td>
+      </tr>
+      {% endfor %}
+    {% endcall %}
+    {% else %}
+    {% call ui.empty_state("Keine Einträge.", "Andere Suche oder anderen Status wählen.") %}{% endcall %}
+    {% endif %}
+  </section>
+
+  {% if new %}
+  <section class="panel detail-pane" id="eintrag" aria-labelledby="eintrag-titel">
+    <h2 id="eintrag-titel">Neu vorschlagen: {{ kind.singular }}</h2>
+    <p class="help">Sofort nutzbar. Ein Admin bestätigt den Eintrag, führt ihn mit einem vorhandenen zusammen oder lehnt ihn ab; bis dahin kann kein Termin damit abgeschlossen werden.</p>
+    <form method="post" action="/stammdaten/{{ kind.slug }}" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {{ lists.entry_fields(fields_new, new_values, new_errors, school_types, categories, new=true, autofocus=true) }}
+      {{ ui.field("Anmerkung für den Admin", "reason", new_values.get("reason"), type="textarea") }}
+      <div class="row">{{ ui.button("Vorschlagen", type="submit") }}{{ ui.button("Abbrechen", href="/stammdaten/" ~ kind.slug, kind="quiet") }}</div>
+    </form>
+  </section>
+  {% elif detail %}
+  {% set e = detail.entry %}
+  <section class="panel detail-pane" id="eintrag" aria-labelledby="eintrag-titel">
+    <div class="detail-head"><h2 id="eintrag-titel">{{ detail_label }}</h2>{{ lists.status_tag(e.status) }}</div>
+    {% if error %}{{ ui.alert(error, "error") }}{% endif %}
+    <p class="help">
+      {% if kind.slug == "personen" %}In {{ detail.usage.appointments }} Terminen eingetragen{% else %}Verwendet in {{ detail.usage.courses }} Kursen mit {{ detail.usage.appointments }} Terminen{% endif %}, davon {{ detail.usage.final }} abgeschlossen.
+    </p>
+    {% if detail.merged_into %}
+    {{ ui.alert("Zusammengeführt in „" ~ merged_label ~ "“: alle Kurse und Termine stehen jetzt dort.", "info") }}
+    <p><a href="/stammdaten/{{ kind.slug }}?id={{ detail.merged_into.id }}#eintrag">Zu „{{ merged_label }}“</a></p>
+    {% elif e.status == "abgelehnt" %}
+    {% set why = detail.proposal.decision_reason if detail.proposal and detail.proposal.decision_reason else none %}
+    {{ ui.alert(["Abgelehnt" ~ (": " ~ why if why else "."), "Wird nicht mehr angeboten. Kurse, die den Eintrag noch nutzen, brauchen einen anderen, bevor ihre Termine abgeschlossen werden können."], "warning") }}
+    {% endif %}
+    {% if detail.proposal %}
+    {% set pr = detail.proposal %}
+    <p class="help">Vorgeschlagen von {{ pr.proposed_by }} am {{ pr.proposed_at.astimezone(timezone).strftime("%d.%m.%Y") }}{% if pr.reason %} ({{ pr.reason }}){% endif %}.{% if pr.decision %} {{ pr.decision|capitalize }} von {{ pr.decided_by }} am {{ pr.decided_at.astimezone(timezone).strftime("%d.%m.%Y") }}.{% endif %}</p>
+    {% endif %}
+    {% if detail.problems %}<p class="row">{% for problem in detail.problems %}{{ ui.hint_badge("medium", problem) }}{% endfor %}</p>{% endif %}
+
+    {% if detail.editable %}
+    <form method="post" action="/stammdaten/{{ kind.slug }}/{{ e.id }}" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {{ lists.entry_fields(fields_edit, detail.values, detail.errors, school_types, categories) }}
+      <div class="row">{{ ui.button("Speichern", type="submit") }}</div>
+    </form>
+    {% else %}
+    <dl class="entry-values">
+      {% for f in fields_edit %}<dt>{{ f.label }}</dt><dd>{{ readable(f, detail.values.get(f.name)) }}</dd>{% endfor %}
+    </dl>
+    {% if e.status != MERGED %}<p class="help">Bestätigte Einträge ändert ein Admin.</p>{% endif %}
+    {% endif %}
+    {% if kind.slug == "personen" %}<p class="help">Anmeldung: {{ "verknüpft" if e.login_subject else "noch nicht verknüpft (beim ersten Login über die E-Mail-Adresse)" }}.</p>{% endif %}
+
+    {% if admin and e.status != MERGED %}
+    <section class="decisions" aria-labelledby="entscheiden-titel">
+      <h3 id="entscheiden-titel">Entscheiden <span class="tag">Admin</span></h3>
+      {% if e.status in (PROPOSED, "abgelehnt") %}
+      <form method="post" action="/stammdaten/{{ kind.slug }}/{{ e.id }}/bestaetigen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if detail.missing %}<p class="help">Vor dem Bestätigen ergänzen: {{ detail.missing|join(", ") }}.</p>{% endif %}
+        <div class="row">{{ ui.button("Bestätigen", type="submit") }}</div>
+      </form>
+      {% endif %}
+      {% if merge_picker.options %}
+      <form method="post" action="/stammdaten/{{ kind.slug }}/{{ e.id }}/zusammenfuehren"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p class="help">Ist derselbe Eintrag wie ein anderer: alle Kurse und Termine wechseln dorthin, dieser Eintrag bleibt als „zusammengeführt“ erhalten.</p>
+        {{ lists.picker(merge_picker) }}
+        {{ ui.field("Grund (optional)", "reason", type="textarea") }}
+        <div class="row">{{ ui.button("Zusammenführen", type="submit", kind="secondary") }}</div>
+      </form>
+      {% endif %}
+      {% if e.status == PROPOSED %}
+      <form method="post" action="/stammdaten/{{ kind.slug }}/{{ e.id }}/ablehnen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {{ ui.field("Grund der Ablehnung", "reason", type="textarea", required=true, help="Die vorschlagende Person sieht ihn.") }}
+        <div class="row">{{ ui.button("Ablehnen", type="submit", kind="danger") }}</div>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="verlauf-titel">
+      <h3 id="verlauf-titel">Verlauf</h3>
+      {% if detail.history %}
+      <ul class="verlauf">
+        {% for h in detail.history %}
+        <li><span class="muted mono">{{ h.changed_at.astimezone(timezone).strftime("%d.%m.%Y %H:%M") }}</span> <b>{{ h.changed_by }}</b>: {{ field_labels.get(h.field, h.field or "Eintrag") }}{% if h.old_value is not none or h.new_value is not none %} {{ h.old_value if h.old_value is not none else "–" }} → {{ h.new_value if h.new_value is not none else "–" }}{% endif %}{% if h.reason %} <span class="muted">({{ h.reason }})</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="help">Keine Änderungen seit der Übernahme.</p>{% endif %}
+    </section>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

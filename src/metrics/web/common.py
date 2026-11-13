@@ -1,6 +1,7 @@
 """Helpers shared by the routers: filters from the query string, login state, pages with the sidebar."""
 
 import zlib
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9,9 +10,10 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import QueryParams
 
-from metrics import analytics, auth, charts, logins
+from metrics import analytics, auth, charts, lists, logins
 from metrics.db import ImportRun, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import overview
@@ -88,7 +90,11 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
     """A page with the sidebar: login state and the links this person may open."""
     login = current_login(request)
     counts = overview.sidebar_counts(login, today()) if login else {}
-    projects = get_instance().projects if login else []
+    projects: list = []
+    if login:
+        reference = list_state()
+        counts |= reference.counts
+        projects = reference.projects
     sidebar = {
         "login": login,
         "nav": nav.sidebar(login, request.url.path, counts, projects),
@@ -99,6 +105,21 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
     response = templates.TemplateResponse(request, template, {**sidebar, **context}, status_code=status_code)
     security.remember_csrf_token(request, response)
     return response
+
+
+@dataclass(frozen=True)
+class ListState:
+    projects: list  # project pages, from the contexts (WM-101)
+    counts: dict[str, int]  # proposed entries per list
+
+
+def list_state() -> ListState:
+    """Project pages and proposal counters for the sidebar; empty if the database is unreachable."""
+    try:
+        with get_sessionmaker()() as session:
+            return ListState(lists.projects(session), lists.proposed_counts(session))
+    except SQLAlchemyError:
+        return ListState([], {})
 
 
 def public_base(request: Request) -> str:

@@ -1,0 +1,88 @@
+{# Stammdaten components (WM-101): the fields of a list entry, its status tag and the picker.
+   Import with {% import "_lists.html" as lists %}. #}
+{% import "_ui.html" as ui %}
+
+{# Status of a list entry, as text with a tinted background (never colour alone). #}
+{% macro status_tag(status) -%}
+{% set names = {"vorgeschlagen": "Vorgeschlagen", "bestätigt": "Bestätigt", "abgelehnt": "Abgelehnt", "zusammengeführt": "Zusammengeführt"} %}
+{% set classes = {"vorgeschlagen": "proposed", "bestätigt": "confirmed", "abgelehnt": "rejected", "zusammengeführt": "merged"} %}
+<span class="status-tag status-{{ classes.get(status, 'merged') }}">{{ names.get(status, status) }}</span>
+{%- endmacro %}
+
+{# The input fields of a list entry. fields: lists.Field items; values and errors by field name;
+   prefix: put before every input name (the picker uses "neu-<feld>-" so its fields never mix with
+   the surrounding form); new: a proposal, which marks the required fields. #}
+{% macro entry_fields(fields, values, errors, school_types, categories=[], prefix="", new=false, autofocus=false) -%}
+<div class="fields">
+{% for f in fields %}
+  {% set name = prefix ~ f.name %}
+  {% set required = f.required and new %}
+  {% set first = {"autofocus": "autofocus"} if autofocus and loop.first else {} %}
+  {% if f.type == "yesno" %}
+  <fieldset class="field yesno{{ ' is-missing' if errors.get(f.name) }}">
+    <legend class="field-label">{{ f.label }}{% if required %}<span class="req" aria-hidden="true"> *</span>{% endif %}</legend>
+    <div class="row">
+      <label class="check"><input type="radio" name="{{ name }}" value="ja"{% if values.get(f.name) == "ja" %} checked{% endif %}> ja</label>
+      <label class="check"><input type="radio" name="{{ name }}" value="nein"{% if values.get(f.name) == "nein" %} checked{% endif %}> nein</label>
+    </div>
+    {% if errors.get(f.name) %}<span class="field-error">{{ errors[f.name] }}</span>{% endif %}
+  </fieldset>
+  {% elif f.type == "bool" %}
+  <label class="check field-check"><input type="checkbox" name="{{ name }}" value="1"{% if values.get(f.name) %} checked{% endif %}> {{ f.label }}</label>
+  {% elif f.type == "school_type" %}
+  <label class="field{{ ' is-missing' if errors.get(f.name) }}">
+    <span>{{ f.label }}</span>
+    <select name="{{ name }}"{% if errors.get(f.name) %} aria-invalid="true"{% endif %}>
+      <option value="">–</option>
+      {% for code, text in school_types.items() %}<option value="{{ code }}"{% if values.get(f.name) == code %} selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+    {% if f.help %}<span class="field-help">{{ f.help }}</span>{% endif %}
+    {% if errors.get(f.name) %}<span class="field-error">{{ errors[f.name] }}</span>{% endif %}
+  </label>
+  {% elif f.type == "category" %}
+  {{ ui.field(f.label, name, values.get(f.name), required=required, help=f.help, error=errors.get(f.name), attrs={"list": prefix ~ "kategorien", "autocomplete": "off"}) }}
+  <datalist id="{{ prefix }}kategorien">{% for c in categories %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+  {% else %}
+  {% set attrs = {"inputmode": "decimal"} if f.type == "number" else ({"autocomplete": "off"} if f.type == "text" else {}) %}
+  {{ ui.field(f.label, name, values.get(f.name), type="email" if f.type == "email" else "text", required=required or (f.name == "name" and not new), help=f.help, error=errors.get(f.name), attrs=dict(attrs, **first)) }}
+  {% endif %}
+{% endfor %}
+</div>
+{%- endmacro %}
+
+{# Picker: choose an entry of a list in a form, or propose a new one ("Neu vorschlagen").
+   Render it with the context of `metrics.web.lists.picker_context` (kind, field, label, options,
+   selected_id, selected_note, allow_new, without, fields_new, school_types). The select's name is
+   `field`, its value the entry ID. htmx swaps the whole picker (id "picker-<field>"): after a change,
+   to show the chosen entry's details, and for a proposal. The proposal fields are named
+   "neu-<field>-<name>", carry no `required` and are sent only with the "Vorschlagen" button, so the
+   surrounding form ignores them. #}
+{% macro picker(p, open_new=false, new_values={}, new_errors={}, message=none, categories=[], focus=false) -%}
+{% set base = "/stammdaten/" ~ p.kind.slug ~ "/auswahl?feld=" ~ p.field ~ "&label=" ~ (p.label|urlencode) ~ ("&ohne=" ~ p.without if p.without else "") ~ ("" if p.allow_new else "&neu_erlaubt=0") %}
+<div class="picker" id="picker-{{ p.field }}">
+  <label class="field">
+    <span>{{ p.label }}</span>
+    <select name="{{ p.field }}" id="{{ p.field }}-auswahl" hx-get="{{ base }}" hx-trigger="change" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML"{% if focus %} autofocus{% endif %}>
+      <option value="">– bitte wählen –</option>
+      {% for id, text, status in p.options %}<option value="{{ id }}"{% if id == p.selected_id %} selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+    {% if p.selected_note %}<span class="field-help">{{ p.selected_note }}</span>{% endif %}
+  </label>
+  {% if message %}<p class="picker-message" role="status">{{ message }}</p>{% endif %}
+  {% if p.allow_new %}
+  {% if open_new %}
+  <fieldset class="picker-new" id="picker-{{ p.field }}-neu">
+    <legend>Neu vorschlagen: {{ p.kind.singular }}</legend>
+    <p class="help">Sofort nutzbar; ein Admin bestätigt den Eintrag, bevor ein Termin abgeschlossen werden kann.</p>
+    {{ entry_fields(p.fields_new, new_values, new_errors, p.school_types, categories, prefix="neu-" ~ p.field ~ "-", new=true, autofocus=true) }}
+    <div class="row">
+      <button type="button" class="btn btn-sm" hx-post="{{ base }}" hx-include="#picker-{{ p.field }}" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML">Vorschlagen</button>
+      <button type="button" class="btn btn-quiet btn-sm" hx-get="{{ base }}" hx-include="#{{ p.field }}-auswahl" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML">Abbrechen</button>
+    </div>
+  </fieldset>
+  {% else %}
+  <button type="button" class="btn btn-secondary btn-sm" hx-get="{{ base }}&neu=1" hx-include="#{{ p.field }}-auswahl" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML">Neu vorschlagen</button>
+  {% endif %}
+  {% endif %}
+</div>
+{%- endmacro %}

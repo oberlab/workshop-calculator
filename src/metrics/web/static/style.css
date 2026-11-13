@@ -818,3 +818,34 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .link-list a { font-weight: 600; }
 .panel details > summary { cursor: pointer; }
 .panel details > summary h2 { display: inline; }
+
+/* ---- Stammdaten (WM-101): list and detail, status of an entry, picker -------------------------- */
+
+.list-filters { margin: 16px 0; }
+.list-filters > label.check { flex-direction: row; align-items: center; min-height: 40px; }
+.list-detail { display: grid; gap: 20px; align-items: start; }
+.list-detail.has-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); }
+.list-pane .table a[aria-current="true"] { font-weight: 700; }
+.detail-pane { display: grid; gap: 14px; overflow-wrap: anywhere; }
+.detail-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.entry-form { display: grid; gap: 12px; }
+.field-check { align-self: end; }
+.entry-values { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 0.9rem; }
+.entry-values dt { color: var(--text-muted); }
+.entry-values dd { margin: 0; }
+.decisions { display: grid; gap: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.decisions form { display: grid; gap: 8px; }
+.verlauf { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
+@media (max-width: 1100px) { .list-detail.has-detail { grid-template-columns: minmax(0, 1fr); } }
+
+.status-tag { display: inline-block; padding: 1px 8px; border-radius: 5px; font: 600 0.78rem/1.5 var(--body); white-space: nowrap; border: 1px solid transparent; }
+.status-proposed { background: var(--warning-tint); border-color: color-mix(in srgb, var(--warning) 70%, transparent); }
+.status-confirmed { color: var(--success-ink); background: var(--success-tint); }
+.status-rejected { color: var(--critical-ink); background: var(--critical-tint); }
+.status-merged { color: var(--text-muted); border-color: var(--line-control); }
+
+.picker { display: grid; gap: 8px; justify-items: start; min-width: 0; }
+.picker > .field { width: 100%; }
+.picker-new { display: grid; gap: 10px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.picker-new legend { padding: 0 4px; font-weight: 700; font-size: 0.9rem; }
+.picker-message { font-size: 0.85rem; color: var(--success-ink); }
