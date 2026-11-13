@@ -18,8 +18,10 @@ the queue, the filters, the counts and the final confirmation read `RULES`.
 
 Levels and stages:
 - A blocking rule keeps a Termin from "Final bestätigen" (`courses.finally_confirm`); its hint
-  cannot be accepted. Any other hint can be accepted with a reason (`accept`): it then no longer
-  counts but stays visible as accepted.
+  cannot be accepted. Any other hint can be accepted with a reason (`accept`, by team members on
+  the course page and admins on "Prüfen"): it then no longer counts but stays visible as accepted.
+  A decision covers the one finding it was taken on (`finding_key`: the other Termin of a
+  conflict, else the text), so a new finding of the same rule on the Termin is open again.
 - Abgesagt Termine get no hints. Abgeschlossen Termine (the legacy data and finally confirmed
   ones) are locked and already counted: only the value checks apply to them, never the
   required-field, planning or list rules, and every finding there is Info and never blocking: a
@@ -146,6 +148,19 @@ class Found:
     blocking: bool
     text: str
     other_id: int | None = None
+
+    @property
+    def key(self) -> str:
+        return finding_key(self.text, self.other_id)
+
+
+def finding_key(text: str, other_id: int | None) -> str:
+    """What an accepted warning is tied to: the other Termin of a conflict, else the finding's text.
+
+    A decision covers only the finding it was taken on (Alex, 2026-11-13): when the same rule later
+    finds something else on the Termin (another Termin, another missing value), it is open again.
+    """
+    return f"termin:{other_id}" if other_id is not None else text
 
 
 # --- Small readers --------------------------------------------------------------------------
@@ -567,6 +582,7 @@ def _store(session: Session, found: list[Found], ids: set[int]) -> None:
             blocking=f.blocking,
             text=f.text,
             other_appointment_id=f.other_id,
+            key=f.key,
             computed_at=now,
         )
         for f in found
@@ -639,36 +655,55 @@ class HintError(ValueError):
     """A request the rules do not allow; the message is shown to the person (German)."""
 
 
-def _accepted(session: Session, appointment_id: int, rule_id: str) -> HintDecision | None:
+def _accepted(session: Session, appointment_id: int, rule_id: str, key: str | None) -> HintDecision | None:
+    """The decision that accepted this finding (or, for decisions taken before findings had keys,
+    the rule on this Termin)."""
     return session.scalars(
         select(HintDecision)
         .where(
             HintDecision.appointment_id == appointment_id,
             HintDecision.rule == rule_id,
             HintDecision.decision == ACCEPTED,
+            HintDecision.finding_key.is_(None) | (HintDecision.finding_key == key),
         )
         .order_by(HintDecision.id.desc())
     ).first()
 
 
-def accept(session: Session, appointment_id: int, rule_id: str, reason: str, by: str) -> HintDecision:
-    """Accept a warning on a Termin with a reason. Blocking hints cannot be accepted."""
-    hints = list(
+def is_accepted(session: Session, f: "Found | StoredHint") -> bool:
+    """Whether a non-blocking finding is accepted (blocking ones never are)."""
+    if f.blocking:
+        return False
+    return _accepted(session, f.appointment_id, f.rule, f.key) is not None
+
+
+def accept(
+    session: Session, appointment_id: int, rule_id: str, reason: str, by: str, key: str | None = None
+) -> HintDecision:
+    """Accept one warning on a Termin with a reason; `key` names the finding when the rule found
+    more than one. Blocking hints cannot be accepted. Team members and admins may accept."""
+    stored = list(
         session.scalars(
             select(StoredHint).where(StoredHint.appointment_id == appointment_id, StoredHint.rule == rule_id)
         )
     )
-    if not hints:
+    if key is not None:
+        stored = [h for h in stored if h.key == key]
+    if not stored:
         raise HintError("Diesen Hinweis gibt es nicht (mehr).")
-    if any(h.blocking for h in hints):
+    if any(h.blocking for h in stored):
         raise HintError("Ein blockierender Hinweis kann nicht akzeptiert werden; die Angaben müssen stimmen.")
+    if len({h.key for h in stored}) > 1:
+        raise HintError("Bitte den Hinweis einzeln akzeptieren.")
     if not clean_name(reason):
         raise HintError("Bitte einen Grund angeben.")
-    if _accepted(session, appointment_id, rule_id):
+    hint = stored[0]
+    if _accepted(session, appointment_id, rule_id, hint.key):
         raise HintError("Schon akzeptiert.")
     decision = HintDecision(
         rule=rule_id,
         appointment_id=appointment_id,
+        finding_key=hint.key,
         decision=ACCEPTED,
         reason=clean_name(reason),
         decided_by=by,
@@ -686,15 +721,16 @@ def open_blocking(session: Session, appointment: Appointment, day: dt.date | Non
 # --- Reading the stored hints ---------------------------------------------------------------
 
 
-def _accepted_pairs():
-    return select(HintDecision.appointment_id, HintDecision.rule).where(HintDecision.decision == ACCEPTED)
-
-
 def _is_accepted():
-    pairs = _accepted_pairs().subquery()
+    """SQL: the stored hint has a decision that accepted its finding (see `finding_key`)."""
     return (
-        select(pairs.c.appointment_id)
-        .where(pairs.c.appointment_id == StoredHint.appointment_id, pairs.c.rule == StoredHint.rule)
+        select(HintDecision.id)
+        .where(
+            HintDecision.appointment_id == StoredHint.appointment_id,
+            HintDecision.rule == StoredHint.rule,
+            HintDecision.decision == ACCEPTED,
+            HintDecision.finding_key.is_(None) | (HintDecision.finding_key == StoredHint.key),
+        )
         .exists()
     )
 
@@ -765,12 +801,15 @@ def queue(session: Session, f: QueueFilter, limit: int = 200) -> tuple[list[Queu
             .where(HintDecision.appointment_id.in_(ids), HintDecision.decision == ACCEPTED)
             .order_by(HintDecision.id)
         ):
-            decisions[(d.appointment_id, d.rule)] = d
+            decisions[(d.appointment_id, d.rule, d.finding_key)] = d
     rows = [
         QueueRow(
             h,
             appointments[h.appointment_id],
-            None if h.blocking else decisions.get((h.appointment_id, h.rule)),
+            None
+            if h.blocking
+            else decisions.get((h.appointment_id, h.rule, h.key))
+            or decisions.get((h.appointment_id, h.rule, None)),
         )
         for h in hints
     ]

@@ -455,6 +455,43 @@ def test_accepting_a_warning_keeps_it_visible_but_uncounted(seeded):
     assert hints.sidebar_counts(seeded)["hints_high"] == 0
 
 
+def test_an_accepted_warning_covers_only_its_finding(seeded):
+    """Alex, 2026-11-13: a new conflict under the same rule on the same Termin is open again."""
+    day = TODAY + dt.timedelta(days=5)
+    course = courses.create_course(seeded, by="Kim")
+    a = courses.add_appointment(seeded, course, by="Kim", date=day, stage=GEPLANT)
+    b = courses.add_appointment(seeded, course, by="Kim", date=day, stage=GEPLANT)
+    hints.refresh(seeded, [a.id], TODAY)
+
+    def open_on_a(rule_id):
+        rows, _ = hints.queue(seeded, hints.QueueFilter(rule=rule_id))
+        return [r.hint.other_appointment_id for r in rows if r.appointment.id == a.id]
+
+    assert open_on_a("selber-tag") == [b.id]
+    decision = hints.accept(seeded, a.id, "selber-tag", "zwei Gruppen, beide mit Team", "Lea")
+    assert decision.finding_key == f"termin:{b.id}" and open_on_a("selber-tag") == []
+    c = courses.add_appointment(seeded, course, by="Kim", date=day, stage=GEPLANT)
+    hints.refresh(seeded, [c.id], TODAY)
+    assert open_on_a("selber-tag") == [c.id]  # the new conflict is open, the accepted one stays accepted
+    with pytest.raises(hints.HintError, match="einzeln"):
+        hints.accept(seeded, a.id, "doppelt", "x", "Lea")  # two findings: name the one
+    hints.accept(seeded, a.id, "doppelt", "verschiedene Gruppen", "Lea", key=f"termin:{c.id}")
+    assert [
+        h.other_appointment_id
+        for h in seeded.scalars(
+            sa.select(StoredHint).where(StoredHint.appointment_id == a.id, StoredHint.rule == "doppelt")
+        )
+    ] == [b.id, c.id]
+    # A different text of the same rule (another missing value) is a different finding too.
+    t = courses.add_appointment(seeded, course, by="Kim", date=TODAY, stage=BESTAETIGT)
+    hints.refresh(seeded, [t.id], TODAY)
+    hints.accept(seeded, t.id, "pflicht-bestaetigt", "kommt noch", "Lea")
+    t.start_time = T(9)
+    hints.refresh(seeded, [t.id], TODAY)
+    rows, _ = hints.queue(seeded, hints.QueueFilter(rule="pflicht-bestaetigt"))
+    assert [r.decision for r in rows if r.appointment.id == t.id] == [None]
+
+
 def test_blocking_hints_cannot_be_accepted(seeded):
     course = courses.create_course(seeded, by="Kim")
     t = courses.add_appointment(seeded, course, by="Kim", date=TODAY, stage=DURCHGEFUEHRT)

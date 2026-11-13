@@ -146,11 +146,19 @@ def test_cancel_only_confirmed_with_a_reason_and_delete_only_planned(world):
     assert db.scalar(sa.select(sa.func.count()).where(HistoryEntry.reason == "Kurs gelöscht")) == 1
 
 
-def test_participants_and_billing_only_from_durchgefuehrt(world):
+def test_participants_in_every_stage_billing_from_durchgefuehrt(world):
+    """Alex, 2026-11-13: the numbers often come in advance; only the final confirmation needs them."""
     db = world.db
-    t = workflow.create(db, world.basics(participants_female=5, billed="1"), "Kim")
-    assert t.participants_female is None and t.billed is False
+    t = workflow.create(
+        db, form(date=NEXT_WEEK.isoformat(), participants_female=5, participants_male=0, billed="1"), "Kim"
+    )
+    assert (t.participants_female, t.participants_male, t.participants_total, t.billed) == (5, 0, 5, False)
+    db.flush()
+    stored = db.scalars(sa.select(hints.StoredHint.rule).where(hints.StoredHint.appointment_id == t.id)).all()
+    assert not {"keine-teilnehmenden", "herkunft-summe", "viele-teilnehmende"} & set(stored)
+    workflow.save(db, t, world.basics(participants_female=0, participants_male=0), "Kim")
     workflow.confirm(db, t, None, "Kim")
+    assert "keine-teilnehmenden" not in {f.rule for f in hints.compute(db, [t], TODAY)}
     workflow.mark_done(db, t, "Kim")
     workflow.save(
         db,

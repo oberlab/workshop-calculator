@@ -386,6 +386,8 @@ class HintDecision(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     rule: Mapped[str] = mapped_column(String(64))
     appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id", ondelete="CASCADE"), index=True)
+    # The finding it accepts (`hints.finding_key`); NULL: the whole rule on this Termin (older rows).
+    finding_key: Mapped[str | None] = mapped_column(Text)
     decision: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str] = mapped_column(Text)
     decided_by: Mapped[str] = mapped_column(Text)
@@ -412,6 +414,8 @@ class StoredHint(Base):
     other_appointment_id: Mapped[int | None] = mapped_column(
         ForeignKey("appointments.id", ondelete="CASCADE"), index=True
     )
+    # Which finding this is (`hints.finding_key`): what an accepted decision is tied to.
+    key: Mapped[str | None] = mapped_column(Text)
     computed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

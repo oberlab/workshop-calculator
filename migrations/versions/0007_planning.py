@@ -24,6 +24,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.add_column("hints", sa.Column("key", sa.Text()))
+    op.execute(
+        "UPDATE hints SET key = CASE WHEN other_appointment_id IS NOT NULL"
+        " THEN 'termin:' || other_appointment_id ELSE text END"
+    )
+    op.add_column("hint_decisions", sa.Column("finding_key", sa.Text()))
     op.add_column("appointments", sa.Column("cancel_reason", sa.Text()))
     op.add_column("appointments", sa.Column("calendar_state", sa.String(16)))
     op.add_column("appointments", sa.Column("calendar_checked_at", sa.DateTime(timezone=True)))
@@ -70,3 +76,5 @@ def downgrade() -> None:
     op.drop_column("appointments", "calendar_checked_at")
     op.drop_column("appointments", "calendar_state")
     op.drop_column("appointments", "cancel_reason")
+    op.drop_column("hint_decisions", "finding_key")
+    op.drop_column("hints", "key")

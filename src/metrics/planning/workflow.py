@@ -7,9 +7,12 @@ class/age, note) are on the course; date, times, alternatives, team, participant
 function here takes the Termin it acts on, so they work per Termin of a series as well.
 
 Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
-- Geplant enforces nothing and allows alternative dates; "Bestätigen" asks which date it is.
+- Geplant enforces nothing (a day without times is fine) and allows alternative dates;
+  "Bestätigen" asks which date it is.
 - Bestätigt requires date, start, end, context, class/age and place, also on every later save.
-- Teilnehmende, Herkunft and Abrechnung are only entered from Durchgeführt on.
+- Teilnehmende and Herkunft can be entered in every stage (Alex, 2026-11-13, replacing the WM-90
+  rule "only from Durchgeführt"); they are required for the final confirmation only, and no hint
+  looks at them before Durchgeführt. Abrechnung from Durchgeführt on.
 - "Final bestätigen" (`finalize`) goes through `courses.finally_confirm` (confirmed list entries,
   no blocking hint); open warnings must be ticked as checked, which the Verlauf records.
 - Abgeschlossen is locked except `billed`; a course's shared fields are locked as soon as one of
@@ -61,8 +64,9 @@ AT_SCHOOL = ("klasse", "lehrkraefte")  # the only kinds offered when the place i
 AGE_BANDS = ["19 - 24 Jahre", "25 - 34 Jahre", "35 - 49 Jahre", "50 - 64 Jahre", "über 65 Jahre"]
 OPEN_STAGES = (GEPLANT, BESTAETIGT, DURCHGEFUEHRT)  # "Alle offenen"
 
-# What each stage of a Termin may change (decided 2026-11-11): everything from Geplant on, except
-# Teilnehmende and Abrechnung, which appear from Durchgeführt; Abgeschlossen only `billed`.
+# What each stage of a Termin may change: everything from Geplant on, participants and Herkunft too
+# (Alex, 2026-11-13: the numbers often come from the teachers in advance; they are required only for
+# the final confirmation); Abrechnung from Durchgeführt; Abgeschlossen only `billed`.
 COURSE = "course"  # format, context, place, class/age, note
 TIMES = "times"  # date, start, end
 ALTERNATIVES = "alternatives"
@@ -70,8 +74,8 @@ TEAM = "team"
 HELD = "held"  # participants, Herkunft
 BILLED = "billed"
 EDITABLE = {
-    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM},
-    BESTAETIGT: {COURSE, TIMES, TEAM},
+    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM, HELD},
+    BESTAETIGT: {COURSE, TIMES, TEAM, HELD},
     DURCHGEFUEHRT: {COURSE, TIMES, TEAM, HELD, BILLED},
     ABGESCHLOSSEN: {BILLED},
     ABGESAGT: set(),
@@ -530,9 +534,7 @@ def title_of_course(course: Course) -> str:
 def open_warnings(session: Session, t: Appointment, today: dt.date | None = None) -> list[hints.Found]:
     """The hints of a Termin that do not block but are not accepted either."""
     return [
-        f
-        for f in hints.compute(session, [t], today)
-        if not f.blocking and hints._accepted(session, t.id, f.rule) is None
+        f for f in hints.compute(session, [t], today) if not f.blocking and not hints.is_accepted(session, f)
     ]
 
 
