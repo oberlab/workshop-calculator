@@ -7,7 +7,7 @@ alle folgenden", and the bulk actions "Alle bestätigen" and "Restliche absagen"
 - "Termine hinzufügen": weekly or every two weeks, n times from a first date, or picked dates.
   Holidays are not skipped (decided 2026-11-13): single dates are moved or deleted by hand.
 - The Terminnummer is computed from the date order (`courses.renumber`); the charts count the
-  participants of number 1 (`analytics.totals`).
+  participants of number 1, or of every Termin for a continuous format (`analytics.totals`).
 - "Dieser und alle folgenden" applies the changed date (as a shift by the same number of days),
   times and team of a Termin to the later Termine that are still in planning (Geplant, Bestätigt);
   every changed Termin gets its own Verlauf rows.

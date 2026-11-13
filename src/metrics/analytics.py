@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from metrics.db import STAGE_COUNTED, Appointment, Context, Course, Format, Person, Place, SchoolType
@@ -325,16 +325,28 @@ class Totals:
     locations: int
 
 
+# Participants a held Termin adds to the total: Terminnummer 1 counts, so children in multi-session
+# courses count once (rule of the R analysis); Termine without a number count nothing. A Termin made
+# in the app for a continuous format (WM-114) counts at every number. Imported rows keep their
+# recorded rule (they record number 1 on every Termin of a continuous format).
+COUNTS_PARTICIPANTS = or_(
+    Appointment.number == 1,
+    and_(Appointment.source == "app", Format.continuous.is_(True), Appointment.number.is_not(None)),
+)
+counted_participants = case((COUNTS_PARTICIPANTS, Appointment.participants_total), else_=0)
+
+
 def totals(session: Session, filters: Filters, today: date, school_year_start_month: int) -> Totals:
     """Key figures for the selection.
 
-    Participants are counted at Terminnummer 1 only, so children in multi-session courses
-    count once (rule of the R analysis). Termine without a number are not counted.
-    Places are distinct places.
+    Participants follow `COUNTS_PARTICIPANTS`. Places are distinct places.
     """
-    first_session = case((Appointment.number == 1, Appointment.participants_total), else_=0)
     query, _ = _held_sessions(
-        select(func.count(), func.coalesce(func.sum(first_session), 0), func.count(func.distinct(Place.id))),
+        select(
+            func.count(),
+            func.coalesce(func.sum(counted_participants), 0),
+            func.count(func.distinct(Place.id)),
+        ),
         filters,
         today,
         school_year_start_month,

@@ -48,3 +48,37 @@ def test_totals_follow_filters(termine):
         preset="custom", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31), categories=["Code"]
     )
     assert analytics.totals(termine, filters, date(2026, 1, 1), 8) == analytics.Totals(5, 37, 2)
+
+
+def test_continuous_format_counts_every_app_termin_and_legacy_rows_keep_their_rule(db):
+    """WM-114: an app Termin of a continuous format counts its participants at every number;
+    imported rows keep the recorded rule (number 1 only), even for a continuous format."""
+    youth = Format(name="JugendLab", category="Code", continuous=True)
+    fixed = Format(name="Löten", category="Code")
+
+    def termin(fmt, source, number, total, key, stage=ABGESCHLOSSEN):
+        return Appointment(
+            course=Course(format=fmt, target_group="Jugendliche"),
+            source=source,
+            source_key=None if source == "app" else key,
+            date=date(2025, 3, number or 9),
+            number=number,
+            participants_total=total,
+            stage=stage,
+        )
+
+    db.add_all(
+        [
+            termin(youth, "app", 1, 10, "a1"),
+            termin(youth, "app", 2, 7, "a2"),  # continuous: counted too
+            termin(youth, "app", None, 50, "a3"),  # no number: not counted
+            termin(youth, "app", 3, 40, "a4", stage=GEPLANT),  # not held
+            termin(youth, "baseline", 1, 4, "b1"),
+            termin(youth, "baseline", 2, 3, "b2"),  # legacy: only number 1, as before
+            termin(fixed, "app", 1, 6, "c1"),
+            termin(fixed, "app", 2, 6, "c2"),  # not continuous: number 1 only
+        ]
+    )
+    db.flush()
+    result = analytics.totals(db, analytics.Filters(), date(2026, 1, 1), 8)
+    assert (result.sessions, result.participants) == (7, 10 + 7 + 4 + 6)

@@ -201,6 +201,8 @@ def describe(entry, types: dict[str, str]) -> str:
     elif isinstance(entry, Format):
         if entry.duration_hours is not None:
             parts.append(f"Dauer {_number(entry.duration_hours)} h")
+        if entry.continuous:
+            parts.append("fortlaufend")
     elif isinstance(entry, Person):
         if not entry.active:
             parts.append("inaktiv")
@@ -456,6 +458,7 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("category", "Kategorie", "category", required=True),
         Field("duration_hours", "Übliche Dauer (h)", "number", required=True),
         Field("overhead_hours", "Vor- und Nachbereitung (h)", "number"),
+        Field("continuous", "Fortlaufend: jeder Termin zählt seine Teilnehmenden", "bool"),
     ),
     PEOPLE: (
         Field("name", "Name", required=True),

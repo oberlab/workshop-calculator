@@ -301,8 +301,9 @@ def session_number(t: Appointment, facts: Facts):
 @rule("terminnummer-doppelt", KRITISCH, "Terminnummer im Kurs doppelt", stages=ALL, blocking=True)
 def duplicate_number(t: Appointment, facts: Facts):
     """Two Termine of a course with the same number would both count (WM-111): this happens only
-    when a Termin is dated before one that is already counted, whose number is frozen."""
-    if t.number is None or t.course is None:
+    when a Termin is dated before one that is already counted, whose number is frozen. A course of
+    a continuous format counts every Termin anyway (WM-114), so a shared number does no harm."""
+    if t.number is None or t.course is None or (t.course.format is not None and t.course.format.continuous):
         return []
     return [
         Finding(

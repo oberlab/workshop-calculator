@@ -238,6 +238,9 @@ def test_rule_terminnummer_doppelt():
         True,
     )
     assert "terminnummer-doppelt" not in rules_of(found(t))
+    # A continuous format counts every Termin, so a shared number is no problem (WM-114).
+    continuous = termin(1, number=1, format=Format(id=9, name="JugendLab", category="Code", continuous=True))
+    assert "terminnummer-doppelt" not in rules_of(hints.evaluate(continuous, facts))
 
 
 def test_rule_klasse_unlesbar():

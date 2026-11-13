@@ -127,10 +127,11 @@ def renumber(session: Session, course: Course, by: str) -> list[Appointment]:
     The number is the position among the course's Termine that are not cancelled, by date and start
     time (the mockup: "Die Nummer zählt die durchgeführten Termine"). A cancelled Termin has no
     number, so the first Termin that takes place is number 1 and its participants are the ones
-    counted (`analytics.totals`). Frozen Termine (`frozen`) keep theirs; if a Termin is later
-    dated before a counted one, both can end up with the same number, which the blocking hint
-    "terminnummer-doppelt" catches before the second is counted. A changed number of an existing
-    Termin is a Verlauf row ("neu berechnet").
+    counted (`analytics.totals`; a continuous format counts every Termin). Frozen Termine
+    (`frozen`) keep theirs; if a Termin is later dated before a counted one, both can end up with
+    the same number, which the blocking hint "terminnummer-doppelt" catches before the second is
+    counted (not for continuous formats). A changed number of an existing Termin is a Verlauf row
+    ("neu berechnet").
     """
     session.flush()
     session.expire(course, ["appointments"])

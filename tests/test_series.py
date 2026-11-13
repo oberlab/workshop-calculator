@@ -132,6 +132,40 @@ def test_done_when_ten_week_jugendlab_series_moved_cancelled_and_counted(world):
     assert (after.sessions - before.sessions, after.participants - before.participants) == (9, 11)
 
 
+def test_continuous_series_counts_every_termin(world):
+    """WM-114 done when: a continuous JugendLab series counts the participants of every Termin, and
+    a shared Terminnummer does not block (every Termin counts anyway)."""
+    db = world.db
+    world.format.continuous = True
+    first = TODAY - dt.timedelta(days=28)
+    before = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    t = series.create(db, _youth(world, first, reihe_rhythmus="woechentlich", reihe_anzahl=3), "Kim")
+    termine = _termine(t.course)
+    series.confirm_all(db, t.course, "Kim")
+    for i, x in enumerate(termine):
+        workflow.mark_done(db, x, "Kim")
+        workflow.save(
+            db,
+            x,
+            _youth(
+                world,
+                x.date,
+                participants_female=4 + i,
+                participants_male=3,
+                origin_name=["Musterstadt"],
+                origin_count=[str(7 + i)],
+            ),
+            "Kim",
+        )
+        workflow.finalize(db, x, "Kim", checked=True, today=TODAY)
+    after = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    assert (after.sessions - before.sessions, after.participants - before.participants) == (3, 7 + 8 + 9)
+    (earlier,) = series.add(db, t.course, [first - dt.timedelta(weeks=1)], t, "Kim")
+    assert earlier.number == termine[0].number == 1
+    stored = db.scalars(sa.select(StoredHint).where(StoredHint.appointment_id == earlier.id)).all()
+    assert not any(h.rule == "terminnummer-doppelt" for h in stored)
+
+
 def test_dieser_und_alle_folgenden(world):
     db = world.db
     first = TODAY + dt.timedelta(days=7)

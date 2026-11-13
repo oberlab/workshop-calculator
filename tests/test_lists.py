@@ -466,3 +466,18 @@ def test_admin_decisions_through_the_pages(seeded, monkeypatch):
         ("duration_hours", "Team"),
         ("status", auth.OFF_USER),
     ]
+
+
+def test_admin_marks_a_format_continuous(seeded, monkeypatch):
+    """WM-114: "fortlaufend" is edited on the Formate page like the other details (admin)."""
+    fmt = Format(name="Repair Café", category="Engineering", duration_hours=3, status=CONFIRMED)
+    seeded.add(fmt)
+    seeded.commit()
+    admin = _admin(monkeypatch)
+    assert 'name="continuous"' in admin.get(f"/stammdaten/formate?id={fmt.id}").text
+    values = {"name": "Repair Café", "category": "Engineering", "duration_hours": "3", "continuous": "1"}
+    assert admin.post(f"/stammdaten/formate/{fmt.id}", data=values).status_code in (200, 303)
+    seeded.expire_all()
+    assert seeded.get(Format, fmt.id).continuous is True
+    assert [h.field for h in _history(seeded, "formats", fmt.id)] == ["continuous"]
+    assert "fortlaufend" in lists.describe(seeded.get(Format, fmt.id), {})

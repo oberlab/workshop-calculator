@@ -144,6 +144,8 @@ class Format(Base):
 
     Legacy entries without a course name use the unnamed format of their category, so the
     category is never lost; name and category together are unique (NULL counts as a value).
+    `continuous` (fortlaufend, e.g. JugendLab): every app Termin of its courses counts its
+    participants, not only Terminnummer 1 (WM-114, `analytics.counted_participants`).
     """
 
     __tablename__ = "formats"
@@ -159,6 +161,7 @@ class Format(Base):
     category: Mapped[str | None] = mapped_column(String(64))
     duration_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     overhead_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    continuous: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     status: Mapped[str] = _status_column()
     merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("formats.id"))
     created_at: Mapped[dt.datetime] = _created_at()
