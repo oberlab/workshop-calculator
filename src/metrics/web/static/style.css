@@ -922,3 +922,5 @@ table.mun input[type="number"] { width: 90px; }
 .answer-no { color: var(--critical-ink); }
 .answer-open { color: var(--text-muted); }
 .changes th[scope="row"] { font-weight: 600; text-align: left; }
+.filter-panel > summary { cursor: pointer; font-weight: 600; }
+.filter-panel[open] > summary { margin-bottom: 12px; }

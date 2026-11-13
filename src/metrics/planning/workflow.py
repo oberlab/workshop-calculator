@@ -178,7 +178,8 @@ def _show(value) -> str:
     if isinstance(value, dt.date):
         return value.strftime("%d.%m.%Y")
     if isinstance(value, Decimal):
-        return f"{value:g}".replace(".", ",")
+        # 1.50 from the database and 1.5 computed are the same duration.
+        return f"{value.normalize():f}".replace(".", ",")
     return str(value)
 
 

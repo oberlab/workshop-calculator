@@ -92,6 +92,11 @@ def test_geplant_takes_anything_and_bestaetigt_needs_the_basics(world):
     changed = workflow.save(db, t, world.basics(), "Kim")
     assert {"place", "context", "class_age_text", "start_time", "lead"} <= set(changed)
     assert t.duration_hours == pytest.approx(2.25) and t.course.target_group == "Schulklasse"
+    workflow.save(db, t, world.basics(end_time="11:30"), "Kim")
+    db.flush()
+    db.expire(t, ["duration_hours"])  # read back as 2.50 from Numeric(6, 2): the same 2.5 hours
+    assert "duration_hours" not in workflow.save(db, t, world.basics(end_time="11:30", note="x"), "Kim")
+    workflow.save(db, t, world.basics(), "Kim")
     assert t.course.class_age_text == "Kl. 3" and t.course.class_level == 3
     workflow.confirm(db, t, None, "Kim")
     assert t.stage == BESTAETIGT

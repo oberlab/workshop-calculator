@@ -19,7 +19,10 @@
 {%- endmacro %}
 
 {% block content %}
-<form class="panel filters" method="get" action="/planung" aria-label="Filter">
+{% set active_filters = params.values()|select|list|length %}
+<details class="panel filter-panel"{% if active_filters %} open{% endif %}>
+<summary><span class="filter-summary">Filter{% if active_filters %} ({{ active_filters }} aktiv){% endif %}</span></summary>
+<form class="filters" method="get" action="/planung" aria-label="Filter">
   <input type="hidden" name="phase" value="{{ tab }}">
   <div class="filter-row">
     <label>Person
@@ -59,6 +62,7 @@
     <a class="reset" href="/planung?phase={{ tab|urlencode }}">Zurücksetzen</a>
   </div>
 </form>
+</details>
 
 <div class="panel panel-flush">
   {{ ui.tabs(tabs, tab, "Phasen") }}

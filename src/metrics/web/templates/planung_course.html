@@ -79,7 +79,7 @@
           {{ ui.field("Datum", "date", t.date.isoformat() if t.date else none, type="date", required=true, attrs={"disabled": none if times_on else true}) }}
           {{ ui.field("Beginn", "start_time", t.start_time.strftime("%H:%M") if t.start_time else none, type="time", required=true, attrs={"disabled": none if times_on else true}) }}
           {{ ui.field("Ende", "end_time", t.end_time.strftime("%H:%M") if t.end_time else none, type="time", required=true, attrs={"disabled": none if times_on else true}) }}
-          <div class="field"><span>Dauer</span><output class="computed">{% if t.duration_hours %}{{ "%g"|format(t.duration_hours|float) }} h{% else %}aus Beginn und Ende{% endif %}</output></div>
+          <div class="field"><span>Dauer</span><output class="computed">{% if t.duration_hours %}{{ ("%g"|format(t.duration_hours|float)).replace(".", ",") }} h{% else %}aus Beginn und Ende{% endif %}</output></div>
         </div>
         {% if "alternatives" in editable %}
         <div class="alternatives" data-alternatives>
