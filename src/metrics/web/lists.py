@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from metrics import hints, lists
 from metrics.db import CONFIRMED, MERGED, PROPOSED, get_sessionmaker
 from metrics.instance import get_instance
+from metrics.web import sessions
 from metrics.web.common import TIMEZONE, current_login, page, templates
 
 router = APIRouter()
@@ -201,6 +202,8 @@ def _list_page(
             "categories": lists.categories(session) if kind is lists.FORMATS else [],
             "field_labels": FIELD_LABELS,
             "admin": login.admin,
+            # Admins see who is logged in on the Personen page (moved from the review page, WM-110).
+            "logged_in": sessions.logged_in_people() if kind is lists.PEOPLE and login.admin else None,
             "message": params.get("hinweis"),
             "error": error,
             "timezone": TIMEZONE,

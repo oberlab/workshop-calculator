@@ -40,5 +40,3 @@ instance/
 # Database dumps written by ops/update.sh on the server
 backups/
 
-# Planning prototype database (local runs)
-planung-prototyp.sqlite

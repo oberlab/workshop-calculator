@@ -25,11 +25,13 @@ class Settings:
     oidc_admin_group: str | None = None
     oidc_groups_claim: str = "groups"
     public_url: str | None = None
-    # Planning prototype: its own database (never the metrics database) and an optional calendar.
-    planning_database_url: str = "sqlite:///planung-prototyp.sqlite"
+    # The course calendar (WM-110): a CalDAV collection, e.g. a Nextcloud calendar of the app's own
+    # account; without CALDAV_URL planning works without a calendar. CALDAV_ORGANIZER is the e-mail
+    # address of that account: with it, lead and support are invited as attendees.
     caldav_url: str | None = None
     caldav_username: str | None = None
     caldav_password: str | None = None
+    caldav_organizer: str | None = None
     # Nightly dumps of the scheduler (WM-103); the only directory the scheduler writes to.
     backup_dir: Path = Path("backups/nightly")
 
@@ -58,10 +60,10 @@ def get_settings() -> Settings:
         oidc_admin_group=os.environ.get("OIDC_ADMIN_GROUP") or None,
         oidc_groups_claim=os.environ.get("OIDC_GROUPS_CLAIM") or "groups",
         public_url=(os.environ.get("PUBLIC_URL") or "").rstrip("/") or None,
-        planning_database_url=os.environ.get("PLANNING_DATABASE_URL") or "sqlite:///planung-prototyp.sqlite",
         caldav_url=os.environ.get("CALDAV_URL") or None,
         caldav_username=os.environ.get("CALDAV_USERNAME") or None,
         caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
+        caldav_organizer=os.environ.get("CALDAV_ORGANIZER") or None,
         backup_dir=Path(os.environ.get("BACKUP_DIR") or "backups/nightly"),
     )
 

@@ -1,0 +1,21 @@
+{# Who is logged in (admins, Personen page): moved from the review page (WM-110). #}
+<section class="panel" id="angemeldet">
+  <h2>Angemeldet <span class="count">{{ logged_in|length }}</span></h2>
+  <p class="help">Offene Sitzungen: höchstens 12 Stunden, nach 2 Stunden ohne Aktivität beendet. „Überall abmelden“ beendet alle Sitzungen einer Person sofort, etwa wenn sie nicht mehr im Team oder nicht mehr Admin ist (zuerst im Anmeldedienst ändern); bei der nächsten Anmeldung werden die Gruppen neu gelesen.</p>
+  {% if logged_in is none %}<p class="help">Nicht verfügbar: Die Datenbank ist nicht erreichbar.</p>
+  {% elif logged_in %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Person</th><th>Rolle</th><th>Sitzungen</th><th>Zuletzt aktiv</th><th></th></tr></thead>
+    <tbody>
+      {% for p in logged_in %}
+      <tr>
+        <td>{{ p.user_name }}</td>
+        <td>{{ "Admin" if p.admin else "Team" }}</td>
+        <td>{{ p.sessions }}</td>
+        <td>{{ p.last_seen }}</td>
+        <td><form method="post" action="/stammdaten/personen/abmelden" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject" value="{{ p.subject }}"><button class="btn btn-secondary btn-sm" type="submit">Überall abmelden</button></form></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="help">Niemand.</p>{% endif %}

@@ -29,7 +29,7 @@ import datetime as dt
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from metrics import courses, hints, lists
@@ -49,6 +49,7 @@ from metrics.db import (
     HistoryEntry,
     Person,
     Place,
+    StoredHint,
 )
 from metrics.ingest.records import TEACHERS, parse_class_age
 from metrics.instance import clean_name
@@ -606,8 +607,9 @@ class Check:
     href: str | None = None
 
 
-def what_is_missing(t: Appointment, stored: list, accepted: set[str]) -> list[Check]:
-    """The checklist of a Termin: required fields of its next step, list entries, open hints."""
+def what_is_missing(t: Appointment, stored: list, accepted: set[int]) -> list[Check]:
+    """The checklist of a Termin: required fields of its next step, list entries, open hints.
+    `stored`: its stored hints; `accepted`: the IDs of those that are accepted."""
     if t.stage in (ABGESAGT, ABGESCHLOSSEN):
         return []
     checks = []
@@ -645,7 +647,7 @@ def what_is_missing(t: Appointment, stored: list, accepted: set[str]) -> list[Ch
     for h in stored:
         if h.rule in ("pflicht-bestaetigt", "pflicht-abschluss", "eintrag-wartet") or h.text in seen:
             continue  # already a line above
-        if h.rule in accepted and not h.blocking:
+        if h.id in accepted and not h.blocking:
             continue
         href = None
         if h.other_appointment_id:
@@ -667,3 +669,17 @@ def history(session: Session, course: Course) -> list[HistoryEntry]:
         | ((HistoryEntry.table_name == "appointments") & HistoryEntry.row_id.in_(ids or [-1]))
     )
     return list(session.scalars(stmt.order_by(HistoryEntry.changed_at.desc(), HistoryEntry.id.desc())))
+
+
+def sidebar_counts(session: Session) -> dict[str, int]:
+    """Termine in planning with an open Kritisch or Wichtig hint, for the "Kurse" entry."""
+    rows = session.execute(
+        select(StoredHint.appointment_id, func.min(StoredHint.level))
+        .join(Appointment, Appointment.id == StoredHint.appointment_id)
+        .where(Appointment.stage.in_(OPEN_STAGES), StoredHint.blocking | ~hints._is_accepted())
+        .where(StoredHint.level.in_((hints.KRITISCH, hints.WICHTIG)))
+        .group_by(StoredHint.appointment_id)
+    ).all()
+    # "Kritisch" < "Wichtig" alphabetically: the minimum is the most severe level.
+    levels = [level for _, level in rows]
+    return {"courses_high": levels.count(hints.KRITISCH), "courses_medium": levels.count(hints.WICHTIG)}

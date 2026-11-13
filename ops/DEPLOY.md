@@ -45,7 +45,7 @@ git -c advice.detachedHead=false checkout v0.2.0-planung.1
 ops/update.sh v0.2.0-planung.1 --from planung-prototyp
 ```
 
-Going back to a release from `main` works the same way with `ops/update.sh vX.Y.Z`. The planning prototype keeps its data in its own volume (`planning`), never in the metrics database.
+Going back to a release from `main` works the same way with `ops/update.sh vX.Y.Z`. Since WM-110 planning lives in the metrics database; the prototype's `planning` volume is no longer used and can be removed by hand once nobody needs its demo data (`docker volume rm <project>_planning`).
 
 ## Scheduler and nightly backups
 

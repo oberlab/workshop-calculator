@@ -1,623 +1,575 @@
-"""Planning prototype pages: course list, course page, availability, review actions.
+"""Planning pages (WM-110): the course list, the course page and a new course.
 
-Everything here reads and writes the planning database (`PLANNING_DATABASE_URL`); the metrics
-database is only read for suggestions and the people list.
+- `GET /planung`: Termine grouped by week; stage tabs plus "Alle offenen" (`phase`), filters
+  `person` (an ID or `ich` for the person linked to the login), `von`, `bis`, `kontext`, `ort`,
+  `kategorie`, `hinweise` (`kritisch`, `wichtig`, `alle`) and `abrechnung` (`offen`, `ja`).
+  A table on wide screens, cards on phones.
+- `GET /planung/neu` and `POST /planung/neu`: a new course with one Termin in Geplant.
+- `GET /planung/{course_id}` (`?termin=` picks the Termin of a series; default the first open one):
+  stage bar with the next action, the course form, the Termine, "Was fehlt noch", hints, calendar
+  and Verlauf. `POST` saves the form and then, if `dann` names one, takes the next step (confirm,
+  done, final); `POST .../aktion` the other actions (back, cancel, delete, billed, calendar).
+- `GET /planung/termin/{id}`: the course page of a Termin (links from hints and the calendar).
+- `GET /api/planung/belegt?date=&start=&end=&exclude=`: who is booked at that time, for the team
+  pickers (`{person ID: Termin}`).
+
+All are Team routes (`access.py`); what a stage allows is checked in `metrics.planning.workflow`.
 """
 
 import datetime as dt
-import secrets
-import time
+from collections import defaultdict
+from dataclasses import dataclass, field
 from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
-from metrics.instance import get_instance
-from metrics.planning import calendar as cal
-from metrics.planning import demo, overview, places, rules, service, vocabulary
-from metrics.planning.conflicts import SEVERITY_LABELS, busy_people
-from metrics.planning.models import (
+from metrics import hints, lists
+from metrics.db import (
+    ABGESAGT,
+    ABGESCHLOSSEN,
+    ACTIVE_STATUSES,
     BESTAETIGT,
-    CAL_OK,
     DURCHGEFUEHRT,
     GEPLANT,
-    LEAD,
     STAGES,
-    SUPPORT,
-    CalendarOrphan,
+    Appointment,
+    AppointmentOrigin,
+    Context,
     Course,
-    DemoCalendarEvent,
-    FinalSession,
-    History,
+    Format,
     Person,
     Place,
-    get_planning_sessionmaker,
+    StoredHint,
+    appointment_support,
+    get_sessionmaker,
 )
-from metrics.web.common import current_login, page, public_base, today
+from metrics.instance import get_instance
+from metrics.planning import workflow
+from metrics.planning.workflow import FormError
+from metrics.web.common import TIMEZONE, current_login, page, today
+from metrics.web.lists import picker_context
 
 router = APIRouter()
 
-FILTERS = ("person", "from", "to", "context", "location", "category", "flagged", "unbilled")
+OPEN = "offen"
+TABS = [(OPEN, "Alle offenen"), *((s, s) for s in STAGES)]
+FILTER_KEYS = ("person", "von", "bis", "kontext", "ort", "kategorie", "hinweise", "abrechnung")
+HINT_FILTERS = {
+    "kritisch": (hints.KRITISCH,),
+    "wichtig": (hints.KRITISCH, hints.WICHTIG),
+    "alle": hints.LEVELS,
+}
+LIMIT = 300
+LEVEL_ORDER = {level: i for i, level in enumerate(hints.LEVELS)}
 
 
-async def _form(request: Request) -> dict[str, list[str]]:
+async def _form(request: Request) -> workflow.Form:
     return parse_qs((await request.body()).decode(errors="replace"), keep_blank_values=True)
 
 
-def _link(request: Request):
-    base = public_base(request)
-    return lambda course: f"{base}/planung/{course.id}"
+def _int(value: str | None) -> int | None:
+    return int(value) if value and value.isdigit() else None
 
 
-_names = overview.names
-_instance = overview.merged_instance
+def _date(value: str | None) -> dt.date | None:
+    try:
+        return dt.date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
 
 
-CHECK_SECONDS = 120  # a real calendar is checked at most this often on page views
-_last_check = 0.0
+def _who(request: Request) -> str:
+    return current_login(request).user
 
 
-def calendar_changed() -> None:
-    """Check the calendar again on the next page view."""
-    global _last_check
-    _last_check = 0.0
+def _me(session: Session, request: Request) -> Person | None:
+    login = current_login(request)
+    return lists.person_for_login(session, login.subject) if login and login.subject else None
 
 
-def _refresh(session, request: Request) -> None:
-    """Move held courses on and check the calendar (the demo calendar on every view)."""
-    global _last_check
-    service.advance(session, today())
-    calendar = cal.get_calendar(session)
-    if calendar.demo or time.monotonic() - _last_check > CHECK_SECONDS:
-        try:
-            courses = list(session.scalars(select(Course)))
-            cal.check(session, calendar, courses, _names(session), today(), _link(request))
-            _last_check = time.monotonic()
-        except cal.CalendarError:
-            pass  # shown on the review page when checking by hand
-    session.commit()
+def _load_appointments(stmt):
+    return stmt.options(
+        selectinload(Appointment.course).selectinload(Course.format),
+        selectinload(Appointment.course).selectinload(Course.context),
+        selectinload(Appointment.course).selectinload(Course.place),
+        selectinload(Appointment.lead),
+        selectinload(Appointment.support),
+        selectinload(Appointment.alternatives),
+    )
 
 
-def _flags_by_course(session, courses: list[Course]) -> dict[int, list[service.Flag]]:
-    return overview.flags_by_course(session, courses, today())
+@dataclass
+class Row:
+    """A Termin in the list with its open hints, most severe first."""
+
+    t: Appointment
+    hints: list[StoredHint] = field(default_factory=list)
+
+    @property
+    def top(self) -> StoredHint | None:
+        return self.hints[0] if self.hints else None
 
 
-def _me(session, login) -> str | None:
-    for person in vocabulary.people(session):
-        if person.login == login.user or person.name == login.user:
-            return person.key
-    return None
+def open_hints(session: Session, ids: list[int]) -> dict[int, list[StoredHint]]:
+    """Stored hints of these Termine that still count (blocking, or not accepted), most severe first."""
+    if not ids:
+        return {}
+    found: dict[int, list[StoredHint]] = defaultdict(list)
+    stmt = (
+        select(StoredHint)
+        .where(StoredHint.appointment_id.in_(ids), StoredHint.blocking | ~hints._is_accepted())
+        .order_by(StoredHint.id)
+    )
+    for h in session.scalars(stmt):
+        found[h.appointment_id].append(h)
+    for items in found.values():
+        items.sort(key=lambda h: LEVEL_ORDER.get(h.level, 9))
+    return found
 
 
-def _matches(course: Course, params, flags: list, me: str | None) -> bool:
-    person = params.get("person")
-    if person == "me":
-        person = me or "-"
-    if person and person not in course.all_keys:
-        return False
-    if params.get("from") and (not course.date or course.date.isoformat() < params["from"]):
-        return False
-    if params.get("to") and (not course.date or course.date.isoformat() > params["to"]):
-        return False
-    for name in ("context", "location", "category"):
-        if params.get(name) and getattr(course, name) != params[name]:
-            return False
-    if params.get("flagged") and not flags:
-        return False
-    return not (params.get("unbilled") and course.billed)
+# --- Course list ---------------------------------------------------------------------------------
+
+
+def _filtered(session: Session, params, me: Person | None):
+    """The list's filters as a select of Termine (without the stage)."""
+    stmt = select(Appointment).join(Course, Course.id == Appointment.course_id)
+    person = params.get("person") or ""
+    person_id = (me.id if me else -1) if person == "ich" else _int(person)
+    if person_id is not None:
+        support = select(appointment_support.c.appointment_id).where(
+            appointment_support.c.person_id == person_id
+        )
+        stmt = stmt.where((Appointment.lead_id == person_id) | Appointment.id.in_(support))
+    if day := _date(params.get("von")):
+        stmt = stmt.where(Appointment.date >= day)
+    if day := _date(params.get("bis")):
+        stmt = stmt.where(Appointment.date <= day)
+    if context_id := _int(params.get("kontext")):
+        stmt = stmt.where(Course.context_id == context_id)
+    if place_id := _int(params.get("ort")):
+        stmt = stmt.where(Course.place_id == place_id)
+    if category := params.get("kategorie"):
+        stmt = stmt.where(Course.format_id.in_(select(Format.id).where(Format.category == category)))
+    if levels := HINT_FILTERS.get(params.get("hinweise") or ""):
+        with_hint = select(StoredHint.appointment_id).where(
+            StoredHint.level.in_(levels), StoredHint.blocking | ~hints._is_accepted()
+        )
+        stmt = stmt.where(Appointment.id.in_(with_hint))
+    billing = params.get("abrechnung")
+    if billing == "offen":
+        stmt = stmt.where(
+            Appointment.billed.is_(False), Appointment.stage.in_((DURCHGEFUEHRT, ABGESCHLOSSEN))
+        )
+    elif billing == "ja":
+        stmt = stmt.where(Appointment.billed.is_(True))
+    return stmt
+
+
+def _stages(tab: str) -> tuple[str, ...]:
+    return workflow.OPEN_STAGES if tab == OPEN else (tab,)
+
+
+def week_label(day: dt.date | None) -> str:
+    if day is None:
+        return "Ohne Datum"
+    monday = day - dt.timedelta(days=day.weekday())
+    sunday = monday + dt.timedelta(days=6)
+    return f"KW {day.isocalendar().week} · {monday:%d.%m.}–{sunday:%d.%m.%Y}"
+
+
+def by_week(rows: list[Row]) -> list[tuple[str, list[Row]]]:
+    groups: list[tuple[str, list[Row]]] = []
+    for row in rows:
+        label = week_label(row.t.date)
+        if groups and groups[-1][0] == label:
+            groups[-1][1].append(row)
+        else:
+            groups.append((label, [row]))
+    return groups
+
+
+def _choices(session: Session):
+    return {
+        "contexts": list(
+            session.scalars(select(Context).where(Context.status.in_(ACTIVE_STATUSES)).order_by(Context.name))
+        ),
+        "places": list(
+            session.scalars(select(Place).where(Place.status.in_(ACTIVE_STATUSES)).order_by(Place.name))
+        ),
+        "categories": lists.categories(session),
+        "people": lists.choices(session, lists.PEOPLE),
+    }
 
 
 @router.get("/planung", response_class=HTMLResponse)
 def course_list(request: Request):
-    login = current_login(request)
     params = request.query_params
-    stage = params.get("stage") or GEPLANT
-    if stage not in STAGES:
+    tab = params.get("phase") or OPEN
+    if tab not in dict(TABS):
         raise HTTPException(400, "Unbekannte Phase")
-    with get_planning_sessionmaker()() as session:
-        vocabulary.ensure_people(session)
-        _refresh(session, request)
-        courses = list(session.scalars(select(Course)))
-        flags = _flags_by_course(session, courses)
-        me = _me(session, login)
-        visible = [c for c in courses if _matches(c, params, flags[c.id], me)]
-        counts = {s: sum(1 for c in visible if c.stage == s) for s in STAGES}
-        high = {
-            s: sum(1 for c in visible if c.stage == s and service.top_severity(flags[c.id]) == "high")
-            for s in STAGES
-        }
-        rows = [c for c in visible if c.stage == stage]
-        upcoming = stage in (GEPLANT, BESTAETIGT)
-        rows.sort(key=lambda c: (c.date or dt.date.max, c.start_time or dt.time()), reverse=not upcoming)
+    with get_sessionmaker()() as session:
+        me = _me(session, request)
+        base = _filtered(session, params, me)
+        counted = session.execute(
+            select(Appointment.stage, func.count()).select_from(base.subquery()).group_by("stage")
+        ).all()
+        counts = dict(counted)
+        counts[OPEN] = sum(counts.get(s, 0) for s in workflow.OPEN_STAGES)
+        stages = _stages(tab)
+        upcoming = tab in (OPEN, GEPLANT, BESTAETIGT, DURCHGEFUEHRT)
+        order = Appointment.date.asc().nulls_last() if upcoming else Appointment.date.desc().nulls_last()
+        stmt = _load_appointments(base.where(Appointment.stage.in_(stages))).order_by(
+            order, Appointment.start_time.nulls_last(), Appointment.id
+        )
+        appointments = list(session.scalars(stmt.limit(LIMIT)))
+        found = open_hints(session, [t.id for t in appointments])
+        rows = [Row(t, found.get(t.id, [])) for t in appointments]
+        query = urlencode([(k, params[k]) for k in FILTER_KEYS if params.get(k)])
+        tabs = [
+            (key, label, f"/planung?phase={quote(key)}" + (f"&{query}" if query else ""), counts.get(key, 0))
+            for key, label in TABS
+        ]
         return page(
             request,
             "planung_list.html",
             {
-                "stage": stage,
-                "stages": STAGES,
-                "counts": counts,
-                "high": high,
-                "rows": rows,
-                "flags": flags,
-                "names": _names(session),
-                "people": vocabulary.people(session),
+                "tab": tab,
+                "tab_label": dict(TABS)[tab],
+                "tabs": tabs,
+                "groups": by_week(rows),
+                "shown": len(rows),
+                "total": counts.get(tab, 0) if tab != OPEN else counts[OPEN],
+                "limit": LIMIT,
+                "params": {k: params.get(k, "") for k in FILTER_KEYS},
                 "me": me,
-                "params": {k: params.get(k, "") for k in FILTERS},
-                "filter_query": urlencode({k: params[k] for k in FILTERS if params.get(k)}),
-                "suggest": vocabulary.suggestions(session, _instance(session)),
-                "severity_labels": SEVERITY_LABELS,
-                "calendar_name": cal.get_calendar(session).name,
+                "badge": hints.BADGE,
+                "titles": {t.id: workflow.title(t) for t in appointments},
                 "message": params.get("hinweis"),
+                **_choices(session),
             },
         )
 
 
-def _pickable(session, course: Course) -> list[tuple[str, str]]:
-    """Active people, plus anyone already on the course who is no longer in the list."""
-    names = _names(session)
-    active = [(p.key, p.name) for p in vocabulary.people(session, active_only=True)]
-    listed = {key for key, _ in active}
-    return active + [(k, names.get(k, k)) for k in course.all_keys if k not in listed]
+# --- Course page ---------------------------------------------------------------------------------
 
 
-def _calendar_changes(session, request, course: Course) -> list | None:
-    """What "Kalender aktualisieren" would change, for an outdated event."""
-    if course.calendar_state != "outdated" or not course.calendar_uid:
-        return None
-    try:
-        actual = cal.get_calendar(session).get(course.calendar_uid)
-    except cal.CalendarError:
-        return None
-    expected = cal.event_for(course, _names(session), _link(request)(course))
-    return cal.changes(expected, actual) if actual and expected else None
-
-
-def _course_page(request, session, course: Course, errors: list[str] | None = None, status_code: int = 200):
-    instance = _instance(session)
-    courses = list(session.scalars(select(Course)))
-    if course not in courses:
-        courses.append(course)
-    known = vocabulary.known(instance)
-    names = _names(session)
-    problems = rules.final_problems(course, instance, known) if course.stage == DURCHGEFUEHRT else []
-    history = (
-        list(
-            session.scalars(
-                select(History)
-                .where(History.course_id == course.id)
-                .order_by(History.at.desc(), History.id.desc())
-            )
+def _get_course(session: Session, course_id: int) -> Course:
+    course = session.scalars(
+        select(Course)
+        .where(Course.id == course_id)
+        .options(
+            selectinload(Course.appointments).selectinload(Appointment.support),
+            selectinload(Course.appointments).selectinload(Appointment.origins),
+            selectinload(Course.appointments).selectinload(Appointment.alternatives),
+            selectinload(Course.appointments).selectinload(Appointment.calendar_responses),
         )
-        if course.id
-        else []
-    )
-    final = (
-        session.scalar(select(FinalSession).where(FinalSession.course_id == course.id)) if course.id else None
-    )
-    return page(
-        request,
-        "planung_course.html",
-        {
-            "course": course,
-            "stages": STAGES,
-            "editable": service.EDITABLE[course.stage],
-            "flags": service.flags(course, courses, names, instance, known, today(), True)
-            if course.id
-            else [],
-            "problems": problems,
-            "blocking": [p for p in problems if p.blocking],
-            "warnings": [p for p in problems if not p.blocking],
-            "errors": errors or [],
-            "people": vocabulary.people(session, active_only=True),
-            "names": names,
-            "leads": set(course.keys(LEAD)),
-            "supports": set(course.keys(SUPPORT)),
-            "suggest": vocabulary.suggestions(session, instance),
-            "municipality_options": vocabulary.municipalities(session, instance),
-            "wants_municipalities": rules.wants_municipalities(course, instance),
-            "age_bands": rules.AGE_BANDS,
-            "class_kinds": service.CLASS_KINDS,
-            "at_school": service.AT_SCHOOL,
-            # place -> school yes/no, so the form offers only the fitting Klasse/Alter kinds
-            "school_places": {
-                name: school for name, school in instance.locations.items() if school is not None
-            },
-            "pickable": _pickable(session, course),
-            "history": history,
-            "final": final,
-            "today": today(),
-            "calendar_name": cal.get_calendar(session).name,
-            "severity_labels": SEVERITY_LABELS,
-            "message": request.query_params.get("hinweis"),
-            "CAL_OK": CAL_OK,
-            "calendar_changes": _calendar_changes(session, request, course) if course.id else None,
-            "place_needs_address": places.needs_address(instance, course.location),
-        },
-        status_code=status_code,
-    )
-
-
-@router.get("/planung/neu", response_class=HTMLResponse)
-def new_course(request: Request):
-    with get_planning_sessionmaker()() as session:
-        vocabulary.ensure_people(session)
-        course = Course(stage=GEPLANT, calendar_state="none", billed=False)
-        course.alternatives, course.people, course.municipalities = [], [], []
-        if day := request.query_params.get("date"):
-            course.date = dt.date.fromisoformat(day)
-        response = _course_page(request, session, course)
-        session.rollback()
-        return response
-
-
-@router.post("/planung/neu", response_class=HTMLResponse)
-async def create_course(request: Request):
-    login = current_login(request)
-    form = await _form(request)
-    with get_planning_sessionmaker()() as session:
-        course = Course(stage=GEPLANT, created_by=login.user, calendar_state="none", billed=False)
-        course.alternatives, course.people, course.municipalities = [], [], []
-        try:
-            service.apply_form(course, form, GEPLANT)
-        except service.FormError as error:
-            response = _course_page(request, session, course, error.messages, 400)
-            session.rollback()
-            return response
-        session.add(course)
-        session.flush()
-        service.log(session, course.id, login.user, "angelegt")
-        session.commit()
-        return RedirectResponse(f"/planung/{course.id}", status_code=303)
-
-
-def _get(session, course_id: int) -> Course:
-    course = session.get(Course, course_id)
+    ).first()
     if course is None:
         raise HTTPException(404, "Kurs nicht gefunden")
     return course
 
 
+def _termine(course: Course) -> list[Appointment]:
+    return sorted(course.appointments, key=lambda t: (t.number or 0, t.date or dt.date.max, t.id or 0))
+
+
+def _selected(course: Course, wanted: int | None) -> Appointment:
+    termine = _termine(course)
+    if not termine:
+        raise HTTPException(404, "Kurs ohne Termin")
+    if wanted is not None:
+        for t in termine:
+            if t.id == wanted:
+                return t
+        raise HTTPException(404, "Termin nicht gefunden")
+    return next((t for t in termine if t.stage in workflow.OPEN_STAGES), termine[0])
+
+
+def _municipalities(session: Session) -> list[str]:
+    instance = get_instance()
+    names = {m.name for m in instance.map.municipalities} if instance.map else set()
+    names |= set(session.scalars(select(AppointmentOrigin.municipality).distinct()))
+    return sorted(names, key=str.casefold)
+
+
+def _pickers(session: Session, course: Course) -> dict:
+    types = lists.school_types(session)
+    made = {}
+    for kind, name, entry in (
+        (lists.FORMATS, "format_id", course.format),
+        (lists.CONTEXTS, "context_id", course.context),
+        (lists.PLACES, "place_id", course.place),
+    ):
+        selected = entry.id if entry is not None else None
+        made[name] = picker_context(kind, name, lists.choices(session, kind, selected), selected, types)
+    return made
+
+
+def _pickable(session: Session, t: Appointment) -> list[Person]:
+    """Active team members, plus anyone already on the Termin who is no longer active."""
+    people = {p.id: p for p in lists.choices(session, lists.PEOPLE)}
+    for p in ([t.lead] if t.lead else []) + list(t.support):
+        people.setdefault(p.id, p)
+    return sorted(people.values(), key=lambda p: p.name.casefold())
+
+
+STEPS = (GEPLANT, BESTAETIGT, DURCHGEFUEHRT, ABGESCHLOSSEN)
+NEXT_ACTION = {
+    GEPLANT: ("confirm", "Bestätigen"),
+    BESTAETIGT: ("done", "Als durchgeführt markieren"),
+    DURCHGEFUEHRT: ("final", "Final bestätigen"),
+}
+
+
+def course_context(
+    request: Request,
+    session: Session,
+    course: Course,
+    t: Appointment,
+    *,
+    new: bool = False,
+    errors: list[str] | None = None,
+) -> dict:
+    termine = _termine(course) if not new else [t]
+    ids = [a.id for a in termine if a.id]
+    stored = open_hints(session, ids)
+    all_stored = (
+        list(session.scalars(select(StoredHint).where(StoredHint.appointment_id == t.id))) if t.id else []
+    )
+    decisions = {h.id: hints._accepted(session, t.id, h.rule, h.key) for h in all_stored if not h.blocking}
+    accepted = {i for i, d in decisions.items() if d is not None}
+    hint_rows = sorted(
+        ((h, decisions.get(h.id)) for h in all_stored),
+        key=lambda row: (row[1] is not None, LEVEL_ORDER[row[0].level]),
+    )
+    blocking, warnings = [], []
+    if t.id and t.stage == DURCHGEFUEHRT:
+        blocking = [p.text for p in lists.pending_entries(t)] + [
+            f.text for f in hints.open_blocking(session, t)
+        ]
+        warnings = workflow.open_warnings(session, t)
+    history = workflow.history(session, course) if not new else []
+    return {
+        "course": course,
+        "t": t,
+        "new": new,
+        "termine": termine,
+        "title": workflow.title_of_course(course) if not new else "Neuer Kurs",
+        "steps": STEPS,
+        "next_action": NEXT_ACTION.get(t.stage),
+        "editable": workflow.editable(t) if not new else workflow.EDITABLE[GEPLANT],
+        # Whether the form has anything to save (Abgeschlossen: only "Abgerechnet", saved apart).
+        "form_on": new or t.stage in workflow.OPEN_STAGES,
+        "locked_course": workflow.course_locked(course) if not new else False,
+        "pickers": _pickers(session, course),
+        "pickable": _pickable(session, t),
+        "class_kind": workflow.class_kind(course),
+        "class_kinds": workflow.CLASS_KINDS,
+        "at_school": workflow.AT_SCHOOL,
+        "age_bands": workflow.AGE_BANDS,
+        "school_places": {
+            p.id: p.is_school for p in session.scalars(select(Place).where(Place.is_school.is_not(None)))
+        },
+        "participant_fields": workflow.PARTICIPANT_FIELDS,
+        "asks_municipalities": workflow.asks_municipalities(t),
+        "municipalities": _municipalities(session),
+        "hints_by_termin": stored,
+        "hint_rows": hint_rows,
+        "rules": hints.RULES,
+        "checks": workflow.what_is_missing(t, all_stored, accepted) if t.id else [],
+        "blocking": blocking,
+        "warnings": warnings,
+        "history": history,
+        "labels": workflow.LABELS,
+        "badge": hints.BADGE,
+        "today": today(),
+        "timezone": TIMEZONE,
+        "errors": errors or [],
+        "message": request.query_params.get("hinweis"),
+    }
+
+
+def _course_page(request, session, course, t, *, new=False, errors=None, status_code=200, extra=None):
+    context = course_context(request, session, course, t, new=new, errors=errors) | (extra or {})
+    return page(request, "planung_course.html", context, status_code=status_code)
+
+
+def _new_objects(day: dt.date | None = None) -> tuple[Course, Appointment]:
+    course = Course(target_group="Unbekannt")
+    t = Appointment(course=course, stage=GEPLANT, number=1, date=day, billed=False, source="app")
+    return course, t
+
+
+@router.get("/planung/neu", response_class=HTMLResponse)
+def new_course(request: Request):
+    with get_sessionmaker()() as session:
+        course, t = _new_objects(_date(request.query_params.get("date")))
+        return _course_page(request, session, course, t, new=True)
+
+
+@router.post("/planung/neu", response_class=HTMLResponse)
+async def create_course(request: Request):
+    form = await _form(request)
+    with get_sessionmaker()() as session:
+        try:
+            t = workflow.create(session, form, _who(request))
+        except FormError as error:
+            session.rollback()
+            course, t = _new_objects()
+            with session.no_autoflush:
+                workflow._apply_course(session, course, form, [])
+                workflow._apply_appointment(session, t, form, workflow.EDITABLE[GEPLANT], [])
+                response = _course_page(
+                    request, session, course, t, new=True, errors=error.messages, status_code=400
+                )
+            session.rollback()
+            return response
+        session.commit()
+        return RedirectResponse(f"/planung/{t.course_id}?hinweis={quote('Kurs angelegt.')}", status_code=303)
+
+
+@router.get("/planung/termin/{appointment_id:int}")
+def show_appointment(appointment_id: int):
+    with get_sessionmaker()() as session:
+        t = session.get(Appointment, appointment_id)
+        if t is None:
+            raise HTTPException(404, "Termin nicht gefunden")
+        return RedirectResponse(f"/planung/{t.course_id}?termin={t.id}", status_code=303)
+
+
 @router.get("/planung/{course_id:int}", response_class=HTMLResponse)
 def show_course(course_id: int, request: Request):
-    with get_planning_sessionmaker()() as session:
-        vocabulary.ensure_people(session)
-        course = _get(session, course_id)
-        _refresh(session, request)
-        return _course_page(request, session, course)
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, _int(request.query_params.get("termin")))
+        return _course_page(request, session, course, t)
+
+
+def _back(t: Appointment, message: str) -> RedirectResponse:
+    return RedirectResponse(f"/planung/{t.course_id}?termin={t.id}&hinweis={quote(message)}", status_code=303)
+
+
+def _refused(request, session, course_id: int, termin_id: int | None, error: FormError, form=None):
+    """The course page again with the error; with `form`, the entered values stay in the fields."""
+    session.rollback()
+    course = _get_course(session, course_id)
+    t = _selected(course, termin_id)
+    with session.no_autoflush:
+        if form is not None and (allowed := workflow.editable(t)):
+            if workflow.COURSE in allowed:
+                workflow._apply_course(session, course, form, [])
+            workflow._apply_appointment(session, t, form, allowed, [])
+        response = _course_page(request, session, course, t, errors=error.messages, status_code=400)
+    session.rollback()
+    return response
+
+
+THEN = {
+    "confirm": "Bestätigt.",
+    "done": "Als durchgeführt markiert.",
+    "final": "Final bestätigt: zählt jetzt in den Kennzahlen.",
+}
 
 
 @router.post("/planung/{course_id:int}", response_class=HTMLResponse)
 async def save_course(course_id: int, request: Request):
-    login = current_login(request)
+    """Save the form; then the next step if `dann` asks for one (the stage bar's main button)."""
     form = await _form(request)
-    with get_planning_sessionmaker()() as session:
-        course = _get(session, course_id)
-        before = service.snapshot(course)
+    termin_id = _int(workflow.one(form, "termin"))
+    then = workflow.one(form, "dann")
+    by = _who(request)
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
         try:
-            service.apply_form(course, form, course.stage)
-        except service.FormError as error:
-            response = _course_page(request, session, course, error.messages, 400)
-            session.rollback()
-            return response
-        service.record_changes(session, course, before, login.user)
+            if t.stage not in (ABGESCHLOSSEN, ABGESAGT):
+                workflow.save(session, t, form, by)
+            if then == "confirm":
+                workflow.confirm(
+                    session, t, workflow.parse_date(workflow.one(form, "chosen"), "Datum", []), by
+                )
+            elif then == "done":
+                workflow.mark_done(session, t, by)
+            elif then == "final":
+                workflow.finalize(session, t, by, "checked" in form, today())
+            elif then:
+                raise HTTPException(400, "Unbekannte Aktion")
+        except FormError as error:
+            return _refused(request, session, course_id, termin_id, error, form)
         session.commit()
-        return RedirectResponse(f"/planung/{course.id}?hinweis={quote('Gespeichert.')}", status_code=303)
-
-
-def _calendar_entry(session, request, course: Course, user: str) -> str:
-    if course.stage not in (GEPLANT, BESTAETIGT):
-        raise service.FormError(["Nur geplante und bestätigte Kurse kommen in den Kalender."])
-    course.calendar_uid = course.calendar_uid or f"planung-{course.id}-{secrets.token_hex(4)}"
-    event = cal.event_for(course, _names(session), _link(request)(course))
-    if event is None:
-        raise service.FormError(["Für den Kalender braucht es Datum, Beginn und Ende."])
-    calendar = cal.get_calendar(session)
-    existing = calendar.get(course.calendar_uid)
-    calendar.put(event)
-    course.calendar_state = CAL_OK
-    service.log(
-        session,
-        course.id,
-        user,
-        "Kalender aktualisiert" if existing else "in Kalender eingetragen",
-        None,
-        event.summary,
-    )
-    return "Kalendereintrag aktualisiert." if existing else "In den Kalender eingetragen."
+        return _back(t, THEN.get(then, "Gespeichert."))
 
 
 @router.post("/planung/{course_id:int}/aktion", response_class=HTMLResponse)
 async def course_action(course_id: int, request: Request):
-    login = current_login(request)
     form = await _form(request)
-    action = service._one(form, "action")
-    with get_planning_sessionmaker()() as session:
-        course = _get(session, course_id)
+    action = workflow.one(form, "action")
+    termin_id = _int(workflow.one(form, "termin"))
+    by = _who(request)
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
         message = "Erledigt."
         try:
-            if action == "confirm":
-                chosen = service._date(service._one(form, "chosen"), "Datum", [])
-                service.confirm(session, course, chosen or course.date, login.user)
-                message = "Bestätigt."
-            elif action == "back":
-                service.back_to_planned(session, course, login.user)
-            elif action == "done":
-                service.mark_done(session, course, login.user)
-                message = "Als durchgeführt markiert."
+            if action == "back":
+                workflow.back_to_planned(session, t, by)
+                message = "Zurück auf „Geplant“."
             elif action == "undone":
-                service.back_to_confirmed(session, course, login.user, today())
+                workflow.back_to_confirmed(session, t, by, today())
+                message = "Zurück auf „Bestätigt“."
             elif action == "cancel":
-                service.cancel(session, course, (form.get("reason") or [""])[0], login.user)
+                workflow.cancel(session, t, workflow.one(form, "reason"), by)
                 message = "Abgesagt."
             elif action == "delete":
-                if "really" not in form:
-                    raise service.FormError(["Bitte das Löschen bestätigen."])
-                service.delete(session, course, login.user)
+                workflow.delete(session, t, by, "really" in form)
                 session.commit()
-                return RedirectResponse(f"/planung?hinweis={quote('Kurs gelöscht.')}", status_code=303)
-            elif action == "final":
-                service.finalize(
-                    session,
-                    course,
-                    _instance(session),
-                    vocabulary.known(_instance(session)),
-                    login.user,
-                    "checked" in form,
-                )
-                message = "Final bestätigt und (im Prototyp) in die Datenbank übernommen."
-            elif action == "calendar":
-                message = _calendar_entry(session, request, course, login.user)
-                calendar_changed()
+                return RedirectResponse(f"/planung?hinweis={quote('Termin gelöscht.')}", status_code=303)
             elif action == "billed":
-                before = service.snapshot(course)
-                course.billed = "billed" in form
-                service.record_changes(session, course, before, login.user)
+                workflow.set_billed(session, t, "billed" in form, by)
                 message = "Gespeichert."
             else:
                 raise HTTPException(400, "Unbekannte Aktion")
-        except (service.FormError, cal.CalendarError) as error:
-            session.rollback()
-            course = _get(session, course_id)
-            messages = error.messages if isinstance(error, service.FormError) else [str(error)]
-            return _course_page(request, session, course, messages, 400)
+        except FormError as error:
+            return _refused(request, session, course_id, termin_id, error)
         session.commit()
-        return RedirectResponse(f"/planung/{course.id}?hinweis={quote(message)}", status_code=303)
+        return _back(t, message)
+
+
+@router.post("/planung/{course_id:int}/akzeptieren", response_class=HTMLResponse)
+async def accept_hint(course_id: int, request: Request):
+    """Accept one warning of a Termin with a reason (team members too; Alex, 2026-11-13)."""
+    form = await _form(request)
+    termin_id = _int(workflow.one(form, "termin"))
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
+        try:
+            key = (form.get("schluessel") or [""])[0] or None
+            reason = workflow.one(form, "grund")
+            hints.accept(session, t.id, workflow.one(form, "regel"), reason, _who(request), key=key)
+        except hints.HintError as error:
+            return _refused(request, session, course_id, termin_id, FormError(str(error)))
+        session.commit()
+        return _back(t, "Hinweis akzeptiert.")
 
 
 @router.get("/api/planung/belegt")
 def busy(request: Request) -> JSONResponse:
-    """Who is already booked at that time: {person key: course}."""
+    """Who is already booked at that time: {person ID: Termin}."""
     params = request.query_params
-    try:
-        day = dt.date.fromisoformat(params.get("date", ""))
-    except ValueError:
+    day = _date(params.get("date"))
+    if day is None:
         return JSONResponse({})
 
     def time(name):
         try:
-            return dt.time.fromisoformat(params.get(name, ""))
+            return dt.time.fromisoformat(params.get(name) or "")
         except ValueError:
             return None
 
-    exclude = int(params["exclude"]) if params.get("exclude", "").isdigit() else None
-    with get_planning_sessionmaker()() as session:
-        courses = [
-            c
-            for c in session.scalars(select(Course).where(Course.date == day))
-            if c.stage in (GEPLANT, BESTAETIGT, DURCHGEFUEHRT)
-        ]
-        return JSONResponse(busy_people(day, time("start"), time("end"), courses, exclude))
-
-
-# --- review page --------------------------------------------------------------------------
-
-
-def review_context(request: Request) -> dict:
-    """The planning sections of the review page (admins)."""
-    with get_planning_sessionmaker()() as session:
-        vocabulary.ensure_people(session)
-        _refresh(session, request)
-        courses = list(session.scalars(select(Course)))
-        flags = _flags_by_course(session, courses)
-        calendar = cal.get_calendar(session)
-        return {
-            "high": [
-                (c, flags[c.id])
-                for c in sorted(courses, key=lambda c: c.date or dt.date.max)
-                if service.top_severity(flags[c.id]) == "high"
-            ],
-            "waiting": sorted(
-                (c for c in courses if c.stage == DURCHGEFUEHRT), key=lambda c: c.date or dt.date.max
-            ),
-            "orphans": list(
-                session.scalars(
-                    select(CalendarOrphan)
-                    .where(CalendarOrphan.ignored_by.is_(None))
-                    .order_by(CalendarOrphan.start)
-                )
-            ),
-            "ignored": list(
-                session.scalars(
-                    select(CalendarOrphan)
-                    .where(CalendarOrphan.ignored_by.is_not(None))
-                    .order_by(CalendarOrphan.start)
-                )
-            ),
-            "demo_events": list(session.scalars(select(DemoCalendarEvent).order_by(DemoCalendarEvent.start)))
-            if calendar.demo
-            else None,
-            "calendar_name": calendar.name,
-            "people": vocabulary.people(session),
-            "finals": list(session.scalars(select(FinalSession).order_by(FinalSession.confirmed_at.desc()))),
-            "names": _names(session),
-            "stages": STAGES,
-            "severity_labels": SEVERITY_LABELS,
-            "message": request.query_params.get("hinweis"),
-        }
-
-
-def _back(message: str) -> RedirectResponse:
-    return RedirectResponse(f"/review?hinweis={quote(message)}", status_code=303)
-
-
-@router.post("/review/kalender/pruefen")
-def check_calendar(request: Request):
-    with get_planning_sessionmaker()() as session:
-        try:
-            courses = list(session.scalars(select(Course)))
-            cal.check(session, cal.get_calendar(session), courses, _names(session), today(), _link(request))
-            calendar_changed()
-        except cal.CalendarError as error:
-            return _back(str(error))
-        session.commit()
-    return _back("Kalender geprüft.")
-
-
-@router.post("/review/kalender/ignorieren")
-async def ignore_event(request: Request):
-    login = current_login(request)
-    uid = service._one(await _form(request), "uid")
-    with get_planning_sessionmaker()() as session:
-        orphan = session.get(CalendarOrphan, uid)
-        if orphan:
-            orphan.ignored_by = login.user
-            session.commit()
-    return _back("Termin wird nicht mehr gemeldet.")
-
-
-@router.post("/review/kalender/kurs")
-async def course_from_event(request: Request):
-    login = current_login(request)
-    uid = service._one(await _form(request), "uid")
-    with get_planning_sessionmaker()() as session:
-        orphan = session.get(CalendarOrphan, uid)
-        if orphan is None:
-            raise HTTPException(404)
-        title, _, place = orphan.summary.partition(" · ")
-        course = Course(
-            stage=GEPLANT,
-            date=orphan.start.date(),
-            start_time=orphan.start.time(),
-            end_time=orphan.end.time(),
-            course_name=title or None,
-            location=orphan.location or place or None,
-            calendar_uid=uid,
-            calendar_state=CAL_OK,
-            created_by=login.user,
-            billed=False,
-        )
-        session.add(course)
-        session.flush()
-        service.log(session, course.id, login.user, "aus Kalendertermin angelegt", None, orphan.summary)
-        session.delete(orphan)
-        session.commit()
-        return RedirectResponse(
-            f"/planung/{course.id}?hinweis={quote('Aus dem Kalendertermin angelegt; bitte ergänzen.')}",
-            status_code=303,
-        )
-
-
-@router.post("/review/demo/kalender/loeschen")
-async def demo_delete_event(request: Request):
-    uid = service._one(await _form(request), "uid")
-    with get_planning_sessionmaker()() as session:
-        calendar = cal.get_calendar(session)
-        if not calendar.demo:
-            raise HTTPException(404)
-        calendar.delete(uid)
-        session.commit()
-    return _back("Termin im Demo-Kalender gelöscht.")
-
-
-@router.post("/review/demo/zuruecksetzen")
-def demo_reset(request: Request):
-    with get_planning_sessionmaker()() as session:
-        vocabulary.ensure_people(session)
-        demo.reset(session, get_instance(), today(), _link(request))
-    calendar_changed()
-    return _back("Demo-Daten neu angelegt.")
-
-
-@router.post("/review/personen")
-async def save_people(request: Request):
-    form = await _form(request)
-    with get_planning_sessionmaker()() as session:
-        active = set(form.get("active", []))
-        for person in vocabulary.people(session):
-            person.active = person.key in active
-            login = clean(form.get(f"login_{person.key}", [""])[0])
-            person.login = login or None
-        new_name = clean(form.get("new_name", [""])[0])
-        if new_name:
-            key = "p-" + secrets.token_hex(4)
-            session.add(Person(key=key, name=new_name, active=True))
-        session.commit()
-    return _back("Personen gespeichert.")
-
-
-def clean(value: str) -> str:
-    return " ".join(value.split())
-
-
-# --- places -----------------------------------------------------------------------------------
-
-
-@router.get("/planung/orte", response_class=HTMLResponse)
-def place_list(request: Request):
-    instance = get_instance()
-    with get_planning_sessionmaker()() as session:
-        entered = places.places(session)
-        merged = places.merged(instance, session)
-        wanted = clean(request.query_params.get("ort", ""))
-        return page(
-            request,
-            "planung_orte.html",
-            {
-                "missing": places.missing(session, merged),
-                "entered": list(entered.values()),
-                "edit": entered.get(wanted) or (Place(name=wanted) if wanted else None),
-                "seeds": sorted(instance.location_addresses.items(), key=lambda kv: kv[0].casefold()),
-                "school_types": instance.school_types,
-                "seed_types": instance.location_school_types,
-                "seed_school": instance.locations,
-                "message": request.query_params.get("hinweis"),
-            },
-        )
-
-
-@router.post("/planung/orte")
-async def save_place(request: Request):
-    login = current_login(request)
-    form = await _form(request)
-    name = clean(form.get("name", [""])[0])
-    if not name:
-        raise HTTPException(400, "Name fehlt")
-    if name in get_instance().location_addresses:
-        raise HTTPException(400, "Dieser Ort steht schon in der Ortsliste")
-    school = form.get("school", [""])[0]
-    with get_planning_sessionmaker()() as session:
-        place = session.get(Place, name) or Place(name=name)
-        before = place.address or "–"
-        place.street = clean(form.get("street", [""])[0]) or None
-        place.zip_code = clean(form.get("zip_code", [""])[0]) or None
-        place.city = clean(form.get("city", [""])[0]) or None
-        place.school = {"ja": True, "nein": False}.get(school)
-        place.school_type = (form.get("school_type", [""])[0] or None) if place.school else None
-        place.note = clean(form.get("note", [""])[0]) or None
-        place.updated_by = login.user
-        session.add(place)
-        session.add(
-            History(
-                course_id=0,
-                user=login.user,
-                action=f"Ort „{name}“",
-                old=before,
-                new=place.address or "unvollständig",
-            )
-        )
-        session.commit()
-        message = (
-            "Ort gespeichert." if place.complete else "Gespeichert, aber die Adresse ist noch unvollständig."
-        )
-    return RedirectResponse(f"/planung/orte?hinweis={quote(message)}", status_code=303)
+    with get_sessionmaker()() as session:
+        found = workflow.busy_people(session, day, time("start"), time("end"), _int(params.get("exclude")))
+    return JSONResponse({str(k): v for k, v in found.items()})

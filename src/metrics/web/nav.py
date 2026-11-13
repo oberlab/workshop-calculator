@@ -83,7 +83,6 @@ ENTRIES: list[Entry | str] = [
             Count("pruefen_open", "neutral", "Vorschläge und wichtige Hinweise"),
         ),
     ),
-    Entry("Review", "/review", VERWALTUNG, role=ADMIN, counts=(Count("review", "neutral", "offene Punkte"),)),
     Entry("Betrieb", "/betrieb", VERWALTUNG, role=ADMIN, planned="WM-103"),
 ]
 

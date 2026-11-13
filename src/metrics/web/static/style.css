@@ -865,3 +865,54 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
   .queue > li { grid-template-columns: minmax(0, 1fr); }
   .queue > li > :not(.queue-body) { justify-self: start; }
 }
+
+/* ---- Planning: course list and course page (WM-110) ----------------------------------------- */
+
+.week + .week { margin-top: 22px; }
+.week-title { font-size: 1rem; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.course-cards { display: none; }
+.team-names { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+@media (max-width: 640px) {
+  .course-table { display: none; }
+  .course-cards { display: grid; }
+}
+
+.steps { list-style: none; margin: 10px 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.steps li {
+  padding: 4px 12px 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.steps li.is-done { color: var(--success-ink); background: var(--success-tint); border-color: transparent; }
+.steps li.is-done::before { content: "✓ "; }
+.steps li.is-current { color: var(--on-fill); background: var(--accent-strong); border-color: var(--accent-strong); font-weight: 700; }
+.steps li.is-cancelled { color: var(--critical-ink); text-decoration: line-through; font-weight: 700; }
+
+.course-main { display: grid; gap: 16px; min-width: 0; }
+.pickers { align-items: start; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 8px 16px; margin: 0 0 12px; }
+.facts dt { font-size: 0.85rem; font-weight: 600; }
+.facts dd { margin: 2px 0 0; }
+.class-age legend { padding: 0; }
+.class-age legend h2 { margin: 0; }
+.municipalities { margin-top: 12px; }
+.municipalities h3 { margin: 0; }
+table.mun input[type="number"] { width: 90px; }
+.table tr.is-selected td { background: var(--accent-tint); }
+.choose-date { border: 0; padding: 0; margin: 0 0 8px; display: grid; gap: 4px; }
+
+.check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 0.9rem; }
+.check-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; }
+.check-box { width: 16px; height: 16px; margin-top: 2px; border-radius: 4px; border: 2px solid var(--line-control); }
+.check-list .is-done { color: var(--text-muted); }
+.check-list .is-done .check-box { background: var(--success); border-color: var(--success); }
+.check-list .is-high .check-box { border-color: var(--critical); background: var(--critical-tint, transparent); }
+.check-list .is-medium .check-box { border-color: var(--warning); }
+.check-list .is-low .check-box { border-color: var(--accent); }
+@media (max-width: 1100px) {
+  .course-layout { grid-template-columns: minmax(0, 1fr); }
+  .course-side { position: static; }
+}

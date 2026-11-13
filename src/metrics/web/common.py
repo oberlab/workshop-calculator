@@ -16,7 +16,7 @@ from starlette.datastructures import QueryParams
 from metrics import analytics, auth, charts, hints, lists, logins
 from metrics.db import ImportRun, Proposal, get_sessionmaker
 from metrics.instance import get_instance
-from metrics.planning import overview
+from metrics.planning import workflow
 from metrics.web import nav, security
 
 HERE = Path(__file__).parent
@@ -33,6 +33,19 @@ def avatar_tone(name: str) -> int:
 
 
 templates.env.filters["avatar_tone"] = avatar_tone
+
+STAGE_KEYS = {
+    "Geplant": "geplant",
+    "Bestätigt": "bestaetigt",
+    "Durchgeführt": "durchgefuehrt",
+    "Abgeschlossen": "abgeschlossen",
+    "Abgesagt": "abgesagt",
+}
+# The `stage_pill` macro's key for a stage, e.g. "Bestätigt" -> "bestaetigt".
+templates.env.filters["stage_key"] = lambda stage: STAGE_KEYS.get(stage, "geplant")
+WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+# A date as "Di 17.11.2026".
+templates.env.filters["day"] = lambda d: f"{WEEKDAYS[d.weekday()]} {d:%d.%m.%Y}" if d else "–"
 
 
 def today() -> date:
@@ -89,7 +102,7 @@ def page_context(filters: analytics.Filters, **extra) -> dict:
 def page(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
     """A page with the sidebar: login state and the links this person may open."""
     login = current_login(request)
-    counts = overview.sidebar_counts(login, today()) if login else {}
+    counts: dict[str, int] = {}
     projects: list = []
     if login:
         reference = list_state()
@@ -122,6 +135,7 @@ def list_state() -> ListState:
             open_proposals = session.scalar(
                 select(func.count()).select_from(Proposal).where(Proposal.decision.is_(None))
             )
+            counts |= workflow.sidebar_counts(session)
             counts |= {
                 "hints_high": found["hints_high"],
                 "pruefen_open": (open_proposals or 0) + found["hints_medium"],

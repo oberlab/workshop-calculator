@@ -12,8 +12,6 @@ from metrics import auth, oidc
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
 from metrics.instance import Instance, get_instance, load_instance
-from metrics.planning import vocabulary
-from metrics.planning.models import get_planning_sessionmaker
 from metrics.web import login, public
 
 # A runaway test once allocated over 50 GiB and the kernel killed it after the machine ran out of
@@ -48,10 +46,10 @@ _ENVIRONMENT = (
     "OIDC_GROUPS_CLAIM",
     "PUBLIC_URL",
     "APP_VERSION",
-    "PLANNING_DATABASE_URL",
     "CALDAV_URL",
     "CALDAV_USERNAME",
     "CALDAV_PASSWORD",
+    "CALDAV_ORGANIZER",
     "BACKUP_DIR",
 )
 
@@ -61,7 +59,6 @@ _CACHED = (
     get_settings,
     get_instance,
     get_sessionmaker,
-    get_planning_sessionmaker,
     auth._secret,
     oidc.discovery,
 )
@@ -70,7 +67,6 @@ _CACHED = (
 def _clear_caches() -> None:
     for cached in _CACHED:
         cached.cache_clear()
-    vocabulary.clear_cache()
     # In-process rate limits and the public data cache must not carry over between tests.
     login.LOGIN_LIMIT.reset()
     public.DATA_LIMIT.reset()
@@ -90,8 +86,6 @@ def public_example_only(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("INSTANCE_DIR", str(EXAMPLE_INSTANCE))
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://test:test@127.0.0.1:9/none")
-    # The planning prototype gets a fresh in-memory database per test.
-    monkeypatch.setenv("PLANNING_DATABASE_URL", "sqlite://")
     _clear_caches()
     yield
     _clear_caches()

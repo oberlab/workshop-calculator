@@ -231,8 +231,6 @@ class Instance:
     school_types: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_SCHOOL_TYPES))
     map: MapConfig | None = None
     projects: list[Project] = field(default_factory=list)
-    # Planning: Slack users who are never offered as team members (by Slack user ID).
-    planning_exclude_people: frozenset[str] = frozenset()
     # Transfer from Slack: a project's own List, and List status -> stage beyond the defaults.
     slack_project_list: ProjectList | None = None
     slack_stages: dict[str, str] = field(default_factory=dict)
@@ -370,7 +368,6 @@ def load_instance(instance_dir: Path) -> Instance:
         school_types=school_type_labels,
         map=load_map(instance_dir, config),
         projects=load_projects(config),
-        planning_exclude_people=frozenset(config.get("planning", {}).get("exclude_people", [])),
         slack_project_list=load_project_list(slack),
         slack_stages={str(k): str(v) for k, v in (slack.get("stages") or {}).items()},
     )

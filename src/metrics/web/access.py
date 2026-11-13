@@ -34,14 +34,8 @@ PUBLIC_ROUTES = {
 }
 
 ADMIN_ROUTES = {
-    "GET /review",
-    "POST /review/kalender/pruefen",
-    "POST /review/kalender/ignorieren",
-    "POST /review/kalender/kurs",
-    "POST /review/demo/kalender/loeschen",
-    "POST /review/demo/zuruecksetzen",
-    "POST /review/personen",
-    "POST /review/abmelden",
+    # Who is logged in, on the Personen page (moved from the review page, WM-110).
+    "POST /stammdaten/personen/abmelden",
     # Stammdaten: the admin decisions on list entries (WM-101).
     "POST /stammdaten/{kind}/{entry_id:int}/bestaetigen",
     "POST /stammdaten/{kind}/{entry_id:int}/zusammenfuehren",
@@ -63,15 +57,17 @@ TEAM_ROUTES = {
     "GET /api/analyse/municipalities",
     "GET /api/instructor-ranking",
     "GET /instructors/{key}/image",
+    # Planning (WM-110): course list, course page, actions; what a stage allows is checked in
+    # `metrics.planning.workflow`. Team members may accept warnings on the course page.
     "GET /planung",
     "GET /planung/neu",
     "POST /planung/neu",
     "GET /planung/{course_id:int}",
     "POST /planung/{course_id:int}",
     "POST /planung/{course_id:int}/aktion",
+    "POST /planung/{course_id:int}/akzeptieren",
+    "GET /planung/termin/{appointment_id:int}",
     "GET /api/planung/belegt",
-    "GET /planung/orte",
-    "POST /planung/orte",
     # Stammdaten: read, propose, edit (proposed entries; confirmed ones only admins, checked in
     # `metrics.lists.update`), and the picker. `{kind}` never serves `personen` here (404): the
     # Personen page has its own admin routes above, which match first.

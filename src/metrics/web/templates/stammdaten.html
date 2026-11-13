@@ -134,4 +134,5 @@
   </section>
   {% endif %}
 </div>
+{% if admin and kind.slug == "personen" %}{% include "_angemeldet.html" %}{% endif %}
 {% endblock %}
