@@ -1,10 +1,10 @@
 {# Shared bits of the planning pages. #}
-{% macro badge(severity, labels) %}
-{% if severity %}<span class="flag flag-{{ severity }}" title="Hinweis: {{ labels[severity] }}">{{ labels[severity] }}</span>{% endif %}
-{% endmacro %}
+{% import "_ui.html" as ui %}
+
+{% macro badge(severity, labels) %}{% if severity %}{{ ui.hint_badge(severity) }}{% endif %}{% endmacro %}
 
 {% macro prototype_note(calendar_name) %}
-<p class="prototype-note"><strong>Prototyp.</strong> Alles hier landet in einer eigenen Demo-Datenbank, nicht in den Kennzahlen und nicht in Slack. Kalender: {{ calendar_name }}.</p>
+<p class="alert alert-warning" role="note"><span><strong>Prototyp.</strong> Alles hier landet in einer eigenen Demo-Datenbank, nicht in den Kennzahlen und nicht in Slack. Kalender: {{ calendar_name }}.</span></p>
 {% endmacro %}
 
 {% macro datalist(id, values) %}

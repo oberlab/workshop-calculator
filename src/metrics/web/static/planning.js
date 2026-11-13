@@ -37,7 +37,7 @@ const addAlternative = form.querySelector("[data-add-alternative]");
 addAlternative?.addEventListener("click", () => {
   const row = document.createElement("span");
   row.className = "alt-row";
-  row.innerHTML = '<input type="date" name="alt_date"> <button type="button" class="link" data-remove>entfernen</button>';
+  row.innerHTML = '<input type="date" name="alt_date" aria-label="Alternativdatum"> <button type="button" class="link-button" data-remove>entfernen</button>';
   addAlternative.before(row);
   row.querySelector("input").focus();
 });
@@ -46,10 +46,10 @@ const addMunicipality = form.querySelector("[data-add-municipality]");
 addMunicipality?.addEventListener("click", () => {
   const row = document.createElement("tr");
   row.innerHTML =
-    '<td><input name="mun_name" list="dl-municipality"></td>' +
-    '<td><input type="number" min="0" name="mun_female" value="0"></td>' +
-    '<td><input type="number" min="0" name="mun_male" value="0"></td>' +
-    '<td><button type="button" class="link" data-remove>entfernen</button></td>';
+    '<td><input name="mun_name" list="dl-municipality" aria-label="Gemeinde"></td>' +
+    '<td><input type="number" min="0" name="mun_female" value="0" aria-label="weiblich"></td>' +
+    '<td><input type="number" min="0" name="mun_male" value="0" aria-label="männlich"></td>' +
+    '<td><button type="button" class="link-button" data-remove>entfernen</button></td>';
   form.querySelector("[data-mun-rows]").append(row);
   row.querySelector("input").focus();
 });

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_planung.html" import badge, prototype_note, datalist, day, people_list %}
+{% import "_ui.html" as ui %}
 
 {% block title %}Kurse planen{% endblock %}
-{% block heading %}Kurse planen <span class="internal">Prototyp</span>{% endblock %}
+{% block heading %}Kurse planen <span class="tag">Prototyp</span>{% endblock %}
+{% block actions %}{{ ui.button("+ Neuer Kurs", href="/planung/neu") }}{% endblock %}
 {% block subheading %}{{ prototype_note(calendar_name) }}{% endblock %}
 
 {% block content %}
-{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
-
 <form class="panel planning-filters" method="get" action="/planung">
   <input type="hidden" name="stage" value="{{ stage }}">
   <label class="filter-person">Person
@@ -27,35 +27,35 @@
     <label class="check"><input type="checkbox" name="unbilled" value="1" {% if params.unbilled %}checked{% endif %}> nicht abgerechnet</label>
   </div>
   <div class="filter-actions">
-    <button type="submit" class="button secondary">Filtern</button>
+    <button type="submit" class="btn btn-secondary">Filtern</button>
     <a class="reset" href="/planung?stage={{ stage }}">Zurücksetzen</a>
   </div>
   {{ datalist("dl-context", suggest.context) }}{{ datalist("dl-location", suggest.location) }}{{ datalist("dl-category", suggest.category) }}
 </form>
 
-<div class="panel tabbed">
-  <div class="tabs planning-tabs">
+<div class="panel panel-flush">
+  <nav class="tabs" aria-label="Phasen">
     {% for key, label in stages.items() %}
-    <a role="tab" href="/planung?stage={{ key }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}" aria-selected="{{ 'true' if key == stage else 'false' }}">
-      {{ label }} <span class="count">{{ counts[key] }}</span>{% if high[key] %} <span class="flag flag-high" title="mit kritischem Hinweis">{{ high[key] }}</span>{% endif %}
+    <a class="tab" href="/planung?stage={{ key }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}"{% if key == stage %} aria-current="page"{% endif %}>
+      {{ label }} {{ ui.count(counts[key]) }}{% if high[key] %} {{ ui.count(high[key], "critical", "mit kritischem Hinweis") }}{% endif %}
     </a>
     {% endfor %}
-    <a class="button new-course" href="/planung/neu">+ Neuer Kurs</a>
-  </div>
+  </nav>
 
-  <div class="view">
+  <div class="tab-panel">
     {% if rows %}
     <div class="table-wrap">
-    <table class="courses">
+    <table class="table">
+      <caption class="visually-hidden">Kurse in „{{ stages[stage] }}“</caption>
       <thead>
-        <tr><th></th><th>Datum</th><th>Zeit</th><th>Kurs</th><th>Kontext</th><th>Ort</th><th>Klasse/Alter</th><th>Kursleitung</th><th>Unterstützung</th><th>Kalender</th><th>Abgerechnet</th></tr>
+        <tr><th scope="col"><span class="visually-hidden">Hinweis</span></th><th>Datum</th><th>Zeit</th><th>Kurs</th><th>Kontext</th><th>Ort</th><th>Klasse/Alter</th><th>Kursleitung</th><th>Unterstützung</th><th>Kalender</th><th>Abgerechnet</th></tr>
       </thead>
       <tbody>
         {% for c in rows %}
         {% set f = flags[c.id] %}
         <tr>
           <td>{{ badge(f[0].severity if f else None, severity_labels) }}</td>
-          <td class="nowrap">{{ day(c.date) }}{% if c.alternatives %}<div class="muted">+ {{ c.alternatives|length }} Alternative{% if c.alternatives|length > 1 %}n{% endif %}</div>{% endif %}</td>
+          <td class="nowrap">{{ day(c.date) }}{% if c.alternatives %}<div class="muted small">+ {{ c.alternatives|length }} Alternative{% if c.alternatives|length > 1 %}n{% endif %}</div>{% endif %}</td>
           <td class="nowrap">{% if c.start_time %}{{ c.start_time.strftime("%H:%M") }}–{{ c.end_time.strftime("%H:%M") if c.end_time else "?" }}{% else %}–{% endif %}</td>
           <td><a href="/planung/{{ c.id }}">{{ c.title }}</a>{% if f %}<div class="muted flag-text">{{ f[0].text }}{% if f|length > 1 %} (+{{ f|length - 1 }}){% endif %}</div>{% endif %}</td>
           <td>{{ c.context or "–" }}</td>
@@ -65,10 +65,10 @@
           <td>{{ people_list(c, "support", names) }}</td>
           <td class="nowrap">
             {% if c.stage in ("geplant", "bestaetigt") %}
-              {% if c.calendar_state == "ok" %}<span class="cal cal-ok">✓ eingetragen</span>
-              {% elif c.calendar_state == "outdated" %}<span class="cal cal-warn">weicht ab</span>
-              {% elif c.calendar_state == "missing" %}<span class="cal cal-warn">fehlt</span>
-              {% else %}<span class="cal">nicht eingetragen</span>{% endif %}
+              {% if c.calendar_state == "ok" %}<span class="cal-state cal-ok">✓ eingetragen</span>
+              {% elif c.calendar_state == "outdated" %}<span class="cal-state cal-warn">weicht ab</span>
+              {% elif c.calendar_state == "missing" %}<span class="cal-state cal-warn">fehlt</span>
+              {% else %}<span class="cal-state">nicht eingetragen</span>{% endif %}
             {% else %}–{% endif %}
           </td>
           <td>{{ "ja" if c.billed else "nein" }}</td>
@@ -78,7 +78,7 @@
     </table>
     </div>
     {% else %}
-    <p class="empty">Keine Kurse in „{{ stages[stage] }}“ für diese Auswahl.</p>
+    {% call ui.empty_state("Keine Kurse in „" ~ stages[stage] ~ "“ für diese Auswahl.", "Andere Phase wählen oder die Filter zurücksetzen.") %}{{ ui.button("+ Neuer Kurs", href="/planung/neu", kind="secondary") }}{% endcall %}
     {% endif %}
   </div>
 </div>

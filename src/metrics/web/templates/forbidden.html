@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}Kein Zugriff{% endblock %}
 {% block heading %}Kein Zugriff{% endblock %}
 
 {% block content %}
-<div class="panel placeholder">
-  <h2>Kein Zugriff</h2>
-  <p class="hint">Diese Seite ist nur für Admins.</p>
-</div>
+<section class="panel">
+  {% call ui.empty_state("Diese Seite ist nur für Admins.", "Wer sie braucht, bittet einen Admin um die Rolle im Anmeldedienst.") %}
+  {{ ui.button("Zur Übersicht", href="/", kind="secondary") }}
+  {% endcall %}
+</section>
 {% endblock %}

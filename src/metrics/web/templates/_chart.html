@@ -1,6 +1,7 @@
 {# Shared by the overview and the analysis page: time controls, chart, key figures. #}
 {% macro time_controls(filters, bins, presets, reset_label) %}
-<fieldset class="row">
+<fieldset class="filter-row">
+  <legend class="visually-hidden">Zeitraum und Zeitraster</legend>
   <label>Zeitraster
     <select name="bin">
       {% for key, label in bins.items() %}

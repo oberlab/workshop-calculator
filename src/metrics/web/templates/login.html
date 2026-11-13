@@ -5,24 +5,24 @@
 
 {% block content %}
 {% if mode == "password" and configured and allowed %}
-<form method="post" action="/login" class="login">
+<form method="post" action="/login" class="login panel">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label>Teampasswort
+  <label class="field">Teampasswort
     <input type="password" name="password" autocomplete="current-password" required autofocus>
   </label>
-  {% if failed %}<p class="error" role="alert">Das Passwort ist falsch.</p>{% endif %}
-  <button type="submit">Anmelden</button>
+  {% if failed %}<p class="field-error" role="alert">Das Passwort ist falsch.</p>{% endif %}
+  <button type="submit" class="btn">Anmelden</button>
 </form>
 {% elif mode == "oidc" and configured %}
-<div class="login">
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  <a class="button" href="/login">Erneut anmelden</a>
+<div class="login panel">
+  {% if error %}<p class="field-error" role="alert">{{ error }}</p>{% endif %}
+  <a class="btn" href="/login">Erneut anmelden</a>
 </div>
 {% elif mode == "oidc" %}
-<p class="hint">Die Anmeldung über den Anmeldedienst ist nicht vollständig eingerichtet (<code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>). Die Analyse-Seite bleibt gesperrt (siehe README).</p>
+<p class="panel help">Die Anmeldung über den Anmeldedienst ist nicht vollständig eingerichtet (<code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>). Die Analyse-Seite bleibt gesperrt (siehe README).</p>
 {% elif mode == "password" and not allowed %}
-<p class="hint">Die Anmeldung mit dem Teampasswort ist ausgeschaltet. Sie muss ausdrücklich eingeschaltet werden (<code>ALLOW_PASSWORD_LOGIN=true</code>, siehe README); empfohlen ist die Anmeldung über den Anmeldedienst (<code>AUTH_MODE=oidc</code>).</p>
+<p class="panel help">Die Anmeldung mit dem Teampasswort ist ausgeschaltet. Sie muss ausdrücklich eingeschaltet werden (<code>ALLOW_PASSWORD_LOGIN=true</code>, siehe README); empfohlen ist die Anmeldung über den Anmeldedienst (<code>AUTH_MODE=oidc</code>).</p>
 {% else %}
-<p class="hint">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
+<p class="panel help">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
 {% endif %}
 {% endblock %}

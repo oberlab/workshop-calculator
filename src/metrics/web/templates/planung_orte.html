@@ -3,18 +3,18 @@
 {% block title %}Orte{% endblock %}
 
 {% block scripts %}<script src="{{ url_for('static', path='places.js') }}"></script>{% endblock %}
-{% block heading %}Orte <span class="internal">Prototyp</span>{% endblock %}
+{% block heading %}Orte <span class="tag">Prototyp</span>{% endblock %}
 {% block subheading %}<p class="subheading">Jeder Kursort braucht eine Adresse (Straße, PLZ, Ort) und die Angabe, ob er eine Schule ist. Daraus ergeben sich Zielgruppe, Schulart und Gemeinde in den Kennzahlen.</p>{% endblock %}
 
 {% macro place_form(p) %}
 <form method="post" action="/planung/orte" class="place-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="name" value="{{ p.name }}">
-  <div class="grid">
+  <div class="fields">
     <label class="field">Straße und Hausnummer<input name="street" value="{{ p.street or '' }}" required autocomplete="off"></label>
     <label class="field">PLZ<input name="zip_code" value="{{ p.zip_code or '' }}" required inputmode="numeric" maxlength="10"></label>
     <label class="field">Ort<input name="city" value="{{ p.city or '' }}" required></label>
   </div>
-  <div class="grid">
+  <div class="fields">
     <fieldset class="school-choice">
       <legend class="field-label">Schule?</legend>
       <label class="check"><input type="radio" name="school" value="ja" {% if p.school %}checked{% endif %}> ja</label>
@@ -28,12 +28,11 @@
     </label>
     <label class="field">Notiz<input name="note" value="{{ p.note or '' }}"></label>
   </div>
-  <button type="submit" class="button small">Speichern</button>
+  <button type="submit" class="btn btn-sm">Speichern</button>
 </form>
 {% endmacro %}
 
 {% block content %}
-{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
 
 {% if edit %}
 <section class="panel" id="bearbeiten">
@@ -45,20 +44,20 @@
 <section class="panel">
   <h2>Adresse fehlt <span class="count">{{ missing|length }}</span></h2>
   {% if missing %}
-  <p class="hint">Orte aus der Planung, die nicht in der Ortsliste stehen und noch keine vollständige Adresse haben.</p>
-  <ul class="review-list">
+  <p class="help">Orte aus der Planung, die nicht in der Ortsliste stehen und noch keine vollständige Adresse haben.</p>
+  <ul class="link-list">
     {% for name, n in missing %}
     <li><a href="/planung/orte?ort={{ name|urlencode }}#bearbeiten">{{ name }}</a> <span class="muted">in {{ n }} Kurs{% if n > 1 %}en{% endif %}</span></li>
     {% endfor %}
   </ul>
-  {% else %}<p class="hint">Alle Orte haben eine Adresse.</p>{% endif %}
+  {% else %}<p class="help">Alle Orte haben eine Adresse.</p>{% endif %}
 </section>
 
 <section class="panel">
   <h2>In der Planung angelegt <span class="count">{{ entered|length }}</span></h2>
-  <p class="hint">Neue Orte, bis ein Admin sie in die Ortsliste der Instanz übernimmt (<code>seeds/locations.csv</code>).</p>
+  <p class="help">Neue Orte, bis ein Admin sie in die Ortsliste der Instanz übernimmt (<code>seeds/locations.csv</code>).</p>
   {% if entered %}
-  <table class="courses">
+  <div class="table-wrap"><table class="table">
     <thead><tr><th>Name</th><th>Adresse</th><th>Schule</th><th>Schulart</th><th>zuletzt</th><th></th></tr></thead>
     <tbody>
       {% for p in entered %}
@@ -68,19 +67,19 @@
         <td>{{ {True: "ja", False: "nein"}.get(p.school, "–") }}</td>
         <td>{{ school_types.get(p.school_type, "–") if p.school_type else "–" }}</td>
         <td class="muted">{{ p.updated_by }}</td>
-        <td><a href="/planung/orte?ort={{ p.name|urlencode }}#bearbeiten">bearbeiten</a></td>
+        <td><a href="/planung/orte?ort={{ p.name|urlencode }}#bearbeiten">bearbeiten<span class="visually-hidden"> {{ p.name }}</span></a></td>
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% endif %}
 </section>
 
 <section class="panel">
   <details>
     <summary><strong>Ortsliste</strong> <span class="count">{{ seeds|length }}</span></summary>
-    <p class="hint">Bekannte Orte der Instanz (nur lesen). Orte ohne Adresse (z.&nbsp;B. Online) sind so gewollt.</p>
-    <table class="courses">
+    <p class="help">Bekannte Orte der Instanz (nur lesen). Orte ohne Adresse (z.&nbsp;B. Online) sind so gewollt.</p>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Adresse</th><th>Schule</th><th>Schulart</th></tr></thead>
       <tbody>
         {% for name, address in seeds %}
@@ -92,7 +91,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </details>
 </section>
 {% endblock %}

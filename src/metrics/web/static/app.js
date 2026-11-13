@@ -27,6 +27,7 @@ const EMBED_OPTIONS = {
   expr: vega.expressionInterpreter,
   // No injected <style> elements (blocked by the CSP): vendor/vega-embed.css holds the same rules.
   defaultStyle: false,
+  forceActionsMenu: true, // the "…" menu; without defaultStyle vega-embed would list the actions openly
   tooltip: { disableDefaultStyle: true },
 };
 
@@ -40,7 +41,19 @@ let requestId = 0;
 // keep the latest spec and draw it when the tab is shown.
 const pending = new Map();
 
+// Vega-Lite turns date strings in a temporal scale domain into a datetime() expression, which the
+// CSP-safe interpreter evaluates to nothing (bars of zero width). Timestamps need no expression.
+function timestampDomains(spec) {
+  for (const channel of Object.values(spec.encoding || {})) {
+    const domain = channel?.type === "temporal" && channel.scale?.domain;
+    if (Array.isArray(domain)) channel.scale.domain = domain.map((d) => (typeof d === "string" ? Date.parse(d) : d));
+  }
+  for (const part of spec.layer || []) timestampDomains(part);
+  return spec;
+}
+
 async function embed(target, spec) {
+  spec = timestampDomains(spec);
   if (target.closest("[hidden]")) {
     pending.set(target, spec);
     return;
@@ -168,7 +181,7 @@ function rankingItem(row, max) {
   bar.append(fill);
   label.append(name, bar);
   const count = document.createElement("span");
-  count.className = "count";
+  count.className = "ranking-count";
   count.textContent = row.count.toLocaleString("de-DE");
   li.append(avatar, label, count);
   return li;
