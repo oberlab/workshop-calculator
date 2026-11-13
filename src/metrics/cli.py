@@ -1,5 +1,5 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`."""
+`transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`, `hints`."""
 
 import argparse
 import getpass
@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from metrics import scheduler
+from metrics import hints, scheduler
 from metrics.auth import hash_password
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
@@ -170,6 +170,16 @@ def run_scheduler(args: argparse.Namespace) -> None:
         sys.exit(f"Job {job.name} failed (details in the log above and in job_runs).")
 
 
+def recompute_hints(args: argparse.Namespace) -> None:
+    """Recompute every hint (as the nightly job does) and print the count per rule."""
+    with get_sessionmaker()() as session, session.begin():
+        found = hints.refresh_all(session, args.today)
+    counts = Counter((f.rule, f.level) for f in found)
+    print(f"{len(found)} hints on {len({f.appointment_id for f in found})} Termine.")
+    for (rule_id, level), n in sorted(counts.items(), key=lambda x: (hints.LEVELS.index(x[0][1]), x[0][0])):
+        print(f"  {level:<8} {rule_id:<22} {n}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -229,6 +239,10 @@ def main() -> None:
         "--run", choices=[job.name for job in scheduler.JOBS], help="run this one job now, then exit"
     )
     loop.set_defaults(func=run_scheduler)
+
+    check = commands.add_parser("hints", help="Recompute every hint now and print the count per rule")
+    check.add_argument("--today", type=date.fromisoformat, help="date the rules take as today")
+    check.set_defaults(func=recompute_hints)
 
     args = parser.parse_args()
     args.func(args)

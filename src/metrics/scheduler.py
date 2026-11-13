@@ -32,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from metrics import backup as backups
-from metrics import logins
+from metrics import hints, logins
 from metrics.config import get_settings
 from metrics.db import BESTAETIGT, DURCHGEFUEHRT, Appointment, HistoryEntry, JobRun, get_sessionmaker
 
@@ -126,6 +126,16 @@ def move_past_appointments(now: datetime) -> str:
     return f"{len(appointments)} Termine moved from {BESTAETIGT} to {DURCHGEFUEHRT}"
 
 
+def recompute_hints(now: datetime) -> str:
+    """Every hint anew (WM-113): some rules depend on the date, e.g. "Geplant, Datum vorbei"."""
+    with get_sessionmaker()() as session, session.begin():
+        found = hints.refresh_all(session, now.astimezone(LOCAL).date())
+    levels = [f.level for f in found]
+    by_level = ", ".join(f"{levels.count(level)} {level}" for level in hints.LEVELS)
+    termine = len({f.appointment_id for f in found})
+    return f"{len(found)} hints on {termine} Termine ({by_level})"
+
+
 def prune_login_sessions(now: datetime) -> str:
     """Login session rows are kept 30 days after they expired (Alex, 2026-11-13)."""
     return f"{logins.prune(now)} login sessions older than 30 days deleted"
@@ -139,6 +149,7 @@ def nightly_backup(now: datetime) -> str:
 
 JOBS: tuple[Job, ...] = (
     Job("stage-moves", Daily(time(0, 15)), move_past_appointments),
+    Job("hints", Daily(time(0, 30)), recompute_hints),  # after the stage moves
     Job("backup", Daily(time(3, 30)), nightly_backup),
     Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
     # WM-110: Job("calendar", Every(timedelta(minutes=15)), check_calendar),

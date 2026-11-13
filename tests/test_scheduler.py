@@ -213,9 +213,11 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "stage-moves": {"state": "overdue", "last_ok": None},
         "backup": {"state": "overdue", "last_ok": None},
         "login-sessions": {"state": "overdue", "last_ok": None},
+        "hints": {"state": "overdue", "last_ok": None},
     }
 
     record(db, "stage-moves", now - timedelta(hours=2), True)
+    record(db, "hints", now - timedelta(hours=2), True)
     record(db, "backup", now - timedelta(hours=3), True)
     record(db, "login-sessions", now - timedelta(hours=3), True)
     body = healthz()
@@ -224,6 +226,7 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "stage-moves": "ok",
         "backup": "ok",
         "login-sessions": "ok",
+        "hints": "ok",
     }
 
     # The latest backup failed: failed, until a later run succeeds.

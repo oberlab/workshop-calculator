@@ -2,7 +2,8 @@
 
 `create_course` and `add_appointment` write a course and its Termine with a Verlauf row each;
 `finally_confirm` moves a held Termin to Abgeschlossen (what the charts count), but only once all
-its list entries are confirmed (`lists.pending_entries`).
+its list entries are confirmed (`lists.pending_entries`) and no blocking hint is open
+(`hints.open_blocking`). Both refresh the stored hints of the Termin (`hints.refresh`).
 """
 
 import datetime as dt
@@ -10,7 +11,7 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics import lists
+from metrics import hints, lists
 from metrics.db import (
     ABGESCHLOSSEN,
     DURCHGEFUEHRT,
@@ -26,11 +27,13 @@ from metrics.ingest.records import UNKNOWN, parse_class_age, to_text
 
 
 class NotReady(Exception):
-    """Final confirmation refused; `pending` names what is missing."""
+    """Final confirmation refused: `pending` names the unconfirmed list entries, `blocking` the
+    blocking hints."""
 
-    def __init__(self, pending: list[lists.Pending]):
+    def __init__(self, pending: list[lists.Pending], blocking: list[hints.Found] = ()):
         self.pending = pending
-        super().__init__("; ".join(p.text for p in pending))
+        self.blocking = list(blocking)
+        super().__init__("; ".join([p.text for p in pending] + [h.text for h in self.blocking]))
 
 
 def _log(
@@ -97,16 +100,23 @@ def add_appointment(
     session.add(appointment)
     session.flush()
     _log(session, "appointments", appointment.id, "stage", None, stage, by, "Termin angelegt")
+    hints.refresh(session, [appointment.id])
     return appointment
 
 
-def finally_confirm(session: Session, appointment: Appointment, by: str) -> None:
-    """Durchgeführt -> Abgeschlossen, once every list entry of the Termin is confirmed."""
+def finally_confirm(
+    session: Session, appointment: Appointment, by: str, today: dt.date | None = None
+) -> None:
+    """Durchgeführt -> Abgeschlossen, once every list entry of the Termin is confirmed and no
+    blocking hint is open."""
     if appointment.stage != DURCHGEFUEHRT:
         raise ValueError(f"Termin {appointment.id} is {appointment.stage}, not {DURCHGEFUEHRT}")
+    session.flush()
     session.refresh(appointment)
-    if pending := lists.pending_entries(appointment):
-        raise NotReady(pending)
+    pending = lists.pending_entries(appointment)
+    blocking = hints.open_blocking(session, appointment, today)
+    if pending or blocking:
+        raise NotReady(pending, blocking)
     _log(
         session,
         "appointments",
@@ -119,3 +129,4 @@ def finally_confirm(session: Session, appointment: Appointment, by: str) -> None
     )
     appointment.stage = ABGESCHLOSSEN
     session.flush()
+    hints.refresh(session, [appointment.id], today)

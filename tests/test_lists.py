@@ -186,6 +186,20 @@ def test_teacher_training_flag_changes_target_groups(seeded):
 # --- Final confirmation waits for the list entries -----------------------------------------------
 
 
+def _fill_required(db, termin: Appointment) -> None:
+    """Everything else the final confirmation needs (WM-113), with confirmed demo entries."""
+    course = termin.course
+    course.context = course.context or db.scalars(sa.select(Context).order_by(Context.id)).first()
+    if course.format is None:
+        course.format = Format(name="Calliope-Einsteiger", category="Code", status=CONFIRMED)
+    course.class_age_text = course.class_age_text or "Kl. 4"
+    termin.start_time, termin.end_time = dt.time(9), dt.time(11)
+    termin.participants_female, termin.participants_male = 5, 4
+    termin.participants_total = 9
+    termin.lead = db.scalars(sa.select(Person).order_by(Person.id)).first()
+    db.flush()
+
+
 def test_final_confirmation_waits_for_confirmed_entries(seeded):
     place = lists.propose(seeded, lists.PLACES, NEW_PLACE, "Kim").entry
     fmt = lists.propose(
@@ -193,6 +207,7 @@ def test_final_confirmation_waits_for_confirmed_entries(seeded):
     ).entry
     course = courses.create_course(seeded, by="Kim", place_id=place.id, format_id=fmt.id)
     termin = courses.add_appointment(seeded, course, by="Kim", date=TODAY, stage=DURCHGEFUEHRT)
+    _fill_required(seeded, termin)
     assert [p.text for p in lists.pending_entries(termin)] == [
         "Ort „Jugendhaus Seeblick“ wartet auf Bestätigung",
         "Format „Löten (Engineering)“ wartet auf Bestätigung",
@@ -388,7 +403,7 @@ def test_done_when_a_proposed_place_is_used_merged_and_counted(seeded, monkeypat
     termin = courses.add_appointment(
         seeded, course, by="Team", date=dt.date(2026, 11, 10), stage=DURCHGEFUEHRT
     )
-    termin.participants_total = 9
+    _fill_required(seeded, termin)
     seeded.commit()
     with pytest.raises(courses.NotReady, match="Makerspace Beispieldorf"):
         courses.finally_confirm(seeded, termin, "Team")

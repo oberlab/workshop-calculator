@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, quote, urlencode
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from metrics import lists
+from metrics import hints, lists
 from metrics.db import CONFIRMED, MERGED, PROPOSED, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.web.common import TIMEZONE, current_login, page, templates
@@ -53,6 +53,11 @@ def _kind(slug: str) -> lists.Kind:
 async def _form(request: Request) -> dict[str, str]:
     form = parse_qs((await request.body()).decode(errors="replace"), keep_blank_values=True)
     return {key: values[-1] for key, values in form.items()}
+
+
+def _refresh_hints(session, kind: lists.Kind, *entry_ids: int) -> None:
+    """The hints of every Termin using these entries follow a decision or an edit (WM-113)."""
+    hints.refresh(session, hints.appointments_using(session, kind, entry_ids))
 
 
 def _int(value: str | None) -> int | None:
@@ -241,6 +246,8 @@ async def edit(kind: str, entry_id: int, request: Request):
         if not errors:
             try:
                 changed = lists.update(session, list_kind, entry, values, login.user, login.admin)
+                if changed:
+                    _refresh_hints(session, list_kind, entry.id)
             except lists.ListError as error:
                 errors = {"name": str(error)}
     if errors:
@@ -269,6 +276,7 @@ async def confirm(kind: str, entry_id: int, request: Request):
         with get_sessionmaker()() as session, session.begin():
             entry = _entry(session, list_kind, entry_id)
             lists.confirm(session, list_kind, entry, _who(request), form.get("reason") or None)
+            _refresh_hints(session, list_kind, entry.id)
     except lists.ListError as error:
         return _decision(request, list_kind, entry_id, error)
     return _back(list_kind, entry_id, "Bestätigt.")
@@ -284,6 +292,7 @@ async def merge(kind: str, entry_id: int, request: Request):
             target_id = _int(form.get("ziel"))
             target = lists.get(session, list_kind, target_id) if target_id else None
             moved = lists.merge(session, list_kind, entry, target, _who(request), form.get("reason"))
+            _refresh_hints(session, list_kind, entry.id, target.id)
     except lists.ListError as error:
         return _decision(request, list_kind, entry_id, error)
     what = "Termine" if list_kind is lists.PEOPLE else "Kurse"
@@ -298,6 +307,7 @@ async def reject(kind: str, entry_id: int, request: Request):
         with get_sessionmaker()() as session, session.begin():
             entry = _entry(session, list_kind, entry_id)
             in_use = lists.reject(session, list_kind, entry, _who(request), form.get("reason") or "")
+            _refresh_hints(session, list_kind, entry.id)
     except lists.ListError as error:
         return _decision(request, list_kind, entry_id, error)
     message = "Abgelehnt."
