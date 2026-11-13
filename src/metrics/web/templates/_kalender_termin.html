@@ -1,0 +1,25 @@
+{# The side panel of the calendar: a Termin's course in short (htmx partial, no page around it). #}
+{% import "_ui.html" as ui %}
+{% set course = t.course %}
+<div class="cal-summary">
+  <h3>{{ title }}</h3>
+  <p>{{ ui.stage_pill(t.stage|stage_key, t.stage) }}{% if termine > 1 and t.number %} <span class="muted small">Termin {{ t.number }} von {{ termine }}</span>{% endif %}</p>
+</div>
+<dl class="facts">
+  <div><dt>Datum</dt><dd class="mono">{{ t.date|day }}</dd></div>
+  <div><dt>Zeit</dt><dd class="mono">{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% else %}ohne Uhrzeit{% endif %}</dd></div>
+  <div><dt>Ort</dt><dd>{{ course.place.name if course.place else "–" }}</dd></div>
+  <div><dt>Kontext</dt><dd>{{ course.context.name if course.context else "–" }}</dd></div>
+  <div><dt>Klasse/Alter</dt><dd>{{ course.class_age_text or "–" }}</dd></div>
+  <div><dt>Kursleitung</dt><dd>{% if t.lead %}{{ ui.avatar(t.lead.name, "sm") }} {{ t.lead.name }}{% else %}–{% endif %}</dd></div>
+  <div><dt>Unterstützung</dt><dd>{{ t.support|map(attribute="name")|join(", ") or "–" }}</dd></div>
+  {% if t.alternatives %}<div><dt>Alternativdaten</dt><dd class="mono">{% for a in t.alternatives %}{{ a.date|day }}{{ ", " if not loop.last }}{% endfor %}</dd></div>{% endif %}
+</dl>
+{% if course.note %}<p class="cal-note">{{ course.note }}</p>{% endif %}
+{% if open %}
+<section aria-label="Offene Hinweise">
+  <h4>Offene Hinweise</h4>
+  <ul class="cal-hints">{% for h in open %}<li>{{ ui.hint_badge(badge[h.level]) }} {{ h.text }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+<p>{{ ui.button("Kurs öffnen", href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) }}</p>

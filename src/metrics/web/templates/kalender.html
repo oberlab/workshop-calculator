@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Kalender{% endblock %}
+{% block heading %}Kalender{% endblock %}
+{% block actions %}{{ ui.button("+ Neuer Kurs", href="/planung/neu") }}{% endblock %}
+{% block subheading %}<p class="subheading">Eine Spur pro Person; gestrichelt ist Unterstützung. Ein Klick zeigt den Kurs.</p>{% endblock %}
+
+{# One Termin in a lane or the day list: opens the side panel; without JavaScript the course page. #}
+{% macro item(t, role=none, long=false) -%}
+{% set flag = top.get(t.id) %}
+{% set place = t.course.place.name if t.course.place else none %}
+{% set team = ([t.lead.name] if t.lead else []) + (t.support|map(attribute="name")|list) %}
+<a class="cal-item stage-{{ t.stage|stage_key }}{{ ' is-support' if role == 'support' }}{{ ' is-flagged' if flag and flag.level == 'Kritisch' }}" href="/planung/termin/{{ t.id }}" hx-get="/kalender/termin/{{ t.id }}" hx-target="#termin-panel-body" data-side-panel="termin-panel" title="{{ titles[t.id] }}{% if t.start_time %}, {{ t.start_time.strftime('%H:%M') }}–{{ t.end_time.strftime('%H:%M') if t.end_time else '?' }}{% endif %}{% if place %}, {{ place }}{% endif %}">
+  <span class="cal-time mono">{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}{% if long %}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% endif %}{% else %}Tag{% endif %}</span>
+  <span class="cal-name">{{ titles[t.id] }}</span>
+  {% if long %}<span class="cal-meta">{{ place or "ohne Ort" }} · {{ team|join(", ") if team else "kein Team" }} · {{ t.stage }}</span>{% else %}<span class="visually-hidden">, {{ t.stage }}{% if role == "support" %}, Unterstützung{% endif %}</span>{% endif %}
+  {% if flag %}{{ ui.hint_badge(badge[flag.level], "Hinweis") if long else "" }}{% if not long and flag.level == "Kritisch" %}<span class="cal-flag" aria-hidden="true">!</span><span class="visually-hidden">, kritischer Hinweis</span>{% endif %}{% endif %}
+</a>
+{%- endmacro %}
+
+{% block content %}
+<div class="panel panel-flush">
+  {% call ui.tabs(views, view, "Ansicht") %}
+  <span class="cal-nav">
+    {{ ui.button("‹", href=prev, kind="secondary", size="sm", attrs={"aria-label": "Vorherige " ~ ("Woche" if view == "woche" else "Monat")}) }}
+    {{ ui.button("Heute", href=now, kind="secondary", size="sm") }}
+    {{ ui.button("›", href=next, kind="secondary", size="sm", attrs={"aria-label": "Nächste " ~ ("Woche" if view == "woche" else "Monat")}) }}
+  </span>
+  {% endcall %}
+  <div class="tab-panel cal-panel">
+    <div class="cal-head">
+      <h2 class="cal-title">{{ title }} <span class="muted small">{{ count }} Termin{{ "e" if count != 1 }}</span></h2>
+      <form class="filter-row cal-filters" method="get" action="/kalender" aria-label="Filter">
+        <input type="hidden" name="ansicht" value="{{ view }}">
+        <input type="hidden" name="datum" value="{{ day.isoformat() }}">
+        <label>Person
+          <select name="person">
+            <option value="">Alle</option>
+            <option value="ich"{% if params.person == "ich" %} selected{% endif %}>Ich{% if not me %} (Anmeldung nicht verknüpft){% endif %}</option>
+            {% for p in people %}<option value="{{ p.id }}"{% if params.person == p.id|string %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Kontext
+          <select name="kontext"><option value="">Alle</option>{% for c in contexts %}<option value="{{ c.id }}"{% if params.kontext == c.id|string %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+        </label>
+        <label>Phase
+          <select name="phase">{% for key, label in phases.items() %}<option value="{{ key }}"{% if params.phase == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </label>
+        {{ ui.button("Anzeigen", type="submit", kind="secondary", size="sm") }}
+        {% if params.values()|select|list %}<a class="reset" href="/kalender?ansicht={{ view }}&amp;datum={{ day.isoformat() }}">Zurücksetzen</a>{% endif %}
+      </form>
+    </div>
+
+    {% for week in weeks %}
+    <section class="cal-week" aria-labelledby="kw-{{ loop.index }}">
+      <h3 class="week-title{{ ' visually-hidden' if view == 'woche' }}" id="kw-{{ loop.index }}">KW {{ week.number }} · {{ week.monday.strftime("%d.%m.") }}–{{ week.days[-1].strftime("%d.%m.") }}</h3>
+      {% if week.lanes %}
+      <div class="cal-lanes">
+        <table class="cal-grid">
+          <caption class="visually-hidden">Termine in KW {{ week.number }} nach Person</caption>
+          <thead><tr>
+            <th scope="col" class="cal-person"><span class="visually-hidden">Person</span></th>
+            {% for d in week.days %}<th scope="col" class="{{ 'is-today' if d == today }}{{ ' is-outside' if view == 'monat' and d.month != day.month }}">{{ ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][d.weekday()] }} {{ d.day }}.</th>{% endfor %}
+          </tr></thead>
+          <tbody>
+            {% for lane in week.lanes %}
+            <tr>
+              <th scope="row" class="cal-person">{% if lane.person %}{{ ui.avatar(lane.label, "sm") }} {% endif %}<span>{{ lane.label }}</span></th>
+              {% for items in lane.days %}{% set d = week.days[loop.index0] %}
+              <td class="{{ 'is-today' if d == today }}{{ ' is-outside' if view == 'monat' and d.month != day.month }}">{% for it in items %}{{ item(it.t, it.role) }}{% endfor %}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="cal-days">
+        {% for d, ts in week.by_day() %}
+        <h4 class="cal-day{{ ' is-today' if d == today }}">{{ d|day }}{% if d == today %} · heute{% endif %}</h4>
+        <ul class="cal-day-list">{% for t in ts %}<li>{{ item(t, long=true) }}</li>{% endfor %}</ul>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted small cal-empty">Keine Termine in KW {{ week.number }}.</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+    {% if list_href %}<p class="help"><a href="{{ list_href }}">Dieselben Termine in der Kursliste</a></p>{% endif %}
+  </div>
+</div>
+
+{% call ui.side_panel("termin-panel", "Termin") %}<p class="muted">Wird geladen …</p>{% endcall %}
+{% endblock %}

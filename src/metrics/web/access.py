@@ -72,6 +72,10 @@ TEAM_ROUTES = {
     "POST /planung/{course_id:int}/akzeptieren",
     "GET /planung/termin/{appointment_id:int}",
     "GET /api/planung/belegt",
+    # Mein Bereich and the calendar (WM-112): read only; "mine" is the Person linked to the login.
+    "GET /mein-bereich",
+    "GET /kalender",
+    "GET /kalender/termin/{appointment_id:int}",
     # Stammdaten: read, propose, edit (proposed entries; confirmed ones only admins, checked in
     # `metrics.lists.update`), and the picker. `{kind}` never serves `personen` here (404): the
     # Personen page has its own admin routes above, which match first.

@@ -200,9 +200,9 @@ def test_password_login(client, monkeypatch):
     assert auth.COOKIE_NAME not in failed.cookies
 
     ok = client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
-    assert (ok.status_code, ok.headers["location"]) == (303, "/analyse")
+    assert (ok.status_code, ok.headers["location"]) == (303, "/mein-bereich")
     assert logins.lookup(ok.cookies[auth.COOKIE_NAME]).user == "Team"
-    assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
+    assert client.get("/login", follow_redirects=False).headers["location"] == "/mein-bereich"
 
     client.post("/logout", follow_redirects=False)
     assert client.get("/analyse", follow_redirects=False).status_code == 303
@@ -247,7 +247,7 @@ async def _noop():
 
 def test_auth_off_opens_internal_endpoints(monkeypatch):
     client = _client(monkeypatch, auth_mode="off")
-    assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
+    assert client.get("/login", follow_redirects=False).headers["location"] == "/mein-bereich"
     # Passes the login check; then 404 because the example instance has the ranking switched off.
     assert client.get("/api/instructor-ranking").status_code == 404
 
@@ -309,7 +309,7 @@ def test_oidc_login(monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_allowed_group="team")
     seen = _fake_provider(monkeypatch)
     callback = _oidc_login(client, seen)
-    assert (callback.status_code, callback.headers["location"]) == (303, "/analyse")
+    assert (callback.status_code, callback.headers["location"]) == (303, "/mein-bereich")
     assert logins.lookup(callback.cookies[auth.COOKIE_NAME]).user == "Alex K"
     assert seen["client_secret"] == "s" and seen["code"] == "abc" and seen["code_verifier"]
     assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405

@@ -924,3 +924,84 @@ table.mun input[type="number"] { width: 90px; }
 .changes th[scope="row"] { font-weight: 600; text-align: left; }
 .filter-panel > summary { cursor: pointer; font-weight: 600; }
 .filter-panel[open] > summary { margin-bottom: 12px; }
+
+/* ---- Mein Bereich and Kalender (WM-112) ------------------------------------------------------- */
+
+.my-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .my-grid { grid-template-columns: minmax(0, 1fr); } }
+.weeks { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
+.weeks li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.weeks-label { font-weight: 600; font-size: 0.9rem; }
+@media (max-width: 640px) {
+  .weeks li { grid-template-columns: 4rem minmax(0, 1fr); }
+  .weeks-note { grid-column: 2; }
+  .weeks .workload { flex-wrap: wrap; }
+  .weeks .workload-label { white-space: normal; }
+}
+
+/* Calendar: a table per week with one row (lane) per person and one column per day; fixed layout,
+   so seven days always fit without scrolling. Phones get a list per day instead. */
+.cal-nav { display: inline-flex; gap: 6px; }
+.cal-head { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+.cal-title { margin: 0; font-size: 1.1rem; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.cal-week + .cal-week { margin-top: 18px; }
+.cal-grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.82rem; }
+.cal-grid th, .cal-grid td { border: 1px solid var(--line); padding: 4px; vertical-align: top; }
+.cal-grid thead th { font: 600 0.75rem var(--heading); color: var(--text-muted); text-align: left; padding: 6px; }
+.cal-grid th.cal-person { width: 9.5rem; text-align: left; font-weight: 600; overflow-wrap: anywhere; }
+.cal-grid .is-today { background: var(--accent-tint); }
+.cal-grid thead th.is-today { color: var(--accent-ink); }
+.cal-grid .is-outside { background: var(--surface-page); }
+.cal-grid td { height: 2.6rem; }
+.cal-item {
+  position: relative;
+  display: block;
+  margin-bottom: 3px;
+  padding: 3px 6px;
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-tint);
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.3;
+  overflow: hidden;
+}
+.cal-item:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
+.cal-grid .cal-item { white-space: nowrap; text-overflow: ellipsis; }
+.cal-item .cal-time { font-size: 0.75rem; color: var(--text-muted); margin-right: 4px; }
+.cal-item .cal-name { font-weight: 600; }
+.cal-item.stage-geplant { border-left-color: var(--line-control); background: var(--surface-sunken); }
+.cal-item.stage-durchgefuehrt { border-left-color: var(--success); background: var(--success-tint); }
+.cal-item.stage-abgeschlossen { border-left-color: var(--text); background: var(--surface-sunken); }
+.cal-item.stage-abgesagt { border-left-color: var(--line); background: var(--surface); text-decoration: line-through; }
+.cal-item.is-support { border-left-style: dashed; background: var(--surface); outline: 1px dashed var(--line-control); outline-offset: -1px; }
+.cal-item.is-flagged { box-shadow: inset 0 0 0 2px var(--critical); padding-right: 22px; }
+.cal-flag {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--critical-strong);
+  color: var(--on-fill);
+  font: 700 0.68rem/15px var(--heading);
+  text-align: center;
+}
+.cal-days { display: none; }
+.cal-day { margin: 14px 0 6px; font-size: 0.95rem; }
+.cal-day.is-today { color: var(--accent-ink); }
+.cal-day-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cal-day-list .cal-item { display: grid; gap: 2px; padding: 8px 10px; font-size: 0.9rem; }
+.cal-day-list .cal-meta { color: var(--text-muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.cal-day-list .hint-badge { justify-self: start; }
+.cal-empty { margin: 4px 0 0; }
+@media (max-width: 640px) {
+  .cal-lanes { display: none; }
+  .cal-days { display: block; }
+  .cal-week + .cal-week { margin-top: 8px; }
+}
+.cal-summary h3 { margin: 0 0 6px; font-size: 1.15rem; }
+.cal-summary p { margin: 0; }
+.cal-hints { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
+.cal-note { margin: 0; white-space: pre-line; }

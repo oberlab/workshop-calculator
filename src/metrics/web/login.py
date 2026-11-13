@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 
 # Generous for people, slow for guessing: Keycloak has its own brute-force protection on top.
 LOGIN_LIMIT = security.RateLimit(limit=10, window=300)
+# Where a login lands (PROPOSAL.md 5.1); the public front page stays at "/".
+HOME = "/mein-bereich"
 
 
 def _link_person(login: auth.Login) -> None:
@@ -36,7 +38,7 @@ def _link_person(login: auth.Login) -> None:
 
 
 def _logged_in(request: Request, login: auth.Login) -> RedirectResponse:
-    response = RedirectResponse("/analyse", status_code=303)
+    response = RedirectResponse(HOME, status_code=303)
     token = logins.start(login)
     _link_person(login)
     security.set_cookie(request, response, auth.COOKIE_NAME, token, int(logins.LIFETIME.total_seconds()))
@@ -63,7 +65,7 @@ def _callback_url(request: Request) -> str:
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     if current_login(request) is not None:
-        return RedirectResponse("/analyse", status_code=303)
+        return RedirectResponse(HOME, status_code=303)
     if auth.mode() == "password":
         return _login_page(request, configured=auth.password_configured())
     if not oidc.configured():

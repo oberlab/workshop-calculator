@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Mein Bereich{% endblock %}
+{% block heading %}Mein Bereich{% endblock %}
+{% block actions %}{{ ui.button("+ Neuer Kurs", href="/planung/neu") }}{% endblock %}
+{% block subheading %}<p class="subheading">{{ today_text }}{% if me %} · {{ tasks|length }} Aufgabe{{ "n" if tasks|length != 1 }}, {{ this_week }} Termin{{ "e" if this_week != 1 }} in den nächsten 7 Tagen{% endif %}</p>{% endblock %}
+
+{% macro when(t) -%}
+{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% else %}ohne Uhrzeit{% endif %}
+{%- endmacro %}
+
+{% block content %}
+{% if not me %}
+{% call ui.panel("Deine Anmeldung ist noch keiner Person zugeordnet") %}
+{% if shared_login %}
+<p>Mit dem gemeinsamen Team-Passwort gibt es keine persönliche Seite: Aufgaben und Termine gehören zu einer Person. Melde dich mit deinem eigenen Konto an, um hier deine Aufgaben zu sehen.</p>
+{% else %}
+<p>Mein Bereich zeigt die Aufgaben und Termine der Person, mit der deine Anmeldung verknüpft ist. Für „{{ login_user }}“ gibt es diese Verknüpfung noch nicht.</p>
+<ol>
+  <li>Ein Admin trägt auf der Seite „Personen“ bei deiner Person die E-Mail-Adresse deines Kontos ein.</li>
+  <li>Danach meldest du dich einmal ab und wieder an: Die Anmeldung wird dann über die E-Mail-Adresse mit deiner Person verknüpft.</li>
+</ol>
+{% if login.admin %}<p>{{ ui.button("Zur Seite „Personen“", href="/stammdaten/personen", kind="secondary", size="sm") }}</p>{% endif %}
+{% endif %}
+<p class="help">Bis dahin findest du alle Termine unter <a href="/planung">Kurse</a> und im <a href="/kalender">Kalender</a>.</p>
+{% endcall %}
+{% else %}
+
+{% call ui.panel(id="auslastung") %}
+<div class="panel-head">
+  <h2>Meine Auslastung</h2>
+  <a class="small" href="/kalender?person=ich">Im Kalender ansehen</a>
+</div>
+<ul class="weeks">
+  {% for w in load.weeks %}
+  <li>
+    <span class="weeks-label mono">KW {{ w.number }}</span>
+    {% set label = hours(w.total) ~ ((" / " ~ hours(load.capacity)) if load.capacity else "") ~ " · " ~ w.termine ~ " Termin" ~ ("e" if w.termine != 1 else "") %}
+    {{ ui.workload_bar(w.lead|float, load.capacity|float if load.capacity else none, w.support|float, label=label, scale=load.scale|float) }}
+    {% if w.without_hours %}<span class="weeks-note muted small">{{ w.without_hours }} ohne Uhrzeit</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<p class="help">Nur die Kursstunden (Ende minus Beginn), Leitung kräftig, Unterstützung blass. {% if load.capacity %}Gemessen an deinen {{ hours(load.capacity) }} pro Woche; gelb ab 80 %, magenta über 100 %.{% else %}Noch ohne Kapazität: Deine Wochenstunden kommen später aus Kimai.{% endif %} Vor- und Nachbereitung und Fahrtzeit kommen mit der Team-Seite dazu.</p>
+{% endcall %}
+
+<div class="my-grid">
+  {% call ui.panel("Zu erledigen", n=tasks|length, id="aufgaben") %}
+  {% if tasks %}
+  <ul class="queue">
+    {% for task in tasks %}{% set t = task.t %}
+    <li>
+      {{ ui.hint_badge(badge[task.level], task.badge if task.badge != task.level else none) }}
+      <div class="queue-body">
+        <p class="queue-title">{{ task.text }}</p>
+        <p class="queue-meta"><span>{{ titles[t.id] }}</span><span class="mono">{{ t.date|day }}</span>{% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}{% if task.more %}<span>+{{ task.more }} weitere Hinweis{{ "e" if task.more > 1 }}</span>{% endif %}</p>
+      </div>
+      {{ ui.button(task.action, href=task.href, kind="primary" if task.level == "Kritisch" else "secondary", size="sm", attrs={"aria-label": task.action ~ ": " ~ titles[t.id] ~ ", " ~ (t.date|day)}) }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ ui.empty_state("Nichts zu erledigen.", "Bei deinen Kursen fehlt gerade nichts.") }}
+  {% endif %}
+  {% endcall %}
+
+  {% call ui.panel("Meine nächsten Termine", n=termine|length, id="termine") %}
+  {% if termine %}
+  <div class="cards">
+    {% for t in termine %}
+    {% call ui.card(t.date, titles[t.id], [when(t), t.course.place.name if t.course.place else none, t.course.class_age_text], stage=t.stage|stage_key, href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) %}{{ ui.stage_pill(t.stage|stage_key, t.stage) }}<span>{{ "Leitung" if t.lead_id == me.id else "Unterstützung" }}</span>{% if t.lead and t.lead_id != me.id %}<span>mit {{ t.lead.name }}</span>{% endif %}{% endcall %}
+    {% endfor %}
+  </div>
+  <p class="help"><a href="/planung?person=ich&amp;von={{ today.isoformat() }}">Alle meine Termine in der Kursliste</a></p>
+  {% else %}
+  {% call ui.empty_state("Keine Termine in den nächsten vier Wochen.") %}{{ ui.button("Kalender öffnen", href="/kalender", kind="secondary", size="sm") }}{% endcall %}
+  {% endif %}
+  {% endcall %}
+</div>
+{% endif %}
+{% endblock %}

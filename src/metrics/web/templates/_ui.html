@@ -125,14 +125,15 @@
 {%- endmacro %}
 
 {# Workload bar: lead (and support) Termine or hours against the capacity, e.g. 4 / 3.
-   Yellow from 80 %, critical above 100 %. label replaces the "value / capacity" text. #}
-{% macro workload_bar(value, capacity, support=0, label=none) -%}
+   Yellow from 80 %, critical above 100 %. label replaces the "value / capacity" text.
+   Without a capacity (none), scale says what a full bar is and the bar keeps its neutral colour. #}
+{% macro workload_bar(value, capacity, support=0, label=none, scale=none) -%}
 {% set total = value + support %}
 {% set share = (total / capacity) if capacity else 0 %}
 {% set tone = " is-over" if share > 1 else (" is-warning" if share >= 0.8 else "") %}
-{% set scale = [capacity, total]|max or 1 %}
-{% set w_lead = ((value / scale * 20)|round|int * 5) %}
-{% set w_support = ((support / scale * 20)|round|int * 5) %}
+{% set full = (scale if not capacity else none) or [capacity or 0, total]|max or 1 %}
+{% set w_lead = ((value / full * 20)|round|int * 5) %}
+{% set w_support = ((support / full * 20)|round|int * 5) %}
 <span class="workload{{ tone }}">
   <span class="workload-bar" aria-hidden="true"><span class="workload-fill w-{{ w_lead }}"></span>{% if support %}<span class="workload-fill is-support w-{{ [w_support, 100 - w_lead]|min }}"></span>{% endif %}</span>
   <span class="workload-label">{{ label or (total|string ~ " / " ~ capacity|string) }}</span>
