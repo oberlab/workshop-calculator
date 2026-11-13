@@ -16,6 +16,7 @@ from metrics.db import (
     DURCHGEFUEHRT,
     GEPLANT,
     PROPOSED,
+    AlternativeDate,
     Appointment,
     AppointmentOrigin,
     Context,
@@ -304,6 +305,23 @@ def test_rule_gleichzeitig():
 def test_rule_selber_tag():
     a, b = _planned(1, T(9), T(11)), _planned(2, T(13), T(15), lead=LEA)
     assert only(found(a, b), "selber-tag").level == "Info"
+
+
+def test_rule_alternativdatum():
+    week, fortnight = TODAY + dt.timedelta(days=7), TODAY + dt.timedelta(days=14)
+    a = termin(1, stage=GEPLANT, date=week)
+    a.alternatives = [AlternativeDate(date=fortnight)]
+    b = termin(2, stage=BESTAETIGT, date=fortnight)  # Kim leads both
+    c = termin(3, stage=BESTAETIGT, date=fortnight, lead=LEA, start=T(14), end=T(16))
+    hits = [f for f in found(a, b, c) if f.rule == "alternativdatum"]
+    assert [(h.level, h.other_id) for h in hits] == [("Info", 2), ("Info", 3)]
+    assert (
+        hits[0].text
+        == f"Alternativdatum {fortnight:%d.%m.%Y}: Kim eingeplant bei „Calliope-Einsteiger“ (Termin 2)"
+    )
+    assert hits[1].text.startswith(f"Alternativdatum {fortnight:%d.%m.%Y}: anderer Kurs")
+    # Only the main date counts for the other Termine, and only while Geplant.
+    assert "alternativdatum" not in rules_of(found(b, a, c))
 
 
 def test_conflicts_only_from_today_on():

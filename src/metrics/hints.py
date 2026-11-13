@@ -51,6 +51,7 @@ from metrics.db import (
     DURCHGEFUEHRT,
     GEPLANT,
     PROPOSED,
+    AlternativeDate,
     Appointment,
     Course,
     HintDecision,
@@ -398,6 +399,25 @@ rule("gleichzeitig", WICHTIG, "Zeiten überschneiden sich", stages=ACTIVE)(_conf
 rule("selber-tag", INFO, "Anderer Kurs am selben Tag", stages=ACTIVE)(_conflict_rule("selber-tag"))
 
 
+@rule("alternativdatum", INFO, "Überschneidung an einem Alternativdatum", stages=(GEPLANT,))
+def alternative_date_conflicts(t: Appointment, facts: Facts):
+    """A Geplant Termin's alternative dates: who or what else is planned then (main dates only)."""
+    found = []
+    team = _team(t)
+    for alternative in t.alternatives:
+        day = alternative.date
+        if day < facts.today:
+            continue
+        for other in facts.same_day.get(day, []):
+            if other.id == t.id or not _in_planning(other, facts.today):
+                continue
+            shared = ", ".join(sorted(name for pid, name in _team(other).items() if pid in team))
+            title = f"„{_title(other)}“ (Termin {other.id})"
+            what = f"{shared} eingeplant bei {title}" if shared else f"anderer Kurs: {title}"
+            found.append(Finding(f"Alternativdatum {day:%d.%m.%Y}: {what}", other.id))
+    return found
+
+
 # --- Places and list entries ----------------------------------------------------------------
 
 
@@ -501,6 +521,8 @@ def _load(session: Session, where) -> list[Appointment]:
             selectinload(Appointment.lead),
             selectinload(Appointment.support),
             selectinload(Appointment.origins),
+            selectinload(Appointment.alternatives),
+            selectinload(Appointment.calendar_responses),
         )
         .order_by(Appointment.id)
     )
@@ -520,7 +542,7 @@ def _confirmed_names(session: Session) -> dict[str, set[str]]:
 
 def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -> Facts:
     """The facts the rules need for these Termine: their same-day neighbours and the list names."""
-    dates = {t.date for t in appointments if t.date}
+    dates = {t.date for t in appointments if t.date} | {a.date for t in appointments for a in t.alternatives}
     same_day: dict[dt.date, list[Appointment]] = defaultdict(list)
     if dates:
         for t in _load(session, Appointment.date.in_(dates) & (Appointment.stage != ABGESAGT)):
@@ -573,6 +595,10 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
     )
     if dates:
         ids |= set(session.scalars(select(Appointment.id).where(Appointment.date.in_(dates))))
+        # Geplant Termine with one of these days as an alternative date (rule "alternativdatum").
+        ids |= set(
+            session.scalars(select(AlternativeDate.appointment_id).where(AlternativeDate.date.in_(dates)))
+        )
     appointments = _load(session, Appointment.id.in_(ids))
     _store(session, compute(session, appointments, day), ids)
     return len(ids)

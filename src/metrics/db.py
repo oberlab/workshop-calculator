@@ -254,7 +254,11 @@ class Appointment(Base):
     participants_unspecified: Mapped[int | None] = mapped_column(Integer)  # keine Angabe
     participants_total: Mapped[int | None] = mapped_column(Integer)
     billed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
+    # The event in the course calendar (WM-110): its UID, and what the last check found.
     calendar_uid: Mapped[str | None] = mapped_column(String(255))
+    calendar_state: Mapped[str | None] = mapped_column(String(16))  # ok, missing, outdated
+    calendar_checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(32), default="app", server_default="app", index=True)
     source_key: Mapped[str | None] = mapped_column(String(128), unique=True)
     source_data: Mapped[dict | None] = mapped_column(JSONB)
@@ -267,6 +271,62 @@ class Appointment(Base):
     lead: Mapped[Person | None] = relationship(foreign_keys=[lead_id])
     support: Mapped[list[Person]] = relationship(secondary=appointment_support)
     origins: Mapped[list["AppointmentOrigin"]] = relationship(cascade="all, delete-orphan")
+    alternatives: Mapped[list["AlternativeDate"]] = relationship(
+        cascade="all, delete-orphan", order_by="AlternativeDate.date"
+    )
+    calendar_responses: Mapped[list["CalendarResponse"]] = relationship(
+        cascade="all, delete-orphan", order_by="CalendarResponse.email"
+    )
+
+
+class AlternativeDate(Base):
+    """A further possible date of a Geplant Termin; "Bestätigen" asks which date it is."""
+
+    __tablename__ = "appointment_alternatives"
+
+    appointment_id: Mapped[int] = mapped_column(
+        ForeignKey("appointments.id", ondelete="CASCADE"), primary_key=True
+    )
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+
+
+# Calendar states of a Termin's event (`Appointment.calendar_state`).
+CAL_OK, CAL_MISSING, CAL_OUTDATED = "ok", "missing", "outdated"
+
+
+class CalendarResponse(Base):
+    """The answer of an invited person (ATTENDEE PARTSTAT), as the last calendar check read it."""
+
+    __tablename__ = "calendar_responses"
+
+    appointment_id: Mapped[int] = mapped_column(
+        ForeignKey("appointments.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(Text, primary_key=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), index=True)
+    partstat: Mapped[str] = mapped_column(String(32))  # NEEDS-ACTION, ACCEPTED, DECLINED, TENTATIVE
+    seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    person: Mapped[Person | None] = relationship()
+
+
+class CalendarOrphan(Base):
+    """A future event in the course calendar without a Termin, as the last calendar check saw it.
+
+    Bookkeeping of the check: rows of events that are gone are removed by the next check, unless an
+    admin ignored them (that decision is kept). Times are local (Europe/Berlin), without zone.
+    """
+
+    __tablename__ = "calendar_orphans"
+
+    uid: Mapped[str] = mapped_column(String(255), primary_key=True)
+    summary: Mapped[str] = mapped_column(Text)
+    starts_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    ends_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    location: Mapped[str | None] = mapped_column(Text)
+    seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ignored_by: Mapped[str | None] = mapped_column(Text)
+    ignored_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AppointmentOrigin(Base):
