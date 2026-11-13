@@ -23,6 +23,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from metrics import lists as reference_lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -375,6 +376,8 @@ def transfer(
         raise TransferError("No baseline is loaded: the transfer takes the items after it.")
     specs = list_specs(instance)
     stages = stage_map(instance)
+    # The target-group rule reads the teacher contexts from the contexts table (WM-101).
+    instance = reference_lists.with_contexts(session, instance)
     report = TransferReport(cutoff=cutoff)
     done = set(session.scalars(select(Appointment.source_key).where(Appointment.source == SOURCE_SLACK)))
     lists_ = _ProposedLists(session, instance)

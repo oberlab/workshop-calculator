@@ -21,7 +21,7 @@ import hmac
 import json
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from metrics.config import get_settings
@@ -35,6 +35,9 @@ class Login:
     user: str
     admin: bool = False
     subject: str = ""  # stable account ID ("sub" with OpenID Connect), for "Überall abmelden"
+    # The login's verified e-mail, only right after an OpenID Connect login: it links the login to
+    # its Person once (`metrics.lists.link_login`); not kept in the session.
+    email: str | None = field(default=None, compare=False)
 
 
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}

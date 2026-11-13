@@ -46,7 +46,8 @@ def stage_for_status(status: str | None) -> str:
 
 
 def seed_reference(session: Session, instance: Instance) -> None:
-    """Add the instance's reference data as confirmed list entries; existing entries stay as they are.
+    """Add the instance's reference data as confirmed list entries; existing entries stay as they are
+    (only missing ones are added), so the list pages are where they are edited (WM-101).
 
     seeds/locations.csv and school_types.csv -> places and school types; `[[projects]]` and
     `teacher_contexts` -> contexts; seeds/instructors.csv -> people (Slack users).
@@ -97,16 +98,31 @@ def seed_reference(session: Session, instance: Instance) -> None:
     session.flush()
 
 
+def _resolved(entries: list, key) -> dict:
+    """Entries by key; a merged entry stands for the entry it was merged into (WM-101)."""
+    by_id = {e.id: e for e in entries}
+
+    def target(entry):
+        seen = set()
+        while entry.merged_into_id is not None and entry.id not in seen and entry.merged_into_id in by_id:
+            seen.add(entry.id)
+            entry = by_id[entry.merged_into_id]
+        return entry
+
+    return {key(e): target(e) for e in entries}
+
+
 class _Lists:
-    """Looks up list entries by recorded name and adds missing ones."""
+    """Looks up list entries by recorded name and adds missing ones. A recorded name of a merged
+    entry gives the entry it was merged into, so new rows follow an admin's merge."""
 
     def __init__(self, session: Session, instance: Instance):
         self.session = session
         self.instance = instance
-        self.places = {p.name: p for p in session.scalars(select(Place))}
-        self.contexts = {c.name: c for c in session.scalars(select(Context))}
-        self.formats = {(f.name, f.category): f for f in session.scalars(select(Format))}
-        self.people = {p.key: p for p in session.scalars(select(Person))}
+        self.places = _resolved(list(session.scalars(select(Place))), lambda p: p.name)
+        self.contexts = _resolved(list(session.scalars(select(Context))), lambda c: c.name)
+        self.formats = _resolved(list(session.scalars(select(Format))), lambda f: (f.name, f.category))
+        self.people = _resolved(list(session.scalars(select(Person))), lambda p: p.key)
 
     def _get(self, cache: dict, key, make):
         if key not in cache:

@@ -146,4 +146,14 @@ def finish(params: dict, flow: dict | None, redirect_uri: str) -> Login:
     admin = bool(s.oidc_admin_group) and in_allowed_group(claims, s.oidc_admin_group, s.oidc_groups_claim)
     if not admin and not in_allowed_group(claims, s.oidc_allowed_group, s.oidc_groups_claim):
         raise OidcError("Dein Konto hat keinen Zugriff auf die Analyse.")
-    return Login(display_name(claims), admin, str(claims.get("sub") or display_name(claims)))
+    return Login(
+        display_name(claims), admin, str(claims.get("sub") or display_name(claims)), verified_email(claims)
+    )
+
+
+def verified_email(claims: dict) -> str | None:
+    """The e-mail of the login, unless the provider says it is not verified."""
+    email = claims.get("email")
+    if not isinstance(email, str) or not email.strip() or claims.get("email_verified") is False:
+        return None
+    return email.strip()
