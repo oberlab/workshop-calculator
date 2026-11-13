@@ -1,6 +1,6 @@
 """Suggestions for the planning form, read (never written) from the metrics database.
 
-Earlier course names, contexts and places, most frequent first, plus what is already in the
+Earlier course names, contexts and places (from the Termine), most frequent first, plus what is already in the
 planning database and the location list. Cached for five minutes. Without a reachable metrics
 database the planning values alone are used.
 """
@@ -13,11 +13,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from metrics.db import Instructor, SessionRow, get_sessionmaker
+from metrics.analytics import CATEGORY, CONTEXT, PLACE, joined
+from metrics.db import Format, get_sessionmaker
+from metrics.db import Person as TeamMember
 from metrics.instance import Instance, get_instance
 from metrics.planning.models import Course, Person
 
 FIELDS = ("course_name", "context", "location", "category")
+COLUMNS = {"course_name": Format.name, "context": CONTEXT, "location": PLACE, "category": CATEGORY}
 CACHE_SECONDS = 300
 _cache: dict[str, tuple[float, object]] = {}
 
@@ -40,9 +43,9 @@ def _metrics_counts() -> dict[str, Counter]:
     try:
         with get_sessionmaker()() as session:
             for name in FIELDS:
-                column = getattr(SessionRow, name)
+                column = COLUMNS[name]
                 for value, n in session.execute(
-                    select(column, func.count()).where(column.is_not(None)).group_by(column)
+                    joined(select(column, func.count())).where(column.is_not(None)).group_by(column)
                 ):
                     counts[name][value] = n
     except SQLAlchemyError:
@@ -97,13 +100,15 @@ def first_names(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def team_from_slack() -> list[tuple[str, str]]:
-    """The instructors that are Slack users, by first name.
+    """The people with a Slack user, by first name.
 
     Legacy names without Slack and the users in `[planning] exclude_people` are left out.
     """
     try:
         with get_sessionmaker()() as session:
-            rows = session.execute(select(Instructor.key, Instructor.name)).all()
+            rows = session.execute(
+                select(TeamMember.slack_id, TeamMember.name).where(TeamMember.slack_id.is_not(None))
+            ).all()
     except SQLAlchemyError:
         rows = []
     excluded = get_instance().planning_exclude_people

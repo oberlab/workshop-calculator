@@ -1,6 +1,5 @@
-"""Command line: `metrics load-legacy`, `sync-slack`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`hash-password`, `check-locations`,
-`check-names`, `export-baseline`, `load-baseline`."""
+"""Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
+`hash-password`, `check-locations`, `export-baseline`, `load-baseline`."""
 
 import argparse
 import getpass
@@ -11,18 +10,15 @@ from pathlib import Path
 
 from metrics.auth import hash_password
 from metrics.config import get_settings
-from metrics.db import STATUS_DONE, SessionRow, get_sessionmaker
+from metrics.db import get_sessionmaker
 from metrics.ingest import store
 from metrics.ingest.archive import archive_list, delete_archived
 from metrics.ingest.baseline import SOURCE_BASELINE, checksum, read_baseline, write_baseline
 from metrics.ingest.instructors import sync_instructors
 from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_export
 from metrics.ingest.records import SessionRecord
-from metrics.ingest.slack import SOURCE_SLACK, fetch_list, map_items
 from metrics.instance import get_instance
 from metrics.locations_check import check_locations, format_report
-from metrics.names_check import FIELDS, check_names
-from metrics.names_check import format_report as format_names_report
 
 
 def _print_warnings(records: list[SessionRecord]) -> None:
@@ -50,7 +46,7 @@ def load_legacy(args: argparse.Namespace) -> None:
     records = _read_legacy_files(args)
     try:
         with get_sessionmaker()() as session, session.begin():
-            store.replace_legacy(session, records)
+            store.replace_legacy(session, records, get_instance())
     except store.BaselineFrozen as error:
         sys.exit(str(error))
     print(f"Replaced all legacy rows with {len(records)} rows.")
@@ -85,34 +81,16 @@ def load_baseline_file(args: argparse.Namespace) -> None:
     sha256 = checksum(path)
     if args.sha256 and args.sha256 != sha256:
         sys.exit(f"Checksum does not match: expected {args.sha256}, file has {sha256}.")
-    records = read_baseline(path, get_instance())
+    instance = get_instance()
+    records = read_baseline(path, instance)
     try:
         with get_sessionmaker()() as session, session.begin():
-            store.load_baseline(session, records, args.version, sha256)
+            store.load_baseline(session, records, instance, args.version, sha256)
     except store.BaselineFrozen as error:
         sys.exit(str(error))
     print(f"Baseline {args.version} loaded and frozen: {len(records)} rows, sha256 {sha256}")
     _print_warnings(records)
     _print_summary((SOURCE_BASELINE,))
-
-
-def sync_slack(args: argparse.Namespace) -> None:
-    settings = get_settings()
-    if not settings.slack_bot_token or not settings.slack_list_id:
-        sys.exit("SLACK_BOT_TOKEN and SLACK_LIST_ID must be set.")
-    snapshot = fetch_list(settings.slack_bot_token, settings.slack_list_id)
-    mapped = map_items(snapshot, get_instance())
-    with get_sessionmaker()() as session, session.begin():
-        removed = store.upsert_slack(session, mapped.records)
-    print(
-        f"{len(snapshot.items)} items fetched, {len(mapped.records)} synced, "
-        f"{mapped.skipped_without_date} without date skipped, {removed} newly marked as removed from Slack."
-    )
-    if mapped.unmapped_columns:
-        names = ", ".join(c.replace("\n", " ") for c in mapped.unmapped_columns)
-        print(f"Columns not transferred (not mapped): {names}")
-    _print_warnings(mapped.records)
-    _print_summary((SOURCE_SLACK,))
 
 
 def _slack_credentials() -> tuple[str, str]:
@@ -141,7 +119,7 @@ def delete_slack(args: argparse.Namespace) -> None:
 def sync_instructor_profiles(args: argparse.Namespace) -> None:
     token, _ = _slack_credentials()
     with get_sessionmaker()() as session, session.begin():
-        people, pictures = sync_instructors(session, get_instance(), token)
+        people, pictures = sync_instructors(session, token)
     print(f"{people} instructors updated, {pictures} with a profile picture.")
 
 
@@ -155,46 +133,15 @@ def print_password_hash(args: argparse.Namespace) -> None:
 
 
 def check_location_tables(args: argparse.Namespace) -> None:
-    from sqlalchemy import func, select
+    from metrics.analytics import Filters, count_by_place
 
     with get_sessionmaker()() as session:
-        rows = session.execute(
-            select(SessionRow.location, func.count())
-            .where(SessionRow.status == STATUS_DONE, SessionRow.date.is_not(None))
-            .group_by(SessionRow.location)
-        ).all()
-    report = check_locations(get_instance(), dict(rows))
+        rows = count_by_place(session, Filters(preset="all"), date.today(), 8)
+    per_place: Counter = Counter()
+    for row in rows:
+        per_place[row.place] += row.count
+    report = check_locations(get_instance(), dict(per_place))
     print(format_report(report))
-    if report.problems:
-        sys.exit(1)
-
-
-def check_new_names(args: argparse.Namespace) -> None:
-    from collections import Counter
-
-    from sqlalchemy import func, select
-
-    known: dict[str, set[str]] = {}
-    new: dict[str, Counter] = {}
-    with get_sessionmaker()() as session:
-        for name in FIELDS:
-            column = getattr(SessionRow, name)
-            known[name] = {
-                v
-                for (v,) in session.execute(
-                    select(column).where(SessionRow.source != SOURCE_SLACK).distinct()
-                )
-                if v
-            }
-            new[name] = Counter(
-                dict(
-                    session.execute(
-                        select(column, func.count()).where(SessionRow.source == SOURCE_SLACK).group_by(column)
-                    ).all()
-                )
-            )
-    report = check_names(get_instance(), known, new)
-    print(format_names_report(report))
     if report.problems:
         sys.exit(1)
 
@@ -209,9 +156,6 @@ def main() -> None:
     )
     legacy.add_argument("--slack-export", action="append", default=[], help="CSV export of the Slack List")
     legacy.set_defaults(func=load_legacy)
-
-    slack = commands.add_parser("sync-slack", help="Read the Slack List and upsert its items")
-    slack.set_defaults(func=sync_slack)
 
     archive = commands.add_parser("archive-slack", help="Save the List and export items up to a date as CSV")
     archive.add_argument("--until", type=date.fromisoformat, required=True, help="last date (inclusive)")
@@ -232,11 +176,6 @@ def main() -> None:
         "check-locations", help="Check the location and school type lookup tables against the data"
     )
     locations.set_defaults(func=check_location_tables)
-
-    names = commands.add_parser(
-        "check-names", help="List names in synced Slack entries that differ from the clean data"
-    )
-    names.set_defaults(func=check_new_names)
 
     export = commands.add_parser(
         "export-baseline", help="Write all reviewed legacy data into one baseline CSV"

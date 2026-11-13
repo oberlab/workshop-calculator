@@ -147,11 +147,12 @@ cd /opt/workshop-calculator
 ops/update.sh v1.0.0
 docker compose run --rm app metrics load-baseline /legacy/einsaetze_baseline_2026-09-30.csv \
   --version 2026-09-30 --sha256 553482b364f6caf944faa776f111e06db685fd52846bf57a3f7bc8e346267242
-docker compose run --rm app metrics sync-slack
 docker compose run --rm app metrics sync-instructors
 ```
 
-Check the numbers against the PC: the overview's key figures for "Gesamter Zeitraum" must match the PC after the same Slack sync.
+Check the numbers against the PC: the overview's key figures for "Gesamter Zeitraum" must match the PC.
+
+An existing database (revision 0002, baseline in `sessions`) is moved into the new tables by the migration that runs at start-up (`alembic upgrade head`, revision 0003). It reads the reference data from the instance directory, so `INSTANCE_DIR` must point to the real instance. It checks that held sessions, participants and places match before it drops `sessions` and `instructors`; synced Slack rows are not migrated (the transfer from Slack, WM-120, brings them in). Take a dump first (`ops/update.sh` does).
 
 ### 7. Reverse proxy (Caddy, optional)
 

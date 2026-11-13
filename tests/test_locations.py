@@ -11,20 +11,36 @@ def test_example_instance_loads_school_types_municipalities_and_map(instance):
     assert list(instance.school_types) == ["GS", "MS", "RS", "GYM"]
 
 
+def _place(name, category, count):
+    """A count row with the place details of the example seeds (unlisted places have none)."""
+    from metrics.instance import load_instance
+    from tests.conftest import EXAMPLE_INSTANCE
+
+    example = load_instance(EXAMPLE_INSTANCE)
+    return analytics.PlaceCount(
+        name,
+        example.location_is_school(name),
+        example.school_type(name),
+        example.municipality(name),
+        category,
+        count,
+    )
+
+
 ROWS = [
-    ("Grundschule Musterstadt", "Code", 3),
-    ("Grundschule Musterstadt", "Science", 2),
-    ("Mittelschule Musterstadt", "Code", 4),
-    ("Gymnasium Nachbarstadt", None, 1),
-    ("Makerspace", "Code", 5),
-    ("Online", "Code", 6),
-    ("Unbekannte Schule", "Code", 7),
-    (None, "Code", 8),
+    _place("Grundschule Musterstadt", "Code", 3),
+    _place("Grundschule Musterstadt", "Science", 2),
+    _place("Mittelschule Musterstadt", "Code", 4),
+    _place("Gymnasium Nachbarstadt", None, 1),
+    _place("Makerspace", "Code", 5),
+    _place("Online", "Code", 6),
+    _place("Unbekannte Schule", "Code", 7),
+    _place(None, "Code", 8),
 ]
 
 
 def test_by_school_type_counts_only_schools_in_configured_order(instance):
-    counts, order = analytics.by_school_type(ROWS, instance)
+    counts, order = analytics.by_school_type(ROWS, instance.school_types)
     assert order == ["Grundschule", "Mittelschule", "Gymnasium"]
     assert sorted(counts) == [
         ("Grundschule", "Code", 3),
@@ -34,9 +50,9 @@ def test_by_school_type_counts_only_schools_in_configured_order(instance):
     ]
 
 
-def test_school_without_type_is_shown_last(instance, monkeypatch):
-    monkeypatch.setitem(instance.locations, "Neue Schule", True)
-    counts, order = analytics.by_school_type([*ROWS, ("Neue Schule", "Code", 2)], instance)
+def test_school_without_type_is_shown_last(instance):
+    new_school = analytics.PlaceCount("Neue Schule", True, None, None, "Code", 2)
+    counts, order = analytics.by_school_type([*ROWS, new_school], instance.school_types)
     assert order[-1] == UNKNOWN_SCHOOL_TYPE
     assert (UNKNOWN_SCHOOL_TYPE, "Code", 2) in counts
 
@@ -46,11 +62,11 @@ def test_by_municipality_splits_inside_outside_and_unassigned(instance):
     assert counts.inside == {"Beispieldorf": 5, "Musterstadt": 9, "Neudorf": 0}
     assert counts.outside == 1  # Gymnasium Nachbarstadt: municipality set, not on the map
     assert counts.unassigned == 6 + 7 + 8  # Online, a location not in the seeds, no location
-    assert sum(counts.inside.values()) + counts.outside + counts.unassigned == sum(r[2] for r in ROWS)
+    assert sum(counts.inside.values()) + counts.outside + counts.unassigned == sum(r.count for r in ROWS)
 
 
 def test_school_type_chart_keeps_the_legend_selection_inside_the_bar_layer(instance):
-    counts, order = analytics.by_school_type(ROWS, instance)
+    counts, order = analytics.by_school_type(ROWS, instance.school_types)
     spec = charts.sessions_by_school_type(counts, order, instance.theme)
     assert "params" not in spec
     bars, totals = spec["layer"]

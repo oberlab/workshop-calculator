@@ -18,4 +18,4 @@ Everything specific to one organisation lives in an instance directory that is m
 
 `config.toml` also holds feature switches: `[features] instructor_ranking` (internal ranking with Slack profile pictures, off by default; keep it off for anything public).
 
-The mapping tables are suggestions only: imports never rename anything. `metrics check-names` lists names in synced Slack entries that the clean data does not use and proposes the alias from these tables. Locations missing from `locations.csv` are reported by the import and get the target group "Unbekannt" for children.
+The mapping tables are suggestions only: imports never rename anything. Locations missing from `locations.csv` are reported by the import and get the target group "Unbekannt" for children.

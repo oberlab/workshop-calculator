@@ -1,6 +1,6 @@
 # workshop-calculator
 
-Course and workshop metrics for makerspaces. Sessions are recorded in a Slack List, synced into PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year) and period presets. Below the chart, key figures for the selection: sessions, participants and locations.
+Course and workshop metrics for makerspaces. Sessions are recorded in PostgreSQL and shown as an interactive chart: sessions over time, stacked by course category, with selectable time bins (week, month, quarter, calendar year, school year) and period presets. Below the chart, key figures for the selection: sessions, participants and locations.
 
 Two pages:
 
@@ -27,9 +27,6 @@ Load data:
 docker compose exec app metrics load-legacy \
   --harmonised /legacy/harmonised.csv \
   --slack-export /legacy/slack_export.csv
-
-# Read-only sync of the Slack List (needs SLACK_BOT_TOKEN with lists:read and SLACK_LIST_ID).
-docker compose exec app metrics sync-slack
 ```
 
 With the defaults, `/legacy` points to `tests/fixtures/`, so the commands above load the synthetic test data.
@@ -45,7 +42,7 @@ Quarterly hand-over from the Slack List into the legacy data (needs `lists:write
 
 ```sh
 metrics archive-slack --until 2026-09-30 --out <dir>   # raw JSON backup + CSV of entries up to the date
-metrics load-legacy … --slack-export <normalised CSV>  # archived entries replace their synced Slack rows
+metrics load-legacy … --slack-export <normalised CSV>  # loads the reviewed entries
 metrics delete-slack --csv <archive CSV>                # deletes exactly the archived items, logs each one
 ```
 
@@ -75,7 +72,7 @@ Project pages: each `[[projects]]` entry in the instance `config.toml` (`title`,
 
 ## Analysis figures
 
-Besides the main chart, the analysis page shows sessions at schools per school type and a map of sessions per municipality of one district, with the sessions outside the district and those without a municipality beside it. Both come from two lookup tables in the instance directory, `seeds/locations.csv` (school type, address, coordinates and municipality per location) and `seeds/school_types.csv`. Check them against the data with:
+Besides the main chart, the analysis page shows sessions at schools per school type and a map of sessions per municipality of one district, with the sessions outside the district and those without a municipality beside it. Both use the places and school types in the database, which are added from two lookup tables in the instance directory when data is loaded: `seeds/locations.csv` (school type, address, coordinates and municipality per location) and `seeds/school_types.csv`. Check the lookup tables against the data with:
 
 ```sh
 docker compose exec app metrics check-locations   # lists missing locations, contradictions, sessions without municipality
@@ -85,15 +82,16 @@ docker compose exec app metrics check-locations   # lists missing locations, con
 
 Everything organisation-specific (theme, fonts, location list, name mappings, Slack column mapping) lives in an instance directory that is never committed. See [`instance.example/README.md`](instance.example/README.md). Point `INSTANCE_DIR` in `.env` to your own copy.
 
+## Data model
+
+One schema for planning, tracking and analysis (`src/metrics/db.py`, migrations in `migrations/`): list entries (places, contexts, formats, people, each `vorgeschlagen` or `bestätigt`), courses and their Termine (appointments) with stage, team, participants and home municipalities, plus history, proposals, hint decisions, job runs and import runs. Every imported row becomes a course with one Termin that keeps its source and original key; held rows are in stage `Abgeschlossen`. The reference data of the instance (`seeds/locations.csv`, `seeds/school_types.csv`, `[[projects]]`, `teacher_contexts`, `seeds/instructors.csv`) is added as confirmed list entries when the baseline or legacy data is loaded, and recorded names become confirmed entries exactly as recorded.
+
 ## Data rules
 
-- Only sessions with status `Durchgeführt` and a date are counted.
-- Only mapped Slack columns are transferred; unmapped columns are reported by the sync, columns listed as ignored (e.g. billing) are dropped silently.
-- Slack items that disappear from the List stay in the database and are marked `removed_from_slack`.
+- Only Termine in stage `Abgeschlossen` with a date are counted.
 - Target groups: teacher-training contexts and `Lehrkräfte` → Lehrkräfte; age from 19 or adult age bands → Erwachsene; children → Schulklasse at a school, außerschulisch elsewhere, Unbekannt if the location is empty or not in the location list.
-- Key figures: *Einsätze* = held sessions; *Teilnehmende* = participants of sessions with session number 1 only, so children in multi-session courses count once (continuous formats use 1 on every date and count every time; entries without a session number are not counted); *Orte* = distinct location names.
-- Names are stored exactly as recorded; only whitespace is tidied. Nothing is renamed automatically: course names, locations and contexts in synced Slack entries that the clean data does not use are listed by `metrics check-names`, with a suggestion (the alias from the instance mappings or the most similar known name). A person decides: correct the entry in Slack, or record the decision.
-- Archived Slack entries loaded as legacy data replace the synced rows of the same Slack items, so nothing is counted twice.
+- Key figures: *Einsätze* = held Termine; *Teilnehmende* = participants of Termine with Terminnummer 1 only, so children in multi-session courses count once (continuous formats use 1 on every date and count every time; entries without a number are not counted); *Orte* = distinct places.
+- Names are stored exactly as recorded; only whitespace is tidied. Nothing is renamed or merged automatically; a legacy first name counts as the Slack user that `seeds/instructors.csv` names.
 
 ## Server deployment
 
@@ -111,6 +109,14 @@ uv run ruff format --check src tests migrations
 GitHub Actions runs the same commands on every push and pull request, on Python 3.13 (the Docker image) and 3.14.
 
 Tests use only synthetic data and always the public `instance.example/`: a fixture in `tests/conftest.py` ignores a private `instance/` directory and any login or Slack settings from `.env`, and points the database URL at a closed port, so no test can read real data.
+
+The database tests need a PostgreSQL server: start the throwaway one in `compose.test.yaml` (data in memory, a free host port chosen by Docker) or set `TEST_DATABASE_URL`. Each test run creates its own database there, runs the migrations and drops it at the end. Without a server these tests are skipped; in CI they must run.
+
+```sh
+docker compose -f compose.test.yaml up -d --wait
+uv run pytest
+docker compose -f compose.test.yaml down
+```
 
 `GET /healthz` is meant for monitoring: 200 with the time of the last finished import, 503 when the database does not answer (after at most 10 seconds).
 

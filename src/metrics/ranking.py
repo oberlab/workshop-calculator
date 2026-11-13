@@ -1,10 +1,9 @@
 """Internal ranking: held sessions per instructor (feature `instructor_ranking`)."""
 
-from collections import defaultdict
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from metrics.instance import Instance
+from metrics.analytics import PersonCount
 
 NO_INSTRUCTOR = "Ohne Kursleitung"
 
@@ -23,20 +22,15 @@ def initials(name: str) -> str:
     return "".join(p[0] for p in parts[:2]).upper() or "?"
 
 
-def instructor_ranking(
-    counts: list[tuple[str | None, int]], instance: Instance, people: dict[str, tuple[str, bool]]
-) -> list[RankingRow]:
-    """counts: (recorded instructor, sessions); people: key -> (name, has picture)."""
-    per_person: dict[str | None, int] = defaultdict(int)
-    for recorded, count in counts:
-        per_person[instance.instructor_key(recorded)] += count
+def instructor_ranking(counts: list[PersonCount]) -> list[RankingRow]:
+    """One row per lead (the person list already joins a legacy first name to its Slack user)."""
     rows = []
-    for key, count in per_person.items():
-        if key is None:
-            rows.append(RankingRow(None, NO_INSTRUCTOR, count, None, "–"))
+    for person in counts:
+        if person.key is None:
+            rows.append(RankingRow(None, NO_INSTRUCTOR, person.count, None, "–"))
             continue
-        name, has_image = people.get(key, (key, False))
-        image_url = f"/instructors/{quote(key, safe='')}/image" if has_image else None
-        rows.append(RankingRow(key, name, count, image_url, initials(name)))
+        name = person.name or person.key
+        image_url = f"/instructors/{quote(person.key, safe='')}/image" if person.has_image else None
+        rows.append(RankingRow(person.key, name, person.count, image_url, initials(name)))
     # Highest count first; sessions without instructor always last.
     return sorted(rows, key=lambda r: (r.key is None, -r.count, r.name.casefold()))

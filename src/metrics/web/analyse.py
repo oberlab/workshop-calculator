@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select
 
 from metrics import analytics, charts
-from metrics.db import STATUS_DONE, Instructor, SessionRow, get_sessionmaker
+from metrics.db import Person, get_sessionmaker
 from metrics.ingest.records import TARGET_GROUPS
 from metrics.instance import Project, get_instance
 from metrics.ranking import instructor_ranking
@@ -19,18 +19,11 @@ router = APIRouter()
 
 
 def _options(session) -> dict:
-    theme = get_instance().theme
-    done = SessionRow.status == STATUS_DONE
-    categories = {c for (c,) in session.execute(select(SessionRow.category).where(done).distinct()) if c}
-    contexts = sorted(
-        (c for (c,) in session.execute(select(SessionRow.context).where(done).distinct()) if c),
-        key=str.casefold,
-    )
-    groups = {g for (g,) in session.execute(select(SessionRow.target_group).where(done).distinct())}
+    options = analytics.filter_options(session)
     return {
-        "categories": charts.category_order(theme, categories),
-        "contexts": contexts,
-        "target_groups": [g for g in TARGET_GROUPS if g in groups],
+        "categories": charts.category_order(get_instance().theme, options.categories),
+        "contexts": options.contexts,
+        "target_groups": [g for g in TARGET_GROUPS if g in options.target_groups],
     }
 
 
@@ -75,18 +68,19 @@ def sessions_over_time_detailed(request: Request) -> JSONResponse:
     return sessions_over_time(parse_filters(request.query_params))
 
 
-def _location_rows(filters: analytics.Filters):
+def _place_rows(filters: analytics.Filters):
     instance = get_instance()
     with get_sessionmaker()() as session:
-        rows = analytics.count_by_location(session, filters, today(), instance.school_year_start_month)
-    return rows, instance
+        rows = analytics.count_by_place(session, filters, today(), instance.school_year_start_month)
+        labels = analytics.school_type_labels(session)
+    return rows, labels, instance
 
 
 @router.get("/api/analyse/schools")
 def sessions_by_school_type(request: Request) -> JSONResponse:
     """Sessions at schools per school type (all filters)."""
-    rows, instance = _location_rows(parse_filters(request.query_params))
-    counts, order = analytics.by_school_type(rows, instance)
+    rows, labels, instance = _place_rows(parse_filters(request.query_params))
+    counts, order = analytics.by_school_type(rows, labels)
     return JSONResponse(
         {
             "spec": charts.sessions_by_school_type(counts, order, instance.theme),
@@ -101,7 +95,7 @@ def sessions_by_municipality(request: Request) -> JSONResponse:
     instance = get_instance()
     if instance.map is None:
         raise HTTPException(404, "Keine Karte eingerichtet")
-    rows, instance = _location_rows(parse_filters(request.query_params))
+    rows, _, instance = _place_rows(parse_filters(request.query_params))
     counts = analytics.by_municipality(rows, instance)
     return JSONResponse(
         {
@@ -128,22 +122,18 @@ def instructor_ranking_api(request: Request) -> JSONResponse:
     filters = parse_filters(request.query_params)
     instance = get_instance()
     with get_sessionmaker()() as session:
-        counts = analytics.count_by_instructor(session, filters, today(), instance.school_year_start_month)
-        people = {
-            key: (name, has_image)
-            for key, name, has_image in session.execute(
-                select(Instructor.key, Instructor.name, Instructor.image.is_not(None))
-            )
-        }
-    rows = instructor_ranking(counts, instance, people)
+        counts = analytics.count_by_lead(session, filters, today(), instance.school_year_start_month)
+    rows = instructor_ranking(counts)
     return JSONResponse({"rows": [row.__dict__ for row in rows]})
 
 
 @router.get("/instructors/{key}/image")
 def instructor_image(key: str) -> Response:
+    """Picture of a person, by the ranking key (Slack user ID, else the recorded name)."""
     _require_ranking()
     with get_sessionmaker()() as session:
-        row = session.get(Instructor, key)
+        by_key = (Person.slack_id == key) | (Person.slack_id.is_(None) & (Person.name == key))
+        row = session.scalars(select(Person).where(by_key).limit(1)).first()
     if row is None or row.image is None:
         raise HTTPException(404)
     return Response(

@@ -1,3 +1,4 @@
+from metrics.analytics import PersonCount
 from metrics.ranking import NO_INSTRUCTOR, initials, instructor_ranking
 
 
@@ -7,11 +8,14 @@ def test_initials():
     assert initials("Anna-Lena Berg") == "AL"
 
 
-def test_ranking_merges_aliases_and_sorts(instance):
-    # instance.example maps the legacy first name "Kim" to the Slack user U0000000001.
-    counts = [("Kim", 5), ("U0000000001", 7), ("Jo", 3), (None, 2), ("Ben", 3)]
-    people = {"U0000000001": ("Kim Beispiel", True), "Jo": ("Jo", False)}
-    rows = instructor_ranking(counts, instance, people)
+def test_ranking_sorts_and_puts_missing_lead_last():
+    counts = [
+        PersonCount("U0000000001", "Kim Beispiel", True, 12),
+        PersonCount("Jo", "Jo", False, 3),
+        PersonCount(None, None, False, 2),
+        PersonCount("Ben", "Ben", False, 3),
+    ]
+    rows = instructor_ranking(counts)
     assert [(r.name, r.count) for r in rows] == [
         ("Kim Beispiel", 12),
         ("Ben", 3),
@@ -23,8 +27,8 @@ def test_ranking_merges_aliases_and_sorts(instance):
     assert rows[-1].key is None
 
 
-def test_image_url_is_quoted(instance):
-    rows = instructor_ranking([("Thorsten S", 1)], instance, {"Thorsten S": ("Thorsten S", True)})
+def test_image_url_is_quoted():
+    rows = instructor_ranking([PersonCount("Thorsten S", "Thorsten S", True, 1)])
     assert rows[0].image_url == "/instructors/Thorsten%20S/image"
 
 

@@ -3,11 +3,12 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from typing import NamedTuple
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from metrics.db import STATUS_DONE, SessionRow
+from metrics.db import STAGE_COUNTED, Appointment, Context, Course, Format, Person, Place, SchoolType
 from metrics.instance import Instance
 
 MONTHS = [
@@ -146,31 +147,73 @@ class Segment:
     count: int
 
 
+# The columns the analysis filters and groups by, from the Termin and its course.
+DATE = Appointment.date
+CATEGORY = Format.category
+CONTEXT = Context.name
+TARGET_GROUP = Course.target_group
+PLACE = Place.name
+
+
+def joined(query):
+    """A query over Termine with their course, format, context and place."""
+    return (
+        query.select_from(Appointment)
+        .join(Course, Appointment.course_id == Course.id)
+        .outerjoin(Format, Course.format_id == Format.id)
+        .outerjoin(Context, Course.context_id == Context.id)
+        .outerjoin(Place, Course.place_id == Place.id)
+    )
+
+
+def _counted(query):
+    """Termine the charts count: finally confirmed (Abgeschlossen) and dated."""
+    return joined(query).where(Appointment.stage == STAGE_COUNTED, DATE.is_not(None))
+
+
 def _held_sessions(query, filters: Filters, today: date, school_year_start_month: int):
-    """Restrict a query to held sessions matching all filters; returns it with the resolved period."""
+    """Restrict a query to held Termine matching all filters; returns it with the resolved period."""
     start, end = resolve_period(
         filters.preset, today, school_year_start_month, filters.date_from, filters.date_to
     )
-    query = query.where(SessionRow.status == STATUS_DONE, SessionRow.date.is_not(None))
+    query = _counted(query)
     if start:
-        query = query.where(SessionRow.date >= start)
+        query = query.where(DATE >= start)
     if end:
-        query = query.where(SessionRow.date <= end)
+        query = query.where(DATE <= end)
     if filters.categories:
-        query = query.where(SessionRow.category.in_(filters.categories))
+        query = query.where(CATEGORY.in_(filters.categories))
     if filters.contexts:
-        query = query.where(SessionRow.context.in_(filters.contexts))
+        query = query.where(CONTEXT.in_(filters.contexts))
     if filters.target_groups:
-        query = query.where(SessionRow.target_group.in_(filters.target_groups))
+        query = query.where(TARGET_GROUP.in_(filters.target_groups))
     return query, (start, end)
 
 
+@dataclass
+class FilterOptions:
+    categories: set[str]
+    contexts: list[str]
+    target_groups: set[str]
+
+
+def filter_options(session: Session) -> FilterOptions:
+    """Categories, contexts and target groups that occur in held Termine."""
+
+    def distinct(column):
+        return {v for (v,) in session.execute(_counted(select(column).distinct())) if v}
+
+    return FilterOptions(
+        categories=distinct(CATEGORY),
+        contexts=sorted(distinct(CONTEXT), key=str.casefold),
+        target_groups=distinct(TARGET_GROUP),
+    )
+
+
 def count_by_date_and_category(session: Session, filters: Filters, today: date, school_year_start_month: int):
-    """Held sessions grouped by date and category, with all filters applied."""
+    """Held Termine grouped by date and category, with all filters applied."""
     query, period = _held_sessions(
-        select(SessionRow.date, SessionRow.category, func.count()).group_by(
-            SessionRow.date, SessionRow.category
-        ),
+        select(DATE, CATEGORY, func.count()).group_by(DATE, CATEGORY),
         filters,
         today,
         school_year_start_month,
@@ -178,49 +221,77 @@ def count_by_date_and_category(session: Session, filters: Filters, today: date, 
     return session.execute(query).all(), period
 
 
-def count_by_instructor(session: Session, filters: Filters, today: date, school_year_start_month: int):
-    """Held sessions per recorded instructor value (first name or Slack ID), with all filters applied."""
+@dataclass
+class PersonCount:
+    key: str | None  # Slack user ID, else the recorded name; None for Termine without a lead
+    name: str | None
+    has_image: bool
+    count: int
+
+
+def count_by_lead(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per lead, with all filters applied."""
     query, _ = _held_sessions(
-        select(SessionRow.instructor, func.count()).group_by(SessionRow.instructor),
+        select(Person.slack_id, Person.name, Person.image.is_not(None), func.count()).group_by(Person.id),
         filters,
         today,
         school_year_start_month,
     )
-    return session.execute(query).all()
+    query = query.outerjoin(Person, Appointment.lead_id == Person.id)
+    return [
+        PersonCount(slack_id or name, name, bool(has_image), count)
+        for slack_id, name, has_image, count in session.execute(query)
+    ]
 
 
-def count_by_location(session: Session, filters: Filters, today: date, school_year_start_month: int):
-    """Held sessions per recorded location and category, with all filters applied."""
+class PlaceCount(NamedTuple):
+    place: str | None
+    is_school: bool | None
+    school_type: str | None
+    municipality: str | None
+    category: str | None
+    count: int
+
+
+def count_by_place(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per place and category, with the place's details; all filters applied."""
     query, _ = _held_sessions(
-        select(SessionRow.location, SessionRow.category, func.count()).group_by(
-            SessionRow.location, SessionRow.category
-        ),
+        select(
+            PLACE, Place.is_school, Place.school_type, Place.municipality, CATEGORY, func.count()
+        ).group_by(Place.id, CATEGORY),
         filters,
         today,
         school_year_start_month,
     )
-    return session.execute(query).all()
+    return [PlaceCount(*row) for row in session.execute(query)]
+
+
+def school_type_labels(session: Session) -> dict[str, str]:
+    """code -> label, in chart order."""
+    return dict(
+        session.execute(select(SchoolType.code, SchoolType.label).order_by(SchoolType.position)).all()
+    )
 
 
 UNKNOWN_SCHOOL_TYPE = "Schulart unbekannt"
 
 
-def by_school_type(rows, instance: Instance) -> tuple[list[tuple[str, str, int]], list[str]]:
-    """Sessions at schools per school type and category, and the order of the school types.
+def by_school_type(
+    rows: list[PlaceCount], labels: dict[str, str]
+) -> tuple[list[tuple[str, str, int]], list[str]]:
+    """Termine at schools per school type and category, and the order of the school types.
 
-    Only locations listed as schools count. The school type comes from seeds/locations.csv; a
-    code the instance config does not name is shown as the code, a school without a type as
-    "Schulart unbekannt" (last).
+    Only places marked as schools count. A code without a label is shown as the code, a
+    school without a type as "Schulart unbekannt" (last).
     """
     counts: dict[tuple[str, str], int] = defaultdict(int)
-    for location, category, count in rows:
-        if instance.location_is_school(location) is not True:
+    for row in rows:
+        if row.is_school is not True:
             continue
-        code = instance.school_type(location)
-        label = instance.school_types.get(code, code) if code else UNKNOWN_SCHOOL_TYPE
-        counts[(label, category or NO_CATEGORY)] += count
+        label = labels.get(row.school_type, row.school_type) if row.school_type else UNKNOWN_SCHOOL_TYPE
+        counts[(label, row.category or NO_CATEGORY)] += row.count
     present = {label for label, _ in counts}
-    configured = [label for label in instance.school_types.values() if label in present]
+    configured = [label for label in labels.values() if label in present]
     others = sorted(present - set(configured) - {UNKNOWN_SCHOOL_TYPE})
     order = configured + others + ([UNKNOWN_SCHOOL_TYPE] if UNKNOWN_SCHOOL_TYPE in present else [])
     return [(label, category, count) for (label, category), count in counts.items()], order
@@ -230,21 +301,20 @@ def by_school_type(rows, instance: Instance) -> tuple[list[tuple[str, str, int]]
 class MunicipalityCounts:
     inside: dict[str, int]  # every municipality on the map, including those with 0
     outside: int  # a municipality is set but is not on the map
-    unassigned: int  # no location, location not listed, or no municipality set (e.g. "Online")
+    unassigned: int  # no place, or no municipality set (e.g. "Online")
 
 
-def by_municipality(rows, instance: Instance) -> MunicipalityCounts:
+def by_municipality(rows: list[PlaceCount], instance: Instance) -> MunicipalityCounts:
     names = [m.name for m in instance.map.municipalities] if instance.map else []
     inside = dict.fromkeys(names, 0)
     outside = unassigned = 0
-    for location, _category, count in rows:
-        municipality = instance.municipality(location)
-        if municipality in inside:
-            inside[municipality] += count
-        elif municipality:
-            outside += count
+    for row in rows:
+        if row.municipality in inside:
+            inside[row.municipality] += row.count
+        elif row.municipality:
+            outside += row.count
         else:
-            unassigned += count
+            unassigned += row.count
     return MunicipalityCounts(inside=inside, outside=outside, unassigned=unassigned)
 
 
@@ -258,17 +328,13 @@ class Totals:
 def totals(session: Session, filters: Filters, today: date, school_year_start_month: int) -> Totals:
     """Key figures for the selection.
 
-    Participants are counted at session number 1 only, so children in multi-session courses
-    count once (rule of the R analysis). Entries without a session number are not counted.
-    Locations are distinct recorded names.
+    Participants are counted at Terminnummer 1 only, so children in multi-session courses
+    count once (rule of the R analysis). Termine without a number are not counted.
+    Places are distinct places.
     """
-    first_session = case((SessionRow.session_number == 1, SessionRow.participants_total), else_=0)
+    first_session = case((Appointment.number == 1, Appointment.participants_total), else_=0)
     query, _ = _held_sessions(
-        select(
-            func.count(),
-            func.coalesce(func.sum(first_session), 0),
-            func.count(func.distinct(SessionRow.location)),
-        ),
+        select(func.count(), func.coalesce(func.sum(first_session), 0), func.count(func.distinct(Place.id))),
         filters,
         today,
         school_year_start_month,
