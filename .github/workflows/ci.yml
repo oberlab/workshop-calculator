@@ -44,7 +44,7 @@ jobs:
       # The tests create their own database on this server and drop it afterwards.
       TEST_DATABASE_URL: postgresql+psycopg://test:test@127.0.0.1:5432/test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v6
         with:
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v6
         with:
