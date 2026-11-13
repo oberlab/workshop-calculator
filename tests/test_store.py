@@ -9,19 +9,8 @@ from sqlalchemy.orm import Session
 from metrics import analytics
 from metrics.db import ABGESCHLOSSEN, Appointment, Context, Course, Person, Place, SchoolType
 from metrics.ingest import store
-from metrics.ingest.baseline import read_baseline, write_baseline
-from metrics.ingest.legacy import read_harmonised, read_slack_export
+from metrics.ingest.legacy import read_harmonised
 from tests.conftest import EXAMPLE_INSTANCE, FIXTURES, alembic_upgrade
-
-
-@pytest.fixture
-def baseline(instance, tmp_path):
-    """The demo baseline: the synthetic legacy fixtures written and read back as a baseline file."""
-    records = read_harmonised(FIXTURES / "harmonised.csv", instance)
-    records += read_slack_export(FIXTURES / "slack_export.csv", instance)[0]
-    path = tmp_path / "baseline.csv"
-    write_baseline(records, path)
-    return read_baseline(path, instance)
 
 
 def dump(session: Session) -> dict:

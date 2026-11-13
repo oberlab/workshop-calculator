@@ -19,6 +19,8 @@ old_data/
 # Local secrets and Slack probe output
 .env
 .probe/
+# Slack List archives written by `metrics transfer-slack --archive` (real data)
+slack_archive/
 __pycache__/
 
 # Local reference material (old R project, CI extraction)

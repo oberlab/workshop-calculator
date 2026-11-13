@@ -101,6 +101,7 @@ SESSION_SECRET=<new: openssl rand -hex 32>
 
 SLACK_BOT_TOKEN=<same as on the PC>
 SLACK_LIST_ID=<same as on the PC>
+SLACK_PROJECT_LIST_ID=<same as on the PC>
 
 AUTH_MODE=oidc
 # The shared team password stays off on the server.

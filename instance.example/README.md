@@ -4,7 +4,7 @@ Everything specific to one organisation lives in an instance directory that is m
 
 | Path | Content |
 | --- | --- |
-| `config.toml` | School year start, teacher-training contexts, Slack List column mapping and ignored columns |
+| `config.toml` | School year start, teacher-training contexts, Slack List column mapping and ignored columns; for `metrics transfer-slack` the status-to-stage mapping and a project's own List (`[slack.project_list]`) |
 | `theme/tokens.toml` | Colours, fonts, category colours and order |
 | `theme/fonts/` | Font files referenced in `tokens.toml` |
 | `seeds/locations.csv` | Lookup table, one row per location: `school` = `ja`/`nein` (decides "Schulklasse" vs "Kinder & Jugendliche außerschulisch"), `school_type` (a code from `school_types.csv`), `address`, `lat`/`lon`, `municipality` (a `name` from the map for places in the district, else the town; empty = no place, e.g. "Online"), `source`, `note`, `reviewed` |

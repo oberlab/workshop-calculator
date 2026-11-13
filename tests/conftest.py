@@ -23,6 +23,7 @@ EXAMPLE_INSTANCE = ROOT / "instance.example"
 _ENVIRONMENT = (
     "SLACK_BOT_TOKEN",
     "SLACK_LIST_ID",
+    "SLACK_PROJECT_LIST_ID",
     "AUTH_MODE",
     "TEAM_PASSWORD_HASH",
     "ALLOW_PASSWORD_LOGIN",
@@ -87,6 +88,19 @@ def public_example_only(monkeypatch):
 def instance() -> Instance:
     """The public example instance: synthetic locations, mappings and theme."""
     return load_instance(EXAMPLE_INSTANCE)
+
+
+@pytest.fixture
+def baseline(instance, tmp_path):
+    """The demo baseline: the synthetic legacy fixtures written and read back as a baseline file."""
+    from metrics.ingest.baseline import read_baseline, write_baseline
+    from metrics.ingest.legacy import read_harmonised, read_slack_export
+
+    records = read_harmonised(FIXTURES / "harmonised.csv", instance)
+    records += read_slack_export(FIXTURES / "slack_export.csv", instance)[0]
+    path = tmp_path / "baseline.csv"
+    write_baseline(records, path)
+    return read_baseline(path, instance)
 
 
 # --- PostgreSQL ---------------------------------------------------------------------------

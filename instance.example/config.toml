@@ -27,6 +27,36 @@ context = "Kontext"
 session_number = "Terminnummer"
 status = "Status"
 instructor = "Kursleiter"
+# Optional: a user column with further team members (Unterstützung). If the Kursleiter column
+# holds several users, the first is the lead and the others support.
+# support = "Unterstützung"
+
+# `metrics transfer-slack`: List status -> stage. Built in: "In Planung" and "Geplant" -> Geplant,
+# "Bestätigt", "Durchgeführt", "Abgesagt". Items with any other status are skipped and reported.
+# [slack.stages]
+# "Fixiert" = "Bestätigt"
+
+# `metrics transfer-slack`: a project's own List (List ID in SLACK_PROJECT_LIST_ID), one item per
+# session. columns: fields as in [slack.columns] (date is required); defaults: values for fields
+# the List has no column for, the same for every item (context is required as column or default);
+# origins: municipality = the column(s) with its number of participants (Herkunft).
+# Without a status column an item counts as held once its date has passed and participants are
+# recorded; otherwise it arrives as Geplant.
+# [slack.project_list]
+# label = "Projekt-A-Liste"
+# ignored_columns = ["Notiz"]
+# [slack.project_list.columns]
+# date = "Datum"
+# participants_female = "Mädchen"
+# participants_male = "Jungen"
+# [slack.project_list.defaults]
+# context = "Projekt A"
+# course_name = "Projekt A"
+# location = "Makerspace"
+# instructor = "U0000000001"
+# [slack.project_list.origins]
+# "Musterstadt" = "Musterstadt"
+# "Beispieldorf" = ["Beispieldorf w", "Beispieldorf m"]
 
 [features]
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).

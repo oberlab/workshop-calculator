@@ -12,6 +12,8 @@ class Settings:
     instance_dir: Path
     slack_bot_token: str | None
     slack_list_id: str | None
+    # A project's own List (e.g. JugendLab), read once by `metrics transfer-slack`.
+    slack_project_list_id: str | None = None
     team_password_hash: str | None = None
     allow_password_login: bool = False
     session_secret: str | None = None
@@ -42,6 +44,7 @@ def get_settings() -> Settings:
         instance_dir=Path(os.environ.get("INSTANCE_DIR", "instance")),
         slack_bot_token=os.environ.get("SLACK_BOT_TOKEN") or None,
         slack_list_id=os.environ.get("SLACK_LIST_ID") or None,
+        slack_project_list_id=os.environ.get("SLACK_PROJECT_LIST_ID") or None,
         team_password_hash=os.environ.get("TEAM_PASSWORD_HASH") or None,
         allow_password_login=(os.environ.get("ALLOW_PASSWORD_LOGIN") or "").strip().lower() == "true",
         session_secret=os.environ.get("SESSION_SECRET") or None,

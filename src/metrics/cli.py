@@ -1,5 +1,5 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`hash-password`, `check-locations`, `export-baseline`, `load-baseline`."""
+`transfer-slack`, `hash-password`, `check-locations`, `export-baseline`, `load-baseline`."""
 
 import argparse
 import getpass
@@ -11,12 +11,13 @@ from pathlib import Path
 from metrics.auth import hash_password
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
-from metrics.ingest import store
+from metrics.ingest import store, transfer
 from metrics.ingest.archive import archive_list, delete_archived
 from metrics.ingest.baseline import SOURCE_BASELINE, checksum, read_baseline, write_baseline
 from metrics.ingest.instructors import sync_instructors
 from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_export
 from metrics.ingest.records import SessionRecord
+from metrics.ingest.slack import SlackError
 from metrics.instance import get_instance
 from metrics.locations_check import check_locations, format_report
 
@@ -116,6 +117,34 @@ def delete_slack(args: argparse.Namespace) -> None:
         print(f"  skipped {item_id}: {reason}")
 
 
+def transfer_slack(args: argparse.Namespace) -> None:
+    instance = get_instance()
+    try:
+        if args.archive:
+            token, list_id = _slack_credentials()
+            list_ids = {transfer.MAIN: list_id}
+            if instance.slack_project_list:
+                if not get_settings().slack_project_list_id:
+                    sys.exit("[slack.project_list] is configured: SLACK_PROJECT_LIST_ID must be set.")
+                list_ids[transfer.PROJECT] = get_settings().slack_project_list_id
+            folder = transfer.write_archive(Path(args.archive), transfer.fetch_lists(token, list_ids))
+            print(f"Listen gesichert in {folder}\n")
+        else:
+            folder = Path(args.from_archive)
+        lists = transfer.read_archive(folder, instance)
+        with get_sessionmaker()() as session:
+            report = transfer.transfer(session, lists, instance, date.today())
+            if args.dry_run:
+                session.rollback()
+            else:
+                session.commit()
+    except (transfer.TransferError, SlackError) as error:
+        sys.exit(str(error))
+    print(transfer.format_report(report))
+    if args.dry_run:
+        print("\nProbelauf (--dry-run): nichts gespeichert.")
+
+
 def sync_instructor_profiles(args: argparse.Namespace) -> None:
     token, _ = _slack_credentials()
     with get_sessionmaker()() as session, session.begin():
@@ -165,6 +194,18 @@ def main() -> None:
     remove = commands.add_parser("delete-slack", help="Delete archived items from the List")
     remove.add_argument("--csv", required=True, help="CSV written by archive-slack")
     remove.set_defaults(func=delete_slack)
+
+    take = commands.add_parser(
+        "transfer-slack",
+        help="Transfer the Slack Lists into Termine once (items after the baseline); Slack is only read",
+    )
+    origin = take.add_mutually_exclusive_group(required=True)
+    origin.add_argument(
+        "--archive", metavar="DIR", help="read the Lists from Slack, save them under DIR, then transfer"
+    )
+    origin.add_argument("--from-archive", metavar="FOLDER", help="transfer from an archive folder (offline)")
+    take.add_argument("--dry-run", action="store_true", help="show the summary, save nothing in the database")
+    take.set_defaults(func=transfer_slack)
 
     people = commands.add_parser("sync-instructors", help="Fetch instructor names and pictures from Slack")
     people.set_defaults(func=sync_instructor_profiles)

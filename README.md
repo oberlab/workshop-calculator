@@ -46,6 +46,13 @@ metrics load-legacy … --slack-export <normalised CSV>  # loads the reviewed en
 metrics delete-slack --csv <archive CSV>                # deletes exactly the archived items, logs each one
 ```
 
+Switch from Slack (WM-120): `metrics transfer-slack` takes every item of the Einsatztracking List and, if configured, of a project's own List (`SLACK_PROJECT_LIST_ID`, `[slack.project_list]` in the instance `config.toml`) dated after the baseline and creates a Termin for it: open items in their stage, held items as Durchgeführt, to be finally confirmed in the app. It first saves both Lists (raw JSON and a CSV of every column) in a new folder, and can run again from that folder without Slack. Slack is only read (`lists:read`); no item is changed or deleted. Names are stored as recorded; places, contexts, formats and people that are not list entries yet are added as proposed entries for an admin to confirm. Items already transferred are skipped, so a second run adds nothing.
+
+```sh
+docker compose run --rm -u "$(id -u)" -v "$PWD/slack_archive:/archive" app metrics transfer-slack --archive /archive --dry-run
+docker compose run --rm -u "$(id -u)" -v "$PWD/slack_archive:/archive" app metrics transfer-slack --from-archive /archive/slack-listen_<time>
+```
+
 ## Team login
 
 The analysis page needs a login. `AUTH_MODE` in `.env` selects how:

@@ -42,6 +42,10 @@ DEFAULT_SLACK_COLUMNS = {
 }
 
 
+# Fields a List column can be mapped to besides those above: further team members (user column).
+OPTIONAL_SLACK_FIELDS = ("support",)
+
+
 def clean_name(value: str | None) -> str:
     """Collapse whitespace; used for every name lookup."""
     return re.sub(r"\s+", " ", value or "").strip()
@@ -138,6 +142,53 @@ def load_projects(config: dict) -> list[Project]:
 
 
 @dataclass(frozen=True)
+class ProjectList:
+    """A project's own Slack List (e.g. JugendLab), transferred once with `metrics transfer-slack`.
+
+    One item per session. `columns` maps fields (as in `[slack.columns]`) to the List's column
+    names; `defaults` gives the value of a field the List has no column for (the same for every
+    item, e.g. the context); `origins` maps a municipality to the column(s) holding its number of
+    participants (Herkunft).
+    """
+
+    label: str
+    columns: dict[str, str]
+    defaults: dict[str, str] = field(default_factory=dict)
+    origins: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    ignored_columns: frozenset[str] = frozenset()
+
+
+def load_project_list(slack: dict) -> ProjectList | None:
+    entry = slack.get("project_list")
+    if not entry:
+        return None
+    fields = set(DEFAULT_SLACK_COLUMNS) | set(OPTIONAL_SLACK_FIELDS)
+    columns = {str(k): str(v) for k, v in (entry.get("columns") or {}).items()}
+    defaults = {str(k): str(v) for k, v in (entry.get("defaults") or {}).items()}
+    unknown = sorted((set(columns) | set(defaults)) - fields)
+    if unknown:
+        raise ValueError(f"[slack.project_list]: unknown field(s) {', '.join(unknown)}")
+    if "date" not in columns:
+        raise ValueError("[slack.project_list.columns]: the List needs a date column")
+    if "context" not in columns and "context" not in defaults:
+        raise ValueError("[slack.project_list]: set a context column or a default context")
+    both = sorted(set(columns) & set(defaults))
+    if both:
+        raise ValueError(f"[slack.project_list]: {', '.join(both)} has a column and a default")
+    origins = {
+        clean_name(municipality): tuple([names] if isinstance(names, str) else names)
+        for municipality, names in (entry.get("origins") or {}).items()
+    }
+    return ProjectList(
+        label=str(entry.get("label") or "Projekt-Liste"),
+        columns=columns,
+        defaults=defaults,
+        origins=origins,
+        ignored_columns=frozenset(entry.get("ignored_columns", [])),
+    )
+
+
+@dataclass(frozen=True)
 class Instance:
     path: Path
     school_year_start_month: int
@@ -159,6 +210,9 @@ class Instance:
     projects: list[Project] = field(default_factory=list)
     # Planning: Slack users who are never offered as team members (by Slack user ID).
     planning_exclude_people: frozenset[str] = frozenset()
+    # Transfer from Slack: a project's own List, and List status -> stage beyond the defaults.
+    slack_project_list: ProjectList | None = None
+    slack_stages: dict[str, str] = field(default_factory=dict)
 
     def project(self, slug: str) -> Project | None:
         return next((p for p in self.projects if p.slug == slug), None)
@@ -292,6 +346,8 @@ def load_instance(instance_dir: Path) -> Instance:
         map=load_map(instance_dir, config),
         projects=load_projects(config),
         planning_exclude_people=frozenset(config.get("planning", {}).get("exclude_people", [])),
+        slack_project_list=load_project_list(slack),
+        slack_stages={str(k): str(v) for k, v in (slack.get("stages") or {}).items()},
     )
 
 

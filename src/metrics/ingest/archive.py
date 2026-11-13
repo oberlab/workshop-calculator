@@ -18,11 +18,23 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from metrics.ingest.legacy import SLACK_ID_COLUMN as ID_COLUMN
-from metrics.ingest.slack import SlackError, _cell, _resolve_columns, fetch_list
+from metrics.ingest.slack import ListSnapshot, SlackError, _cell, _resolve_columns, fetch_list
 from metrics.instance import Instance
 
 UPDATED_COLUMN = "Slack-geändert"
 DELETE_URL = "https://slack.com/api/slackLists.items.delete"
+
+
+def write_raw(path: Path, list_id: str, stamp: str, snapshot: ListSnapshot) -> None:
+    """The complete List (schema and all items) as fetched; `read_raw` reads it back."""
+    document = {"list_id": list_id, "fetched_at": stamp, "schema": snapshot.schema, "items": snapshot.items}
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def read_raw(path: Path) -> tuple[str, ListSnapshot]:
+    """The List ID and the List of a raw JSON written by `write_raw`."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return document["list_id"], ListSnapshot(schema=document["schema"], items=document["items"])
 
 
 def _format_number(value: str | None) -> str:
@@ -39,14 +51,7 @@ def archive_list(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw_path = out_dir / f"slack_{list_id}_{stamp}_raw.json"
-    raw_path.write_text(
-        json.dumps(
-            {"list_id": list_id, "fetched_at": stamp, "schema": snapshot.schema, "items": snapshot.items},
-            ensure_ascii=False,
-            indent=1,
-        ),
-        encoding="utf-8",
-    )
+    write_raw(raw_path, list_id, stamp, snapshot)
 
     header = [instance.slack_columns[key] for key in columns] + [ID_COLUMN, UPDATED_COLUMN]
     rows = []
