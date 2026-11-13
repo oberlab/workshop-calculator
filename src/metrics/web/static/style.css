@@ -1018,3 +1018,5 @@ table.mun input[type="number"] { width: 90px; }
 .add-form .kinds { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .bulk { margin-bottom: 6px; }
 .bulk form { margin: 0; }
+.add-form > .btn { justify-self: start; }
+.add-termine + .field-label { margin-top: 16px; }

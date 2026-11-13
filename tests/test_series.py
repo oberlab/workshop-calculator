@@ -197,6 +197,8 @@ def test_adding_termine_and_the_double_number_guard(world):
     ]
     with pytest.raises(FormError):
         series.add(db, t.course, [], t, "Kim")
+    with pytest.raises(FormError, match="schon Termine"):
+        series.add(db, t.course, [held, added[0].date], t, "Kim")  # sent twice: nothing added
     # Number 1 is counted (frozen); a Termin dated before it later gets number 1 as well, which
     # blocks its final confirmation so the participants are not counted twice.
     workflow.confirm(db, t, None, "Kim")

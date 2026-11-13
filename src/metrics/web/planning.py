@@ -671,8 +671,10 @@ async def add_termine(course_id: int, request: Request):
                 request, session, course, t, errors=error.messages, status_code=400, extra=extra
             )
         session.commit()
-        first = added[0]
-        return _back(first, f"{len(added)} Termine hinzugefügt." if len(added) > 1 else "Termin hinzugefügt.")
+        message = f"{len(added)} Termine hinzugefügt." if len(added) > 1 else "Termin hinzugefügt."
+        if len(added) < len(dates):
+            message += f" {len(dates) - len(added)} Tage hatten schon einen Termin."
+        return _back(added[0], message)
 
 
 def _bulk_message(done: str, result: series.Bulk) -> str:

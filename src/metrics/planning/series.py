@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from metrics import courses, hints
-from metrics.db import BESTAETIGT, GEPLANT, Appointment, Course
+from metrics.db import ABGESAGT, BESTAETIGT, GEPLANT, Appointment, Course
 from metrics.instance import clean_name
 from metrics.planning import workflow
 from metrics.planning.workflow import TEAM, TIMES, Form, FormError
@@ -89,9 +89,13 @@ def parse_dates(form: Form, errors: list[str], *, prefix: str = "") -> list[dt.d
 def add(
     session: Session, course: Course, dates: list[dt.date], template: Appointment | None, by: str
 ) -> list[Appointment]:
-    """New Geplant Termine on these dates, with the times and team of `template`."""
+    """New Geplant Termine on these dates, with the times and team of `template`. A date on which the
+    course already has a Termin (not cancelled) is left out, so sending the form twice adds nothing."""
     if not dates:
         raise FormError("Keine Termine zum Hinzufügen.")
+    taken = {a.date for a in course.appointments if a.stage != ABGESAGT}
+    if not (dates := [d for d in dates if d not in taken]):
+        raise FormError("An diesen Tagen hat der Kurs schon Termine.")
     added = []
     for day in dates:
         t = courses.add_appointment(
