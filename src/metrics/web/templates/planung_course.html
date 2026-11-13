@@ -238,7 +238,7 @@
         {% if calendar.on %}
         <form method="post" action="/planung/{{ course.id }}/alle" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="calendar"><input type="hidden" name="termin" value="{{ t.id }}">
-          {{ ui.button("Alle in den Kalender (" ~ series.to_enter|length ~ ")", type="submit", kind="secondary", size="sm", attrs={"disabled": none if series.to_enter else true}) }}
+          {{ ui.button("Bestätigte in den Kalender (" ~ series.to_enter|length ~ ")", type="submit", kind="secondary", size="sm", attrs={"disabled": none if series.to_enter else true}) }}
         </form>
         {% endif %}
       </div>
@@ -302,7 +302,7 @@
           </form>
         </details>
       {% elif t.stage == "Bestätigt" %}
-        <p class="help">Wird am Tag nach dem Termin automatisch „durchgeführt“.</p>
+        <p class="help">Wird am Tag nach dem Termin automatisch „durchgeführt“.{% if t.calendar_uid %} Zurück zu „Geplant“ sagt den Kalendereintrag ab.{% endif %}</p>
         <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="back"><input type="hidden" name="termin" value="{{ t.id }}">
           {{ ui.button("Zurück zu „Geplant“", type="submit", kind="secondary") }}
@@ -378,7 +378,11 @@
       {% if not calendar.on %}
       <p class="help">Kein Kalender eingerichtet (CALDAV_URL).</p>
       {% else %}
-      {% if t.calendar_uid %}
+      {% if t.stage == "Geplant" %}
+        {% if t.calendar_uid and t.calendar_state == "outdated" %}<p class="help">Der Termin ist wieder geplant: sein Kalendereintrag wird abgesagt, sobald der Kalender erreichbar ist.</p>
+        {% elif t.calendar_uid %}<p class="help">Mit einem Kalendereintrag verknüpft; er bleibt unverändert, bis der Termin bestätigt ist.</p>
+        {% else %}<p class="help">Geplante Termine stehen nicht im Kalender. Nach „Bestätigen“ kann der Termin eingetragen werden{% if calendar.invitations %}; dann werden Kursleitung und Unterstützung eingeladen{% endif %}.</p>{% endif %}
+      {% elif t.calendar_uid %}
         {% if t.calendar_state == "missing" %}<p class="help">Der Kalendereintrag ist verschwunden.</p>
         {% elif t.calendar_state == "outdated" %}<p class="help">Der Kalendereintrag weicht vom Termin ab. „Kalender aktualisieren“ übernimmt die Angaben des Termins{% if calendar.invitations %} und schickt den Eingeladenen eine Aktualisierung{% endif %}:</p>
           {% if calendar.changes %}
@@ -402,7 +406,7 @@
       {% if calendar.responses %}
       <h3 class="field-label">Eingeladen</h3>
       <ul class="responses">{% for name, email, answer in calendar.responses %}<li>{{ name }}: <span class="answer answer-{{ 'no' if answer == 'abgesagt' else ('yes' if answer == 'zugesagt' else 'open') }}">{{ answer }}</span></li>{% endfor %}</ul>
-      {% elif calendar.invitations %}<p class="help">Kursleitung und Unterstützung werden mit dem Eintrag eingeladen.</p>{% endif %}
+      {% elif calendar.invitations and t.stage in calendar.stages %}<p class="help">Kursleitung und Unterstützung werden mit dem Eintrag eingeladen.</p>{% endif %}
       {% if calendar.uninvited %}<p class="help">Ohne E-Mail-Adresse, nicht eingeladen: {{ calendar.uninvited|join(", ") }}.</p>{% endif %}
       {% if t.calendar_uid %}<p class="help small">Kalender-ID: <code>{{ t.calendar_uid }}</code></p>{% endif %}
       {% endif %}

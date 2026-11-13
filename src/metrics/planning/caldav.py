@@ -13,8 +13,19 @@ to a person taken out of the team, and a cancellation to everyone when the event
 Responses (PARTSTAT) are read back by the check and shown on the course page; a decline becomes a
 Wichtig hint (rule "einladung-abgelehnt").
 
+Only Termine from Bestätigt on are in the calendar (Alex, 2026-11-13): a Geplant Termin has no
+event and invites nobody. A Termin that goes back to Geplant gets its event cancelled with a note
+(attendees get the cancellation, as for a cancelled Termin) and the link is dropped
+(`withdraw`; `workflow.back_to_planned` marks the event outdated, so a calendar that is down is
+retried by the check). A Geplant Termin linked to an event otherwise (created from an event on
+"Prüfen", or entered before this rule) keeps its event untouched until it is confirmed. When a
+withdrawn Termin is confirmed again, "In Kalender eintragen" creates a new event under a new UID
+rather than reviving the cancelled one: attendee calendars (Nextcloud, Thunderbird, Outlook) treat
+a re-sent cancelled UID differently (some drop it, some keep it struck through), while a new UID is
+a plain new invitation everywhere, and the cancelled event stays as the record.
+
 When the calendar is written:
-- "In Kalender eintragen" (`enter`), only by a person, for a Geplant or Bestätigt Termin.
+- "In Kalender eintragen" (`enter`), only by a person, for a Bestätigt Termin.
 - After a save or stage change of a Termin that has an event (`push`): only when the event would
   change, so a save without calendar-relevant changes sends nothing.
 - "Kalender aktualisieren" (`push` from the course page) after the course page showed what it
@@ -57,7 +68,7 @@ from metrics.db import (
 LOCAL = ZoneInfo("Europe/Berlin")
 TIMEOUT = 10
 LOOKAHEAD_DAYS = 400
-IN_CALENDAR = (GEPLANT, BESTAETIGT)  # stages that are entered and kept up to date
+IN_CALENDAR = (BESTAETIGT,)  # stages that are entered and kept up to date (not Geplant: 2026-11-13)
 ORGANIZER_NAME = "Kursplanung"
 PRODID = "-//workshop-calculator//Planung//DE"
 LINK_LINE = "Planung: "  # depends on the address used, so it is not compared
@@ -492,7 +503,7 @@ def _log(session: Session, t: Appointment, by: str, reason: str, new: str | None
 def enter(session: Session, calendar: CalDavCalendar, t: Appointment, base: str, by: str) -> str:
     """ "In Kalender eintragen": create the event (or bring a known one up to date)."""
     if t.stage not in IN_CALENDAR:
-        raise CalendarError("Nur geplante und bestätigte Termine kommen in den Kalender.")
+        raise CalendarError("Nur bestätigte Termine kommen in den Kalender.")
     if not (t.date and t.start_time and t.end_time):
         raise CalendarError("Für den Kalender braucht es Datum, Beginn und Ende.")
     if t.calendar_uid and (current := calendar.get(t.calendar_uid)) is not None:
@@ -519,9 +530,13 @@ def push(
 ) -> str | None:
     """Bring the Termin's event up to date if it would change; returns what happened (or None).
 
-    A Geplant or Bestätigt Termin updates its event; an Abgesagt one sets it to `STATUS:CANCELLED`.
-    Nothing is sent when nothing changes. The event is never deleted.
+    A Bestätigt Termin updates its event; an Abgesagt one sets it to `STATUS:CANCELLED`; one that
+    went back to Geplant has its event cancelled and unlinked (`withdraw`). Nothing is sent when
+    nothing changes. The event is never deleted.
     """
+    if t.calendar_uid and t.stage == GEPLANT:
+        # Back in Geplant (`workflow.back_to_planned` marks the event outdated): cancel it.
+        return withdraw(session, calendar, t, by) if t.calendar_state == CAL_OUTDATED else None
     if not t.calendar_uid or t.stage not in (*IN_CALENDAR, ABGESAGT):
         return None
     current = current or calendar.get(t.calendar_uid)
@@ -556,20 +571,50 @@ def push(
     )
 
 
+def _cancel(calendar: CalDavCalendar, t: Appointment, note: str) -> bool:
+    """Set the Termin's event to `STATUS:CANCELLED` with a note; False if there is none to cancel."""
+    if not t.calendar_uid or (current := calendar.get(t.calendar_uid)) is None:
+        return False
+    actual, etag = current
+    if actual.status == "CANCELLED":
+        return False
+    cancelled = replace(actual, status="CANCELLED", sequence=actual.sequence + 1)
+    cancelled.description = "\n".join([note, *_description_lines(actual.description)])
+    calendar.put(cancelled, etag=etag)
+    return True
+
+
 def cancel_event(
     session: Session, calendar: CalDavCalendar, t: Appointment, base: str, by: str
 ) -> str | None:
     """Before a Geplant Termin is deleted: its event is cancelled (attendees are told), not deleted."""
-    if not t.calendar_uid or (current := calendar.get(t.calendar_uid)) is None:
+    if not _cancel(calendar, t, "Termin gelöscht."):
         return None
-    actual, etag = current
-    if actual.status == "CANCELLED":
-        return None
-    cancelled = replace(actual, status="CANCELLED", sequence=actual.sequence + 1)
-    cancelled.description = "\n".join(["Termin gelöscht.", *_description_lines(actual.description)])
-    calendar.put(cancelled, etag=etag)
     _log(session, t, by, "im Kalender abgesagt (Termin gelöscht)", t.calendar_uid)
     return "Kalendereintrag abgesagt."
+
+
+def withdraw(session: Session, calendar: CalDavCalendar, t: Appointment, by: str) -> str | None:
+    """A Termin back in Geplant: its event is cancelled with a note (attendees get the cancellation)
+    and unlinked, so a later "In Kalender eintragen" sends a fresh invitation under a new UID."""
+    uid = t.calendar_uid
+    cancelled = _cancel(calendar, t, "Termin wieder in Planung (nicht bestätigt).")
+    lists._log(
+        session,
+        "appointments",
+        t.id,
+        "calendar_uid",
+        uid,
+        None,
+        by,
+        "im Kalender abgesagt (zurück auf „Geplant“)"
+        if cancelled
+        else "Kalendereintrag gelöst (zurück auf „Geplant“)",
+    )
+    t.calendar_uid, t.calendar_state = None, None
+    t.calendar_responses = []
+    hints.refresh(session, [t.id])
+    return "Kalendereintrag abgesagt (wieder geplant)." if cancelled else None
 
 
 def preview(calendar: CalDavCalendar, t: Appointment, base: str) -> list[tuple[str, str, str]] | None:
@@ -641,7 +686,7 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
         select(Appointment)
         .where(
             Appointment.calendar_uid.is_not(None),
-            Appointment.stage.in_((*IN_CALENDAR, ABGESAGT)),
+            Appointment.stage.in_((GEPLANT, *IN_CALENDAR, ABGESAGT)),
             (Appointment.date >= today) | Appointment.date.is_(None),
         )
         .options(
@@ -661,7 +706,12 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
             actual = found[0] if found else None
         before = (t.calendar_state, [(r.email, r.partstat) for r in t.calendar_responses])
         result.checked += 1
-        if actual is None:
+        if t.stage == GEPLANT:
+            # Outdated: back in Geplant, the event still to be cancelled (`withdraw`). Otherwise a
+            # Geplant Termin linked to an existing event (from "Prüfen", or entered before
+            # 2026-11-13) keeps it as it is until it is confirmed.
+            result.outdated += t.calendar_state == CAL_OUTDATED
+        elif actual is None:
             t.calendar_state = CAL_MISSING if t.stage != ABGESAGT else None
             result.missing += t.stage != ABGESAGT
         else:

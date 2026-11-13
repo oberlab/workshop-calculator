@@ -389,6 +389,11 @@ def test_rule_kalender():
         assert hit.level == "Wichtig" and text in hit.text
     t.calendar_state = "ok"
     assert "kalender" not in rules_of(found(t))
+    # Geplant: no event, unless one is still to be cancelled after going back (2026-11-13).
+    t.stage = GEPLANT
+    assert "kalender" not in rules_of(found(t))
+    t.calendar_state = "outdated"
+    assert only(found(t), "kalender").text == "Kalendereintrag noch nicht abgesagt (Termin wieder geplant)"
 
 
 def test_rule_nicht_im_kalender():

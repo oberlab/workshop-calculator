@@ -223,12 +223,69 @@ def test_check_finds_missing_outdated_answers_and_events_without_termin(world, f
     assert t.calendar_uid == uid and fake.event(uid) is not None and t.calendar_state == CAL_OK
 
 
+def test_geplant_is_not_in_the_calendar_and_going_back_cancels_the_event(world, fake, monkeypatch):
+    """Only Bestätigt Termine are in the calendar (Alex, 2026-11-13). Back to Geplant cancels the event
+    with a note and unlinks it; confirmed again, a new event under a new UID invites afresh."""
+    from tests.test_lists import _team
+
+    db = world.db
+    calendar = caldav.get_calendar()
+    planned = workflow.create(db, world.basics(), "Kim")
+    with pytest.raises(caldav.CalendarError, match="Nur bestätigte Termine"):
+        caldav.enter(db, calendar, planned, "", "Kim")
+    t = _confirmed(world, start_time="13:00", end_time="14:00")
+    caldav.enter(db, calendar, t, "", "Kim")
+    uid = t.calendar_uid
+    db.commit()
+    _outbox(fake)
+    client = _team(monkeypatch)
+    page = client.get(f"/planung/{planned.course_id}").text
+    assert "Geplante Termine stehen nicht im Kalender" in page and "In Kalender eintragen" not in page
+    response = client.post(
+        f"/planung/{t.course_id}/aktion", data={"action": "back", "termin": t.id}, follow_redirects=False
+    )
+    assert "Kalendereintrag%20abgesagt%20%28wieder%20geplant%29" in response.headers["location"]
+    event = fake.event(uid)
+    assert event.status == "CANCELLED" and event.description.startswith("Termin wieder in Planung")
+    assert _outbox(fake) == [("CANCEL", "kim@example.org", "Absage"), ("CANCEL", "lea@example.org", "Absage")]
+    db.expire_all()
+    t = db.get(type(t), t.id)
+    assert (t.calendar_uid, t.calendar_state, t.calendar_responses) == (None, None, [])
+    reasons = db.scalars(
+        sa.select(HistoryEntry.reason).where(
+            HistoryEntry.row_id == t.id, HistoryEntry.field == "calendar_uid"
+        )
+    ).all()
+    assert "im Kalender abgesagt (zurück auf „Geplant“)" in reasons
+    # Confirmed again: a new event, a new invitation; the cancelled one stays.
+    workflow.confirm(db, t, None, "Kim")
+    caldav.enter(db, calendar, t, "", "Kim")
+    assert t.calendar_uid != uid and fake.event(uid).status == "CANCELLED"
+    assert [m[2] for m in _outbox(fake)] == ["Einladung", "Einladung"] and fake.deletes == 0
+
+
+def test_back_to_geplant_while_the_calendar_is_down_is_pending(world, fake):
+    db = world.db
+    calendar = caldav.get_calendar()
+    t = _confirmed(world)
+    caldav.enter(db, calendar, t, "", "Kim")
+    workflow.back_to_planned(db, t, "Kim")
+    assert t.calendar_state == CAL_OUTDATED
+    stored = db.scalars(sa.select(StoredHint.text).where(StoredHint.appointment_id == t.id)).all()
+    assert "Kalendereintrag noch nicht abgesagt (Termin wieder geplant)" in stored
+    # A Geplant Termin linked to an event otherwise keeps it untouched.
+    other = workflow.create(db, world.basics(start_time="13:00", end_time="14:00"), "Kim")
+    other.calendar_uid, other.calendar_state = t.calendar_uid + "-x", CAL_OK
+    assert caldav.push(db, calendar, other, "", "Kim") is None
+
+
 def test_deleting_a_planned_termin_cancels_its_event(world, fake, monkeypatch):
     from tests.test_lists import _team
 
     db = world.db
-    t = workflow.create(db, world.basics(), "Kim")
+    t = _confirmed(world)
     caldav.enter(db, caldav.get_calendar(), t, "", "Kim")
+    t.stage = workflow.GEPLANT  # entered before Geplant Termine stopped going into the calendar
     db.commit()
     _outbox(fake)
     client = _team(monkeypatch)
@@ -240,7 +297,8 @@ def test_deleting_a_planned_termin_cancels_its_event(world, fake, monkeypatch):
     assert response.status_code == 303 and "Kalendereintrag%20abgesagt" in response.headers["location"]
     event = fake.event(t.calendar_uid)
     assert event.status == "CANCELLED" and event.description.startswith("Termin gelöscht.")
-    assert _outbox(fake) == [("CANCEL", "kim@example.org", "Absage")] and fake.deletes == 0
+    assert _outbox(fake) == [("CANCEL", "kim@example.org", "Absage"), ("CANCEL", "lea@example.org", "Absage")]
+    assert fake.deletes == 0
 
 
 def test_course_page_enters_and_updates_the_calendar(world, fake, monkeypatch):

@@ -492,6 +492,13 @@ def entries_waiting(t: Appointment, facts: Facts):
 
 @rule("kalender", WICHTIG, "Kalendereintrag fehlt oder weicht ab", stages=PLANNED)
 def calendar_event(t: Appointment, facts: Facts):
+    """Only Bestätigt Termine are in the calendar (2026-11-13); a Geplant one with an outdated event
+    went back to Geplant while the calendar could not be written: the event is still to be
+    cancelled. Other Geplant Termine linked to an event keep it untouched until confirmed."""
+    if t.stage == GEPLANT:
+        if t.calendar_uid and t.calendar_state == CAL_OUTDATED:
+            return ["Kalendereintrag noch nicht abgesagt (Termin wieder geplant)"]
+        return []
     if t.calendar_uid and t.calendar_state == CAL_MISSING:
         return ["Kalendereintrag fehlt (war eingetragen)"]
     if t.calendar_uid and t.calendar_state == CAL_OUTDATED:

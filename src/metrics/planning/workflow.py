@@ -40,6 +40,7 @@ from metrics.db import (
     ABGESCHLOSSEN,
     ACTIVE_STATUSES,
     BESTAETIGT,
+    CAL_OUTDATED,
     DURCHGEFUEHRT,
     GEPLANT,
     AlternativeDate,
@@ -462,6 +463,8 @@ def confirm(session: Session, t: Appointment, chosen: dt.date | None, by: str) -
 def back_to_planned(session: Session, t: Appointment, by: str) -> None:
     if t.stage != BESTAETIGT:
         raise FormError("Nur bestätigte Termine können zurück auf „Geplant“.")
+    if t.calendar_uid:
+        t.calendar_state = CAL_OUTDATED  # Geplant has no event: `caldav.withdraw` cancels it
     _move(session, t, GEPLANT, by)
 
 
