@@ -16,7 +16,7 @@ from starlette.datastructures import QueryParams
 from metrics import analytics, auth, charts, hints, lists, logins
 from metrics.db import ImportRun, Proposal, get_sessionmaker
 from metrics.instance import get_instance
-from metrics.planning import workflow
+from metrics.planning import mine, workflow
 from metrics.web import nav, security
 
 HERE = Path(__file__).parent
@@ -105,7 +105,7 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
     counts: dict[str, int] = {}
     projects: list = []
     if login:
-        reference = list_state()
+        reference = list_state(login)
         counts |= reference.counts
         projects = reference.projects
     sidebar = {
@@ -126,8 +126,9 @@ class ListState:
     counts: dict[str, int]  # proposed entries per list, open hints and proposals for "Prüfen"
 
 
-def list_state() -> ListState:
-    """Project pages and the counters for the sidebar; empty if the database is unreachable."""
+def list_state(login: auth.Login | None = None) -> ListState:
+    """Project pages and the counters for the sidebar; empty if the database is unreachable. A
+    login with a subject also gets its open tasks for Mein Bereich (`mine.task_count`)."""
     try:
         with get_sessionmaker()() as session:
             counts = lists.proposed_counts(session)
@@ -136,6 +137,8 @@ def list_state() -> ListState:
                 select(func.count()).select_from(Proposal).where(Proposal.decision.is_(None))
             )
             counts |= workflow.sidebar_counts(session)
+            if login is not None and login.subject:
+                counts["mine_open"] = mine.task_count(session, login.subject, today())
             counts |= {
                 "hints_high": found["hints_high"],
                 "pruefen_open": (open_proposals or 0) + found["hints_medium"],

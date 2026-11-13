@@ -19,7 +19,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from metrics import hints
@@ -131,6 +131,46 @@ def tasks(session: Session, person: Person, today: dt.date) -> list[Task]:
         result.append(Task(t, hints.INFO, "Einladung", "Kalendereinladung noch nicht beantwortet", "Ansehen"))
     result.sort(key=lambda task: (LEVEL_ORDER.get(task.level, 9), task.t.date or dt.date.max, task.t.id))
     return result
+
+
+def task_count(session: Session, subject: str, today: dt.date) -> int:
+    """How many tasks `tasks` lists for the Person linked to this login, in one query (the sidebar
+    counter, WM-114); 0 for a login without a linked Person. A merged Person stands for the one it
+    was merged into (one step, like a fresh merge)."""
+    me = (
+        select(func.coalesce(Person.merged_into_id, Person.id))
+        .where(Person.login_subject == subject)
+        .limit(1)
+        .scalar_subquery()
+    )
+    open_hint = (
+        select(StoredHint.id)
+        .where(StoredHint.appointment_id == Appointment.id, StoredHint.blocking | ~hints._is_accepted())
+        .exists()
+    )
+    led = (
+        select(func.count())
+        .select_from(Appointment)
+        .where(
+            Appointment.lead_id == me,
+            Appointment.stage.in_(workflow.OPEN_STAGES),
+            (Appointment.stage == DURCHGEFUEHRT) | open_hint,
+        )
+        .scalar_subquery()
+    )
+    invited = (
+        select(func.count())
+        .select_from(Appointment)
+        .join(CalendarResponse, CalendarResponse.appointment_id == Appointment.id)
+        .where(
+            CalendarResponse.person_id == me,
+            CalendarResponse.partstat == UNANSWERED,
+            Appointment.stage.in_(workflow.OPEN_STAGES),
+            Appointment.date >= today,
+        )
+        .scalar_subquery()
+    )
+    return session.scalar(select(led + invited)) or 0
 
 
 def upcoming(session: Session, person: Person, today: dt.date) -> list[Appointment]:

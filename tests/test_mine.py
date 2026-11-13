@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 
 from metrics import auth, logins
-from metrics.db import ABGESAGT, ABGESCHLOSSEN, CONFIRMED, Appointment, Context
+from metrics.db import ABGESAGT, ABGESCHLOSSEN, CONFIRMED, Appointment, CalendarResponse, Context
 from metrics.planning import lanes, mine, workflow
 from metrics.planning.mine import monday_of
 from metrics.web.common import today
@@ -106,6 +106,34 @@ def test_each_member_sees_exactly_their_own_tasks_and_termine(plan, monkeypatch)
         page = {"Kim": kim, "Lea": lea, "Sam": sam}[person.name].text
         assert {x.t.id for x in mine.tasks(db, person, TODAY)} == _ids(_section(page, "aufgaben"))
         assert {t.id for t in mine.upcoming(db, person, TODAY)} == _ids(_section(page, "termine"))
+
+
+def _counter(html: str) -> str | None:
+    """The sidebar counter next to Mein Bereich, if shown."""
+    found = re.search(r'href="/mein-bereich"[^>]*>.*?</a>', html, re.S)
+    match = re.search(r'title="(\d+) offene Aufgaben"', found.group(0)) if found else None
+    return match.group(1) if match else None
+
+
+def test_sidebar_counter_matches_zu_erledigen(plan, monkeypatch):
+    """WM-114 done when: the counter matches Mein Bereich (tasks for the lead only)."""
+    w, ids = plan
+    kim, lea = _as(monkeypatch, "Kim", "kc-kim"), _as(monkeypatch, "Lea", "kc-lea", first=False)
+    assert _counter(kim.get("/planung").text) == "1"  # the held course without participants
+    assert _counter(lea.get("/mein-bereich").text) is None  # Lea is only support: no task
+    # An unanswered invitation is a task too, also for support.
+    w.db.add(
+        CalendarResponse(
+            appointment_id=ids["b"], email="kim@example.org", person_id=w.kim.id, partstat=mine.UNANSWERED
+        )
+    )
+    w.db.commit()
+    html = kim.get("/mein-bereich").text
+    assert _counter(html) == "2" == str(len(mine.tasks(w.db, w.kim, TODAY)))
+    for person, subject in ((w.kim, "kc-kim"), (w.lea, "kc-lea"), (w.sam, "kc-sam")):
+        assert mine.task_count(w.db, subject, TODAY) == len(mine.tasks(w.db, person, TODAY))
+    assert mine.task_count(w.db, "kc-neu", TODAY) == 0  # no linked Person
+    assert _counter(_as(monkeypatch, "Neu", "kc-neu", first=False).get("/planung").text) is None
 
 
 def test_workload_counts_course_hours_of_lead_and_support(plan, monkeypatch):

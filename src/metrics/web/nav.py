@@ -47,7 +47,7 @@ def _proposed(slug: str, label: str) -> Count:
 
 ENTRIES: list[Entry | str] = [
     Entry("Übersicht", "/", role=PUBLIC, note="öffentlich"),
-    Entry("Mein Bereich", "/mein-bereich"),
+    Entry("Mein Bereich", "/mein-bereich", counts=(Count("mine_open", "neutral", "offene Aufgaben"),)),
     Entry("Kalender", "/kalender", PLANUNG),
     Entry(
         "Kurse",
