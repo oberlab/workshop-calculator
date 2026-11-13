@@ -1,4 +1,5 @@
 import os
+import resource
 import subprocess
 import uuid
 from pathlib import Path
@@ -14,6 +15,17 @@ from metrics.instance import Instance, get_instance, load_instance
 from metrics.planning import vocabulary
 from metrics.planning.models import get_planning_sessionmaker
 from metrics.web import login, public
+
+# A runaway test once allocated over 50 GiB and the kernel killed it after the machine ran out of
+# memory. Cap the test process's data segment so such a test fails with MemoryError instead; the
+# whole suite needs well under 1 GiB. TEST_MEMORY_LIMIT_MB changes the cap, 0 turns it off.
+_LIMIT_MB = int(os.environ.get("TEST_MEMORY_LIMIT_MB", "4096"))
+if _LIMIT_MB > 0:
+    _soft, _hard = resource.getrlimit(resource.RLIMIT_DATA)
+    _cap = _LIMIT_MB * 1024 * 1024
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(_cap, _hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (_cap, _hard))
 
 ROOT = Path(__file__).parent.parent
 FIXTURES = Path(__file__).parent / "fixtures"
