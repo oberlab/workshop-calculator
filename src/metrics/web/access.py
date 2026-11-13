@@ -43,6 +43,10 @@ ADMIN_ROUTES = {
     # Prüfen: the queue and accepting a warning (WM-113).
     "GET /pruefen",
     "POST /pruefen/akzeptieren",
+    # Prüfen: calendar events without a Termin (WM-110).
+    "POST /pruefen/kalender/pruefen",
+    "POST /pruefen/kalender/ignorieren",
+    "POST /pruefen/kalender/kurs",
     # Personen: the team overview, kept by hand (WM-105); the people picker stays Team.
     "GET /stammdaten/personen",
     "POST /stammdaten/personen",

@@ -48,6 +48,30 @@
   {% endif %}
 {% endcall %}
 
+{% if calendar_on or orphans or ignored %}
+{% call ui.panel("Kalender ohne Termin", orphans|length, id="kalender") %}
+  <p class="help">Einträge ab heute im Kurskalender, zu denen es keinen Termin gibt. Die App löscht nie Kalendereinträge: aus dem Eintrag einen Kurs anlegen oder ihn nicht mehr melden.</p>
+  <form method="post" action="/pruefen/kalender/pruefen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">{{ ui.button("Kalender jetzt prüfen", type="submit", kind="secondary", size="sm") }}</form>
+  {% if orphans %}
+  {% call ui.table(["Tag", "Zeit", "Titel", "Ort", ""], caption="Kalendereinträge ohne Termin") %}
+  {% for o in orphans %}
+  <tr>
+    <td class="nowrap mono">{{ o.starts_at.date()|day }}</td>
+    <td class="nowrap mono">{{ o.starts_at.strftime("%H:%M") }}–{{ o.ends_at.strftime("%H:%M") }}</td>
+    <td>{{ o.summary }}</td>
+    <td>{{ o.location or "–" }}</td>
+    <td class="nowrap">
+      <form method="post" action="/pruefen/kalender/kurs" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ o.uid }}">{{ ui.button("Kurs anlegen", type="submit", size="sm") }}</form>
+      <form method="post" action="/pruefen/kalender/ignorieren" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ o.uid }}">{{ ui.button("Nicht mehr melden", type="submit", kind="secondary", size="sm") }}</form>
+    </td>
+  </tr>
+  {% endfor %}
+  {% endcall %}
+  {% endif %}
+  {% if ignored %}<p class="help">Nicht mehr gemeldet: {% for o in ignored %}{{ o.summary }} ({{ o.starts_at.strftime("%d.%m.") }}, {{ o.ignored_by }}){{ "; " if not loop.last }}{% endfor %}</p>{% endif %}
+{% endcall %}
+{% endif %}
+
 <section class="panel" id="hinweise" aria-labelledby="hinweise-titel">
   <h2 id="hinweise-titel">Hinweise an Terminen {{ ui.count(total) }}</h2>
   <form class="filter-row list-filters" method="get" action="/pruefen#hinweise" role="search" aria-label="Hinweise filtern">

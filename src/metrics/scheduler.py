@@ -6,7 +6,7 @@ JOBS whether it is due and runs the due ones one after the other. Each run is a 
 so a restart neither skips nor repeats a run. A job that raises is recorded as failed and
 logged; the loop goes on. SIGTERM and SIGINT stop the loop after the job that is running.
 
-Adding a job (calendar check WM-110, Slack messages WM-130, Kimai WM-142): write a function
+Adding a job (Slack messages WM-130, Kimai WM-142): write a function
 `(now: datetime) -> str` that does the work in its own database session and returns a short
 message for `job_runs`, then add a `Job` with a schedule to JOBS. `/healthz` picks it up.
 
@@ -141,6 +141,19 @@ def prune_login_sessions(now: datetime) -> str:
     return f"{logins.prune(now)} login sessions older than 30 days deleted"
 
 
+def check_calendar(now: datetime) -> str:
+    """The calendar check (WM-110): missing and outdated events, answers to invitations, events
+    without a Termin. Reads the calendar only; without CALDAV_URL there is nothing to check."""
+    from metrics.planning import caldav
+
+    calendar = caldav.get_calendar()
+    if calendar is None:
+        return "no calendar configured (CALDAV_URL)"
+    with get_sessionmaker()() as session, session.begin():
+        result = caldav.check(session, calendar, now.astimezone(LOCAL).date(), caldav.link_base())
+    return result.summary()
+
+
 def nightly_backup(now: datetime) -> str:
     settings = get_settings()
     day = now.astimezone(LOCAL).date()
@@ -152,7 +165,7 @@ JOBS: tuple[Job, ...] = (
     Job("hints", Daily(time(0, 30)), recompute_hints),  # after the stage moves
     Job("backup", Daily(time(3, 30)), nightly_backup),
     Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
-    # WM-110: Job("calendar", Every(timedelta(minutes=15)), check_calendar),
+    Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 
 

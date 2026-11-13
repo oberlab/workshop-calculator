@@ -161,6 +161,12 @@ def print_password_hash(args: argparse.Namespace) -> None:
     print(f"TEAM_PASSWORD_HASH={hash_password(password)}")
 
 
+def fake_calendar(args: argparse.Namespace) -> None:
+    from metrics import caldav_fake
+
+    caldav_fake.main(["--host", args.host, "--port", str(args.port)])
+
+
 def run_scheduler(args: argparse.Namespace) -> None:
     if not args.run:
         scheduler.serve()
@@ -234,7 +240,9 @@ def main() -> None:
     baseline.add_argument("--sha256", help="expected checksum; the load stops if the file differs")
     baseline.set_defaults(func=load_baseline_file)
 
-    loop = commands.add_parser("scheduler", help="Run the scheduler loop (stage moves, nightly backup)")
+    loop = commands.add_parser(
+        "scheduler", help="Run the scheduler loop (stage moves, hints, calendar, backup)"
+    )
     loop.add_argument(
         "--run", choices=[job.name for job in scheduler.JOBS], help="run this one job now, then exit"
     )
@@ -243,6 +251,13 @@ def main() -> None:
     check = commands.add_parser("hints", help="Recompute every hint now and print the count per rule")
     check.add_argument("--today", type=date.fromisoformat, help="date the rules take as today")
     check.set_defaults(func=recompute_hints)
+
+    fake = commands.add_parser(
+        "fake-calendar", help="Serve a fake CalDAV calendar for local tries (outbox instead of e-mail)"
+    )
+    fake.add_argument("--host", default="127.0.0.1")
+    fake.add_argument("--port", type=int, default=5232)
+    fake.set_defaults(func=fake_calendar)
 
     args = parser.parse_args()
     args.func(args)

@@ -32,6 +32,7 @@ from metrics.db import (
     ABGESCHLOSSEN,
     ACTIVE_STATUSES,
     BESTAETIGT,
+    CAL_OUTDATED,
     DURCHGEFUEHRT,
     GEPLANT,
     STAGES,
@@ -47,9 +48,9 @@ from metrics.db import (
     get_sessionmaker,
 )
 from metrics.instance import get_instance
-from metrics.planning import workflow
+from metrics.planning import caldav, workflow
 from metrics.planning.workflow import FormError
-from metrics.web.common import TIMEZONE, current_login, page, today
+from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 from metrics.web.lists import picker_context
 
 router = APIRouter()
@@ -393,6 +394,7 @@ def course_context(
 
 def _course_page(request, session, course, t, *, new=False, errors=None, status_code=200, extra=None):
     context = course_context(request, session, course, t, new=new, errors=errors) | (extra or {})
+    context["calendar"] = calendar_context(request, t)
     return page(request, "planung_course.html", context, status_code=status_code)
 
 
@@ -499,7 +501,8 @@ async def save_course(course_id: int, request: Request):
         except FormError as error:
             return _refused(request, session, course_id, termin_id, error, form)
         session.commit()
-        return _back(t, THEN.get(then, "Gespeichert."))
+        note = _calendar_after(request, session, t, by)
+        return _back(t, " ".join(x for x in (THEN.get(then, "Gespeichert."), note) if x))
 
 
 @router.post("/planung/{course_id:int}/aktion", response_class=HTMLResponse)
@@ -523,9 +526,16 @@ async def course_action(course_id: int, request: Request):
                 workflow.cancel(session, t, workflow.one(form, "reason"), by)
                 message = "Abgesagt."
             elif action == "delete":
+                if "really" in form and t.stage == GEPLANT:
+                    message = _cancel_before_delete(request, session, t, by)
                 workflow.delete(session, t, by, "really" in form)
                 session.commit()
-                return RedirectResponse(f"/planung?hinweis={quote('Termin gelöscht.')}", status_code=303)
+                done = " ".join(
+                    x for x in ("Termin gelöscht.", message if message != "Erledigt." else "") if x
+                )
+                return RedirectResponse(f"/planung?hinweis={quote(done)}", status_code=303)
+            elif action == "calendar":
+                message = _enter_calendar(request, session, t, by)
             elif action == "billed":
                 workflow.set_billed(session, t, "billed" in form, by)
                 message = "Gespeichert."
@@ -534,7 +544,73 @@ async def course_action(course_id: int, request: Request):
         except FormError as error:
             return _refused(request, session, course_id, termin_id, error)
         session.commit()
+        if action in ("back", "undone", "cancel"):
+            note = _calendar_after(request, session, t, by)
+            message = " ".join(x for x in (message, note) if x)
         return _back(t, message)
+
+
+# --- Calendar ------------------------------------------------------------------------------------
+
+
+def _calendar_after(request: Request, session: Session, t: Appointment, by: str) -> str | None:
+    """After a committed change: bring the Termin's event up to date (only if it changes). A calendar
+    that is down never loses the change: the event is marked outdated and the hint says so."""
+    calendar = caldav.get_calendar()
+    if calendar is None or not t.calendar_uid:
+        return None
+    try:
+        note = caldav.push(session, calendar, t, public_base(request), by)
+    except caldav.CalendarError as error:
+        session.rollback()
+        t = session.get(Appointment, t.id)
+        t.calendar_state = CAL_OUTDATED
+        hints.refresh(session, [t.id])
+        note = f"Kalender nicht aktualisiert: {error}"
+    session.commit()
+    return note
+
+
+def _enter_calendar(request: Request, session: Session, t: Appointment, by: str) -> str:
+    calendar = caldav.get_calendar()
+    if calendar is None:
+        raise FormError("Es ist kein Kalender eingerichtet (CALDAV_URL).")
+    try:
+        return caldav.enter(session, calendar, t, public_base(request), by)
+    except caldav.CalendarError as error:
+        raise FormError(str(error)) from error
+
+
+def _cancel_before_delete(request: Request, session: Session, t: Appointment, by: str) -> str:
+    """A deleted Termin's event is cancelled (the attendees are told), never deleted."""
+    calendar = caldav.get_calendar()
+    if calendar is None or not t.calendar_uid:
+        return ""
+    try:
+        return caldav.cancel_event(session, calendar, t, public_base(request), by) or ""
+    except caldav.CalendarError as error:
+        return f"Kalendereintrag nicht abgesagt ({error}); er erscheint unter „Prüfen“."
+
+
+def calendar_context(request: Request, t: Appointment) -> dict:
+    """The calendar box of the course page."""
+    calendar = caldav.get_calendar()
+    info = {
+        "on": calendar is not None,
+        "invitations": bool(calendar and calendar.organizer),
+        "responses": caldav.responses(t) if t.id else [],
+        "uninvited": [p.name for p in caldav.uninvited(t)] if t.id else [],
+        "changes": None,
+        "error": None,
+        "has_times": bool(t.date and t.start_time and t.end_time),
+        "stages": caldav.IN_CALENDAR,
+    }
+    if calendar is not None and t.calendar_uid and t.calendar_state == CAL_OUTDATED:
+        try:
+            info["changes"] = caldav.preview(calendar, t, public_base(request))
+        except caldav.CalendarError as error:
+            info["error"] = str(error)
+    return info
 
 
 @router.post("/planung/{course_id:int}/akzeptieren", response_class=HTMLResponse)

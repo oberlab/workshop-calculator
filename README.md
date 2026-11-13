@@ -98,6 +98,17 @@ One schema for planning, tracking and analysis (`src/metrics/db.py`, migrations 
 - Key figures: *Einsätze* = held Termine; *Teilnehmende* = participants of Termine with Terminnummer 1 only, so children in multi-session courses count once (continuous formats use 1 on every date and count every time; entries without a number are not counted); *Orte* = distinct places.
 - Names are stored exactly as recorded; only whitespace is tidied. Nothing is renamed or merged automatically; a legacy first name counts as the Slack user that `seeds/instructors.csv` names.
 
+## Planning and the course calendar
+
+Courses are planned at `/planung` (stages Geplant → Bestätigt → Durchgeführt → Abgeschlossen, plus Abgesagt; the rules are in `src/metrics/planning/workflow.py` and the hints in `src/metrics/hints.py`). With `CALDAV_URL` (a CalDAV calendar such as a Nextcloud calendar of the app's own account) each Termin can be entered as one event; with `CALDAV_ORGANIZER` (that account's e-mail address) lead and support are invited as attendees, and the calendar server sends invitations, updates and cancellations. The app never deletes events. The scheduler checks the calendar every 15 minutes (missing or changed events, answers, events without a Termin).
+
+To try it locally without a real calendar and without e-mail, run the fake calendar and point the app at it:
+
+```sh
+uv run metrics fake-calendar --port 5232     # outbox of would-be e-mails: http://127.0.0.1:5232/_outbox
+CALDAV_URL=http://127.0.0.1:5232/cal/ CALDAV_ORGANIZER=planung@example.org ...
+```
+
 ## Server deployment
 
 Releases are Git tags on `main`; the server checks out a tag and builds the image itself with `ops/update.sh vX.Y.Z` (database dump first, then build, restart and a health check). First installation, releases and rollback: [ops/DEPLOY.md](ops/DEPLOY.md).

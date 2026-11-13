@@ -12,23 +12,27 @@ import datetime as dt
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote, urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 
-from metrics import hints, lists
+from metrics import courses, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
     ACTIVE_STATUSES,
     BESTAETIGT,
+    CAL_OK,
     DURCHGEFUEHRT,
     GEPLANT,
+    CalendarOrphan,
     Context,
+    Place,
     Proposal,
     get_sessionmaker,
 )
-from metrics.web.common import TIMEZONE, current_login, page
+from metrics.planning import caldav
+from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 
 router = APIRouter()
 
@@ -125,7 +129,11 @@ def _queue_page(request: Request, *, error: str | None = None, status_code: int 
             session.scalars(select(Context).where(Context.status.in_(ACTIVE_STATUSES)).order_by(Context.name))
         )
         by_rule = hints.counts_by_rule(session)
+        orphans = list(session.scalars(select(CalendarOrphan).order_by(CalendarOrphan.starts_at)))
         context = {
+            "orphans": [o for o in orphans if o.ignored_by is None],
+            "ignored": [o for o in orphans if o.ignored_by is not None],
+            "calendar_on": caldav.get_calendar() is not None,
             "waiting": _waiting(session),
             "corrections": corrections,
             "rows": rows,
@@ -176,3 +184,84 @@ async def accept(request: Request):
         return _queue_page(request, error=str(error), status_code=422)
     query = f"{back}&" if back else ""
     return RedirectResponse(f"/pruefen?{query}hinweis={quote('Akzeptiert.')}", status_code=303)
+
+
+# --- Calendar events without a Termin (moved from the prototype's review page, WM-110) -----------
+
+
+def _back(message: str) -> RedirectResponse:
+    return RedirectResponse(f"/pruefen?hinweis={quote(message)}#kalender", status_code=303)
+
+
+async def _uid(request: Request) -> str:
+    form = parse_qs((await request.body()).decode(errors="replace"))
+    return (form.get("uid") or [""])[0]
+
+
+@router.post("/pruefen/kalender/pruefen")
+def check_calendar(request: Request):
+    """Run the calendar check now (the scheduler does it every 15 minutes)."""
+    calendar = caldav.get_calendar()
+    if calendar is None:
+        return _back("Kein Kalender eingerichtet.")
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            result = caldav.check(session, calendar, today(), public_base(request))
+    except caldav.CalendarError as error:
+        return _back(str(error))
+    return _back(f"Kalender geprüft: {result.checked} Einträge, {result.orphans} ohne Termin.")
+
+
+@router.post("/pruefen/kalender/ignorieren")
+async def ignore_event(request: Request):
+    uid = await _uid(request)
+    with get_sessionmaker()() as session, session.begin():
+        orphan = session.get(CalendarOrphan, uid)
+        if orphan is None:
+            raise HTTPException(404)
+        orphan.ignored_by, orphan.ignored_at = current_login(request).user, dt.datetime.now(dt.UTC)
+    return _back("Wird nicht mehr gemeldet.")
+
+
+@router.post("/pruefen/kalender/kurs")
+async def course_from_event(request: Request):
+    """A Geplant course from a calendar event; the event is linked, not changed."""
+    uid = await _uid(request)
+    by = current_login(request).user
+    with get_sessionmaker()() as session, session.begin():
+        orphan = session.get(CalendarOrphan, uid)
+        if orphan is None:
+            raise HTTPException(404)
+        title, _, place_name = orphan.summary.partition(" · ")
+        place = session.scalars(
+            select(Place).where(
+                Place.name == (orphan.location or place_name), Place.status.in_(ACTIVE_STATUSES)
+            )
+        ).first()
+        course = courses.create_course(
+            session, by=by, place_id=place.id if place else None, note=title or None
+        )
+        t = courses.add_appointment(
+            session,
+            course,
+            by=by,
+            date=orphan.starts_at.date(),
+            start_time=orphan.starts_at.time(),
+            end_time=orphan.ends_at.time(),
+        )
+        t.calendar_uid, t.calendar_state = uid, CAL_OK
+        lists._log(
+            session,
+            "appointments",
+            t.id,
+            "calendar_uid",
+            None,
+            uid,
+            by,
+            f"aus Kalendereintrag „{orphan.summary}“",
+        )
+        session.delete(orphan)  # now linked to a Termin
+        hints.refresh(session, [t.id])
+        note = quote("Aus dem Kalendereintrag angelegt; bitte ergänzen.")
+        target = f"/planung/{course.id}?termin={t.id}&hinweis={note}"
+    return RedirectResponse(target, status_code=303)

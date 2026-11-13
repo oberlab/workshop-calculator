@@ -6,7 +6,7 @@ Termin and the `Facts` of the run (today, the other Termine on the same day, the
 names) and returns the German texts of its findings (or `Finding`s naming another Termin), nothing
 when all is well. The rules and their cases are listed in `PLANUNG_REGELN.md`.
 
-Adding a rule (equipment WM-140, absences WM-142, capacity WM-131, calendar decline WM-110):
+Adding a rule (equipment WM-140, absences WM-142, capacity WM-131):
 
     @rule("material-knapp", KRITISCH, "Material doppelt verplant", stages=ACTIVE)
     def equipment_short(t: Appointment, facts: Facts):
@@ -45,10 +45,13 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from metrics import lists
+from metrics.config import get_settings
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
     BESTAETIGT,
+    CAL_MISSING,
+    CAL_OUTDATED,
     CONFIRMED,
     DURCHGEFUEHRT,
     GEPLANT,
@@ -136,6 +139,7 @@ class Facts:
     today: dt.date
     same_day: dict[dt.date, list[Appointment]] = field(default_factory=dict)  # not Abgesagt
     confirmed_names: dict[str, set[str]] = field(default_factory=dict)  # list slug -> names
+    calendar: bool = False  # a course calendar is configured (CALDAV_URL)
 
 
 @dataclass(frozen=True)
@@ -463,6 +467,40 @@ def entries_waiting(t: Appointment, facts: Facts):
     return found
 
 
+# --- Calendar and invitations (WM-110) -------------------------------------------------------
+
+
+@rule("kalender", WICHTIG, "Kalendereintrag fehlt oder weicht ab", stages=PLANNED)
+def calendar_event(t: Appointment, facts: Facts):
+    if t.calendar_uid and t.calendar_state == CAL_MISSING:
+        return ["Kalendereintrag fehlt (war eingetragen)"]
+    if t.calendar_uid and t.calendar_state == CAL_OUTDATED:
+        return ["Kalendereintrag weicht vom Termin ab: „Kalender aktualisieren“"]
+    return []
+
+
+@rule("nicht-im-kalender", INFO, "Bestätigt, aber nicht im Kalender", stages=(BESTAETIGT,))
+def not_in_calendar(t: Appointment, facts: Facts):
+    return ["Bestätigt, aber noch nicht im Kalender"] if facts.calendar and not t.calendar_uid else []
+
+
+@rule("einladung-abgelehnt", WICHTIG, "Einladung abgelehnt", stages=PLANNED)
+def invitation_declined(t: Appointment, facts: Facts):
+    """A person of the team declined the calendar invitation (PARTSTAT=DECLINED, read by the check)."""
+    team = {p.id: p.name for p in ([t.lead] if t.lead else []) + list(t.support)}
+    emails = {
+        (p.email or "").lower(): p.name for p in ([t.lead] if t.lead else []) + list(t.support) if p.email
+    }
+    found = []
+    for r in t.calendar_responses:
+        if r.partstat != "DECLINED":
+            continue
+        name = team.get(r.person_id) or emails.get(r.email.lower())
+        if name:  # still in the team
+            found.append(f"{name} hat die Kalendereinladung abgelehnt")
+    return found
+
+
 # --- Likely duplicates ----------------------------------------------------------------------
 
 
@@ -555,6 +593,10 @@ def _confirmed_names(session: Session) -> dict[str, set[str]]:
     }
 
 
+def _calendar_on() -> bool:
+    return bool(get_settings().caldav_url)
+
+
 def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -> Facts:
     """The facts the rules need for these Termine: their same-day neighbours and the list names."""
     dates = {t.date for t in appointments if t.date} | {a.date for t in appointments for a in t.alternatives}
@@ -562,7 +604,7 @@ def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -
     if dates:
         for t in _load(session, Appointment.date.in_(dates) & (Appointment.stage != ABGESAGT)):
             same_day[t.date].append(t)
-    return Facts(day, dict(same_day), _confirmed_names(session))
+    return Facts(day, dict(same_day), _confirmed_names(session), _calendar_on())
 
 
 def compute(session: Session, appointments: list[Appointment], day: dt.date | None = None) -> list[Found]:
@@ -623,7 +665,7 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
 def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
     """Recompute and store the hints of every Termin (the nightly job and `metrics hints`)."""
     appointments = _load(session, Appointment.id.is_not(None))
-    facts = Facts(day or today(), defaultdict(list), _confirmed_names(session))
+    facts = Facts(day or today(), defaultdict(list), _confirmed_names(session), _calendar_on())
     for t in appointments:
         if t.date and t.stage != ABGESAGT:
             facts.same_day[t.date].append(t)

@@ -296,7 +296,40 @@
     </section>
     {% endif %}
 
-    {% block calendar %}{% endblock %}
+    <section class="panel" id="kalender">
+      <h2>Kalender</h2>
+      {% if not calendar.on %}
+      <p class="help">Kein Kalender eingerichtet (CALDAV_URL).</p>
+      {% else %}
+      {% if t.calendar_uid %}
+        {% if t.calendar_state == "missing" %}<p class="help">Der Kalendereintrag ist verschwunden.</p>
+        {% elif t.calendar_state == "outdated" %}<p class="help">Der Kalendereintrag weicht vom Termin ab. „Kalender aktualisieren“ übernimmt die Angaben des Termins{% if calendar.invitations %} und schickt den Eingeladenen eine Aktualisierung{% endif %}:</p>
+          {% if calendar.changes %}
+          <div class="table-wrap"><table class="table changes">
+            <thead><tr><th scope="col"><span class="visually-hidden">Angabe</span></th><th scope="col">im Kalender</th><th scope="col">neu</th></tr></thead>
+            <tbody>{% for what, old, new in calendar.changes %}<tr><th scope="row">{{ what }}</th><td><del>{{ old }}</del></td><td>{{ new }}</td></tr>{% endfor %}</tbody>
+          </table></div>
+          {% endif %}
+          {% if calendar.error %}<p class="help">{{ calendar.error }}</p>{% endif %}
+        {% elif t.stage == "Abgesagt" %}<p class="help">Im Kalender abgesagt (nicht gelöscht).</p>
+        {% else %}<p class="help">Steht im Kalender{% if t.calendar_checked_at %}, zuletzt geprüft {{ t.calendar_checked_at.astimezone(timezone).strftime("%d.%m. %H:%M") }}{% endif %}.</p>{% endif %}
+      {% endif %}
+      {% if t.stage in calendar.stages %}
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="calendar"><input type="hidden" name="termin" value="{{ t.id }}">
+        {% if t.calendar_uid and t.calendar_state == "outdated" %}{{ ui.button("Kalender aktualisieren", type="submit") }}
+        {% elif t.calendar_uid and t.calendar_state != "missing" %}{{ ui.button("Im Kalender eingetragen", type="submit", kind="secondary", attrs={"disabled": true}) }}
+        {% else %}{{ ui.button("In Kalender eintragen", type="submit", kind="secondary", attrs={"disabled": none if calendar.has_times else true}) }}{% if not calendar.has_times %}<span class="help">Braucht Datum, Beginn und Ende.</span>{% endif %}{% endif %}
+      </form>
+      {% endif %}
+      {% if calendar.responses %}
+      <h3 class="field-label">Eingeladen</h3>
+      <ul class="responses">{% for name, email, answer in calendar.responses %}<li>{{ name }}: <span class="answer answer-{{ 'no' if answer == 'abgesagt' else ('yes' if answer == 'zugesagt' else 'open') }}">{{ answer }}</span></li>{% endfor %}</ul>
+      {% elif calendar.invitations %}<p class="help">Kursleitung und Unterstützung werden mit dem Eintrag eingeladen.</p>{% endif %}
+      {% if calendar.uninvited %}<p class="help">Ohne E-Mail-Adresse, nicht eingeladen: {{ calendar.uninvited|join(", ") }}.</p>{% endif %}
+      {% if t.calendar_uid %}<p class="help small">Kalender-ID: <code>{{ t.calendar_uid }}</code></p>{% endif %}
+      {% endif %}
+    </section>
 
     <section class="panel">
       <h2>Verlauf</h2>

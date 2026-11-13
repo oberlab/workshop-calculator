@@ -19,6 +19,7 @@ from metrics.db import (
     AlternativeDate,
     Appointment,
     AppointmentOrigin,
+    CalendarResponse,
     Context,
     Course,
     Format,
@@ -357,6 +358,44 @@ def test_rule_eintrag_wartet_with_a_similar_known_name():
     solar = Format(id=10, name="Solarlampen", category="Engineering", status=PROPOSED)
     hit = only(found(termin(format=solar), names={"formate": {"Solarlampe"}}), "eintrag-wartet")
     assert hit.text.endswith("ähnlich: „Solarlampe“")
+
+
+# --- Calendar and invitations (WM-110) -------------------------------------------------------
+
+
+def test_rule_kalender():
+    t = _planned(1, T(9), T(11))
+    t.calendar_uid = "zahlen-termin-1"
+    for state, text in (
+        ("missing", "Kalendereintrag fehlt (war eingetragen)"),
+        ("outdated", "weicht vom Termin ab"),
+    ):
+        t.calendar_state = state
+        hit = only(found(t), "kalender")
+        assert hit.level == "Wichtig" and text in hit.text
+    t.calendar_state = "ok"
+    assert "kalender" not in rules_of(found(t))
+
+
+def test_rule_nicht_im_kalender():
+    t = _planned(1, T(9), T(11))
+    facts = hints.Facts(TODAY, {t.date: [t]}, {}, calendar=True)
+    assert [f.rule for f in hints.evaluate(t, facts)] == ["nicht-im-kalender"]
+    assert found(t) == []  # without a configured calendar nothing is missing
+    t.calendar_uid = "x"
+    assert hints.evaluate(t, facts) == []
+
+
+def test_rule_einladung_abgelehnt():
+    kim = Person(id=1, name="Kim", email="kim@example.org", status=CONFIRMED)
+    t = _planned(1, T(9), T(11), lead=kim, support=(LEA,))
+    t.calendar_responses = [
+        CalendarResponse(email="kim@example.org", person_id=1, partstat="DECLINED"),
+        CalendarResponse(email="lea@example.org", person_id=2, partstat="ACCEPTED"),
+        CalendarResponse(email="weg@example.org", person_id=9, partstat="DECLINED"),  # no longer in the team
+    ]
+    hit = only(found(t), "einladung-abgelehnt")
+    assert (hit.level, hit.text) == ("Wichtig", "Kim hat die Kalendereinladung abgelehnt")
 
 
 # --- Duplicates -------------------------------------------------------------------------------

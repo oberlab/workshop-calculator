@@ -916,3 +916,9 @@ table.mun input[type="number"] { width: 90px; }
   .course-layout { grid-template-columns: minmax(0, 1fr); }
   .course-side { position: static; }
 }
+.responses { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 4px; font-size: 0.9rem; }
+.answer { font-weight: 600; }
+.answer-yes { color: var(--success-ink); }
+.answer-no { color: var(--critical-ink); }
+.answer-open { color: var(--text-muted); }
+.changes th[scope="row"] { font-weight: 600; text-align: left; }
