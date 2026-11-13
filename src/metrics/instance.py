@@ -5,7 +5,7 @@ it is optional: without it the app runs with the neutral defaults in this packag
 
     instance/
     ├── config.toml          calendar, target groups, Slack column mapping
-    ├── theme/tokens.toml    colours, fonts, category colours
+    ├── theme/tokens.toml    colours and inks, fonts, category colours, chart palette, map gradient
     ├── theme/fonts/         font files referenced by tokens.toml
     ├── seeds/locations.csv  lookup per location: school?, school type, address, coordinates, municipality
     ├── seeds/school_types.csv  school type codes and labels, in chart order
@@ -64,9 +64,31 @@ class Theme:
     palette: list[str]
     base_dir: Path
     map_gradient: list[str] = field(default_factory=lambda: ["#c6dbef", "#6baed6", "#2171b5", "#08306b"])
+    # True when the theme sets [palette] categorical itself (not the built-in fallback list).
+    palette_configured: bool = False
 
     def color_for(self, category: str, index: int) -> str:
         return self.category_colors.get(category) or self.palette[index % len(self.palette)]
+
+    def colors_for(self, categories: list[str]) -> list[str]:
+        """One colour per series, in legend order.
+
+        A category with a configured colour keeps it. With a configured palette, every other series
+        takes the next palette colour in order, skipping colours that belong to a category, so a new
+        series never repeats a category's colour. Without one, the palette is indexed by position.
+        """
+        if not self.palette_configured:
+            return [self.color_for(category, i) for i, category in enumerate(categories)]
+        taken = {c.lower() for c in self.category_colors.values()}
+        free = [c for c in self.palette if c.lower() not in taken] or self.palette
+        colors, n = [], 0
+        for category in categories:
+            if category in self.category_colors:
+                colors.append(self.category_colors[category])
+            else:
+                colors.append(free[n % len(free)])
+                n += 1
+        return colors
 
 
 @dataclass(frozen=True)
@@ -257,6 +279,7 @@ def load_theme(instance_dir: Path) -> Theme:
     tokens = _read_toml(path)
     fonts = tokens.get("font", {})
     categories = tokens.get("categories", {})
+    palette = list(tokens.get("palette", {}).get("categorical") or [])
     return Theme(
         heading_font=fonts.get("heading", "monospace"),
         body_font=fonts.get("body", "sans-serif"),
@@ -265,7 +288,8 @@ def load_theme(instance_dir: Path) -> Theme:
         bar_opacity=float(tokens.get("chart", {}).get("bar_opacity", 0.9)),
         category_order=categories.get("order", []),
         category_colors=categories.get("colors", {}),
-        palette=tokens.get("palette", {}).get("categorical", ["#4477aa", "#ee6677", "#ccbb44", "#228833"]),
+        palette=palette or ["#4477aa", "#ee6677", "#ccbb44", "#228833"],
+        palette_configured=bool(palette),
         base_dir=path.parent,
         **({"map_gradient": tokens["map"]["gradient"]} if tokens.get("map", {}).get("gradient") else {}),
     )

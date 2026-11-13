@@ -1,5 +1,6 @@
 """Vega-Lite specs, styled with the instance theme."""
 
+import math
 from collections import defaultdict
 
 from metrics.analytics import BIN_PER, NO_CATEGORY, MunicipalityCounts, Segment
@@ -72,7 +73,7 @@ def time_axis(bin_name: str, span_days: int) -> dict:
 
 def sessions_over_time(segments: list[Segment], bin_name: str, theme: Theme, x_title: str) -> dict:
     order = category_order(theme, {s.category for s in segments})
-    colors = [theme.color_for(category, i) for i, category in enumerate(order)]
+    colors = theme.colors_for(order)
     stack_order = list(reversed(order))  # first legend entry on top, as in the old figure
 
     by_bin: dict[str, list[Segment]] = defaultdict(list)
@@ -191,7 +192,7 @@ def _stacked(rows: list[tuple[str, str, int]], order: list[str], stack_order: li
 def sessions_by_school_type(rows: list[tuple[str, str, int]], type_order: list[str], theme: Theme) -> dict:
     """Stacked bars of sessions at schools per school type, total above each bar."""
     categories = category_order(theme, {category for _, category, _ in rows})
-    colors = [theme.color_for(category, i) for i, category in enumerate(categories)]
+    colors = theme.colors_for(categories)
     values = _stacked(rows, type_order, list(reversed(categories)))
     totals = [{"group": group, "total": sum(r[2] for r in rows if r[0] == group)} for group in type_order]
     x = {
@@ -268,6 +269,41 @@ def sessions_by_school_type(rows: list[tuple[str, str, int]], type_order: list[s
     }
 
 
+def _rgb(color: str) -> tuple[int, int, int]:
+    value = color.lstrip("#")
+    if len(value) == 3:
+        value = "".join(c * 2 for c in value)
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _luminance(color: str) -> float:
+    """WCAG relative luminance of a hex colour."""
+    channels = [c / 255 for c in _rgb(color)]
+    r, g, b = (c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a: str, b: str) -> float:
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def _gradient_at(gradient: list[str], t: float) -> str:
+    """Colour at position t (0..1) along evenly spaced gradient stops (linear in sRGB)."""
+    if len(gradient) == 1:
+        return gradient[0]
+    position = min(max(t, 0.0), 1.0) * (len(gradient) - 1)
+    i = min(int(position), len(gradient) - 2)
+    a, b = _rgb(gradient[i]), _rgb(gradient[i + 1])
+    f = position - i
+    return "#" + "".join(f"{round(x + (y - x) * f):02x}" for x, y in zip(a, b, strict=True))
+
+
+def _label_ink(fill: str, text: str, background: str) -> str:
+    """Text or background colour, whichever reads better on the fill (dark fills get light labels)."""
+    return text if _contrast(text, fill) >= _contrast(background, fill) else background
+
+
 def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: Theme) -> dict:
     """Choropleth of sessions per municipality, labelled with name and count.
 
@@ -275,6 +311,16 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
     many sessions do not push all others into the first colour. No sessions = grid colour.
     """
     text = theme.colors.get("text", "#333333")
+    background = theme.colors.get("background", "#ffffff")
+    highest = max(counts.inside.values(), default=0)
+    top = max(highest, 2)
+
+    def fill(count: int) -> str:
+        """Approximately the fill Vega draws (log scale over the gradient), to pick the label ink."""
+        if count <= 0:
+            return theme.colors.get("grid", "#eeeeee")
+        return _gradient_at(theme.map_gradient, math.log(count) / math.log(top))
+
     features = [
         {
             "type": "Feature",
@@ -288,10 +334,10 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
             "label": f"{map_config.label(m.name)}\n{counts.inside.get(m.name, 0)}",
             "lon": m.label_lon,
             "lat": m.label_lat,
+            "ink": _label_ink(fill(counts.inside.get(m.name, 0)), text, background),
         }
         for m in map_config.municipalities
     ]
-    highest = max(counts.inside.values(), default=0)
     return {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "width": "container",
@@ -325,7 +371,7 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
                         "title": "Einsätze",
                         "scale": {
                             "type": "log",
-                            "domain": [1, max(highest, 2)],
+                            "domain": [1, top],
                             "range": theme.map_gradient,
                             # Blend the gradient colours like ggplot2 (CIELAB), as in the corinna map.
                             "interpolate": "lab",
@@ -351,7 +397,8 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
                     "font": theme.heading_font,
                     "fontWeight": "bold",
                     "fontSize": 11,
-                    "color": text,
+                    # Per label (not an encoding, which would share the fill's colour scale).
+                    "fill": {"expr": "datum.ink"},
                 },
                 "encoding": {
                     "longitude": {"field": "lon", "type": "quantitative"},

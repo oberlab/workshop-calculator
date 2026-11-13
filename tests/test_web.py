@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from starlette.datastructures import QueryParams
 
 from metrics import auth, logins
+from metrics.instance import load_theme
 from metrics.web import app as web
 from metrics.web import common, health, login, security, theme
 
@@ -44,6 +45,23 @@ def test_theme_css(instance):
     css = theme.theme_css_text(instance.theme)
     assert "--color-text: #333333;" in css
     assert "--font-body: system-ui, sans-serif;" in css
+    # Optional dark inks: underscores in the key become dashes in the variable that style.css reads.
+    assert "--color-accent-ink: #2c4d6e;" in css
+    assert "--color-success-ink: #134b1c;" in css
+
+
+def test_theme_without_inks_leaves_them_to_the_stylesheet(tmp_path):
+    (tmp_path / "theme").mkdir()
+    (tmp_path / "theme" / "tokens.toml").write_text('[color]\naccent = "#00a4c4"\n')
+    css = theme.theme_css_text(load_theme(tmp_path))
+    assert "--color-accent: #00a4c4;" in css
+    assert "-ink" not in css
+
+
+def test_stylesheet_reads_the_inks_with_derived_fallbacks():
+    css = (Path(theme.__file__).parent / "static" / "style.css").read_text()
+    for role in ("accent", "critical", "warning", "success"):
+        assert f"--{role}-ink: var(--color-{role}-ink, color-mix(" in css
 
 
 def test_healthz_without_database():

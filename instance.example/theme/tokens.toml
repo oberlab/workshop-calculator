@@ -21,6 +21,12 @@ muted = "#777777"
 critical = "#c7326c"
 warning = "#fabb3a"
 success = "#228833"
+# Dark inks (optional) for links and for text on the tints above; each needs at least 4.5:1 on white.
+# Left out, they are the role colour mixed with black (these values are exactly that).
+accent_ink = "#2c4d6e"
+critical_ink = "#8f244e"
+warning_ink = "#70541a"
+success_ink = "#134b1c"
 
 [chart]
 bar_opacity = 0.9
@@ -35,6 +41,7 @@ Engineering = "#ee6677"
 Science = "#ccbb44"
 
 [palette]
+# Chart series without a category colour take the next colour here that no category uses, in order.
 categorical = ["#4477aa", "#ee6677", "#ccbb44", "#228833", "#66ccee", "#aa3377", "#bbbbbb"]
 
 [map]

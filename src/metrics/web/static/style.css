@@ -30,17 +30,20 @@
   --text-muted: color-mix(in srgb, var(--text) 80%, var(--bg)); /* AA on every surface */
   --on-fill: var(--bg); /* text on the strong fills below */
 
-  /* Colour roles: a strong fill for white text, a tint for backgrounds, an ink for text on tints. */
+  /* Colour roles: a strong fill for white text, a tint for backgrounds, an ink for text on tints.
+     A theme may set the inks itself (accent_ink etc., its own dark shades); otherwise they are the
+     role colour mixed with black. The strong fills stay derived, so a button's hover (the ink)
+     differs from its rest state. */
   --accent-strong: color-mix(in srgb, var(--accent) 75%, #000);
   --accent-tint: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  --accent-ink: color-mix(in srgb, var(--accent) 65%, #000);
+  --accent-ink: var(--color-accent-ink, color-mix(in srgb, var(--accent) 65%, #000));
   --critical-strong: color-mix(in srgb, var(--critical) 90%, #000);
   --critical-tint: color-mix(in srgb, var(--critical) 10%, var(--bg));
-  --critical-ink: color-mix(in srgb, var(--critical) 72%, #000);
+  --critical-ink: var(--color-critical-ink, color-mix(in srgb, var(--critical) 72%, #000));
   --warning-tint: color-mix(in srgb, var(--warning) 22%, var(--bg));
-  --warning-ink: color-mix(in srgb, var(--warning) 45%, #000); /* yellow is a fill, never text */
+  --warning-ink: var(--color-warning-ink, color-mix(in srgb, var(--warning) 45%, #000)); /* yellow is a fill, never text */
   --success-tint: color-mix(in srgb, var(--success) 15%, var(--bg));
-  --success-ink: color-mix(in srgb, var(--success) 55%, #000);
+  --success-ink: var(--color-success-ink, color-mix(in srgb, var(--success) 55%, #000));
   --link: var(--accent-ink);
   --focus: var(--accent-strong);
 

@@ -16,7 +16,8 @@ def theme_css_text(theme: Theme) -> str:
         f"font-weight: {f.get('weight', '100 900')}; font-style: normal; font-display: swap; }}"
         for f in theme.font_files
     ]
-    lines = [f"  --color-{name}: {value};" for name, value in theme.colors.items()]
+    # A key like accent_ink becomes --color-accent-ink.
+    lines = [f"  --color-{name.replace('_', '-')}: {value};" for name, value in theme.colors.items()]
     lines += [f"  --font-heading: {theme.heading_font};", f"  --font-body: {theme.body_font};"]
     return "\n".join([*faces, ":root {", *lines, "}", ""])
 

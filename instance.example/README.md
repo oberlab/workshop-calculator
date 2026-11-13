@@ -5,7 +5,7 @@ Everything specific to one organisation lives in an instance directory that is m
 | Path | Content |
 | --- | --- |
 | `config.toml` | School year start, teacher-training contexts, Slack List column mapping and ignored columns; for `metrics transfer-slack` the status-to-stage mapping and a project's own List (`[slack.project_list]`) |
-| `theme/tokens.toml` | Colours (text, background, accent and the hint colours `critical`, `warning`, `success`; the app derives surfaces and shades from them), fonts, category colours and order |
+| `theme/tokens.toml` | Colours (text, background, accent and the hint colours `critical`, `warning`, `success`; the app derives surfaces and shades from them; optional dark inks `accent_ink`, `critical_ink`, `warning_ink`, `success_ink` for links and text on tints, else the colour mixed with black), fonts, category colours and order, `[palette] categorical` (chart series without a category colour take the next palette colour not used by a category), `[map] gradient` (map fill from few to many sessions, light to dark) |
 | `theme/fonts/` | Font files referenced in `tokens.toml` |
 | `seeds/locations.csv` | Lookup table, one row per location: `school` = `ja`/`nein` (decides "Schulklasse" vs "Kinder & Jugendliche außerschulisch"), `school_type` (a code from `school_types.csv`), `address`, `lat`/`lon`, `municipality` (a `name` from the map for places in the district, else the town; empty = no place, e.g. "Online"), `source`, `note`, `reviewed` |
 | `seeds/school_types.csv` | School type codes and labels (`code`, `label`, `note`); row order = order in charts |

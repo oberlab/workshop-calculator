@@ -1,6 +1,8 @@
+from dataclasses import replace
 from datetime import date
 
 from metrics import analytics, charts
+from metrics.instance import load_theme
 
 
 def segments(bin_name):
@@ -44,6 +46,47 @@ def test_unknown_categories_get_palette_colours(instance):
     segs = analytics.aggregate([(date(2025, 1, 1), "Kunst", 1), (date(2025, 1, 1), None, 1)], "month", 8)
     spec = charts.sessions_over_time(segs, "month", instance.theme, "")
     assert spec["encoding"]["color"]["scale"]["domain"] == ["Kunst", analytics.NO_CATEGORY]
+    # The example palette starts with the three category colours, so new series continue after them.
+    assert spec["encoding"]["color"]["scale"]["range"] == ["#228833", "#66ccee"]
+
+
+def test_new_series_take_the_next_free_palette_colour(instance):
+    theme = replace(
+        instance.theme,
+        category_colors={"Code": "#00A4C4", "Engineering": "#c7326c"},
+        palette=["#00a4c4", "#c7326c", "#fabb3a", "#2e58b1"],
+        palette_configured=True,
+    )
+    assert theme.colors_for(["Code", "Projekt A", "Engineering", "Projekt B", "Projekt C"]) == [
+        "#00A4C4",
+        "#fabb3a",
+        "#c7326c",
+        "#2e58b1",
+        "#fabb3a",  # past the end of the palette: start again with the free colours
+    ]
+
+
+def test_without_a_configured_palette_colours_follow_the_position(instance):
+    theme = replace(
+        instance.theme,
+        category_colors={"Code": "#00a4c4"},
+        palette=["#111111", "#222222", "#333333"],
+        palette_configured=False,
+    )
+    assert theme.colors_for(["Code", "Kunst", "Musik"]) == ["#00a4c4", "#222222", "#333333"]
+
+
+def test_palette_flag_follows_the_tokens(tmp_path):
+    (tmp_path / "theme").mkdir()
+    tokens = tmp_path / "theme" / "tokens.toml"
+    tokens.write_text('[color]\ntext = "#000000"\n')
+    theme = load_theme(tmp_path)
+    assert not theme.palette_configured
+    assert theme.palette == ["#4477aa", "#ee6677", "#ccbb44", "#228833"]
+    tokens.write_text('[palette]\ncategorical = ["#123456", "#abcdef"]\n')
+    theme = load_theme(tmp_path)
+    assert theme.palette_configured
+    assert theme.palette == ["#123456", "#abcdef"]
 
 
 def test_time_axis_labels():

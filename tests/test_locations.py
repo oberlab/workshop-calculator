@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from metrics import analytics, charts
 from metrics.analytics import UNKNOWN_SCHOOL_TYPE
 
@@ -92,6 +94,20 @@ def test_map_spec_labels_every_municipality_and_greys_out_zero(instance):
     ]
     assert shapes["encoding"]["color"]["condition"]["test"] == "datum.properties.count == 0"
     assert spec["title"]["text"] == instance.map.attribution
+
+
+def test_map_labels_on_dark_fills_are_light(instance):
+    theme = replace(instance.theme, map_gradient=["#d9f1f6", "#06657b"])
+    counts = analytics.by_municipality(ROWS, instance)
+    spec = charts.municipality_map(instance.map, counts, theme)
+    inks = {v["label"]: v["ink"] for v in spec["layer"][1]["data"]["values"]}
+    # Log scale over 1..9: Beispieldorf (5) is already about three quarters along, Musterstadt (9) at the
+    # dark end; Neudorf (none) has the light grid colour.
+    assert inks == {"Beispieldorf\n5": "#ffffff", "Musterstadt\n9": "#ffffff", "Neudorf\n0": "#333333"}
+    light = replace(instance.theme, map_gradient=["#ffffff", "#d9f1f6"])
+    spec = charts.municipality_map(instance.map, counts, light)
+    assert {v["ink"] for v in spec["layer"][1]["data"]["values"]} == {"#333333"}
+    assert spec["layer"][1]["mark"]["fill"] == {"expr": "datum.ink"}
 
 
 def test_map_uses_short_labels(instance, monkeypatch):
