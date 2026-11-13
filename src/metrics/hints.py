@@ -705,7 +705,11 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
 def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
     """Recompute and store the hints of every Termin (the nightly job and `metrics hints`)."""
     appointments = _load(session, Appointment.id.is_not(None))
-    facts = Facts(day or today(), defaultdict(list), _confirmed_names(session), _calendar_on())
+    numbers: dict[int, list[tuple[int, int, dt.date | None]]] = defaultdict(list)
+    for t in appointments:
+        if t.number is not None and t.stage != ABGESAGT:
+            numbers[t.course_id].append((t.number, t.id, t.date))
+    facts = Facts(day or today(), defaultdict(list), _confirmed_names(session), _calendar_on(), dict(numbers))
     for t in appointments:
         if t.date and t.stage != ABGESAGT:
             facts.same_day[t.date].append(t)

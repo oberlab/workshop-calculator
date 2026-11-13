@@ -7,7 +7,7 @@ import re
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, courses
+from metrics import analytics, courses, hints
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -252,6 +252,10 @@ def test_adding_termine_and_the_double_number_guard(world):
     assert any(
         h.rule == "terminnummer-doppelt" and h.blocking and h.other_appointment_id == t.id for h in stored
     )
+    # The nightly recompute keeps it (it once built its facts without the Terminnummern).
+    hints.refresh_all(db, TODAY)
+    stored = db.scalars(sa.select(StoredHint).where(StoredHint.appointment_id == earlier.id)).all()
+    assert any(h.rule == "terminnummer-doppelt" and h.other_appointment_id == t.id for h in stored)
 
 
 def test_bulk_confirm_skips_and_cancel_remaining(world):
