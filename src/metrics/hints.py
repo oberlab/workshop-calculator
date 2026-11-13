@@ -132,7 +132,7 @@ class Facts:
 
     today: dt.date
     same_day: dict[dt.date, list[Appointment]] = field(default_factory=dict)  # not Abgesagt
-    confirmed_names: dict[str, set[str]] = field(default_factory=dict)  # list slug -> labels
+    confirmed_names: dict[str, set[str]] = field(default_factory=dict)  # list slug -> names
 
 
 @dataclass(frozen=True)
@@ -419,9 +419,10 @@ def entries_waiting(t: Appointment, facts: Facts):
     for pending in lists.pending_entries(t):
         text = pending.text
         if pending.entry.status == PROPOSED:
-            known = facts.confirmed_names.get(pending.kind.slug, set())
-            similar = suggestion(lists.label(pending.entry), known, {}) if known else None
-            if similar and similar != lists.label(pending.entry):
+            # Names only: a format's category in its label would make every name look alike.
+            name, known = pending.entry.name, facts.confirmed_names.get(pending.kind.slug, set())
+            similar = suggestion(name, known, {}) if name and known else None
+            if similar and similar != name:
                 text += f", ähnlich: „{similar}“"
         found.append(text)
     return found
@@ -508,9 +509,11 @@ def _load(session: Session, where) -> list[Appointment]:
 
 def _confirmed_names(session: Session) -> dict[str, set[str]]:
     return {
-        kind.slug: {
-            lists.label(e) for e in session.scalars(select(kind.model).where(kind.model.status == CONFIRMED))
-        }
+        kind.slug: set(
+            session.scalars(
+                select(kind.model.name).where(kind.model.status == CONFIRMED, kind.model.name.is_not(None))
+            )
+        )
         for kind in lists.KINDS.values()
     }
 

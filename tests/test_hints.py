@@ -332,6 +332,13 @@ def test_rule_eintrag_wartet_with_a_similar_known_name():
     hit = only(found(t, names={"orte": {"Grundschule Am Bach"}}), "eintrag-wartet")
     assert hit.text == "Ort „Grundschule am Bach“ wartet auf Bestätigung, ähnlich: „Grundschule Am Bach“"
     assert (hit.level, hit.blocking) == ("Info", False)
+    # Formats are compared by name, not by the label with the category.
+    fablab = Format(id=9, name="FabLab", category="Engineering", status=PROPOSED)
+    hit = only(found(termin(format=fablab), names={"formate": {"Zauberstab"}}), "eintrag-wartet")
+    assert hit.text == "Format „FabLab (Engineering)“ wartet auf Bestätigung"
+    solar = Format(id=10, name="Solarlampen", category="Engineering", status=PROPOSED)
+    hit = only(found(termin(format=solar), names={"formate": {"Solarlampe"}}), "eintrag-wartet")
+    assert hit.text.endswith("ähnlich: „Solarlampe“")
 
 
 # --- Duplicates -------------------------------------------------------------------------------
