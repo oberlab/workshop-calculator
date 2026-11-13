@@ -49,6 +49,10 @@ ADMIN_ROUTES = {
     # Prüfen: the queue and accepting a warning (WM-113).
     "GET /pruefen",
     "POST /pruefen/akzeptieren",
+    # Personen: the team overview, kept by hand (WM-105); the people picker stays Team.
+    "GET /stammdaten/personen",
+    "POST /stammdaten/personen",
+    "POST /stammdaten/personen/{entry_id:int}",
 }
 
 TEAM_ROUTES = {
@@ -69,7 +73,8 @@ TEAM_ROUTES = {
     "GET /planung/orte",
     "POST /planung/orte",
     # Stammdaten: read, propose, edit (proposed entries; confirmed ones only admins, checked in
-    # `metrics.lists.update`), and the picker.
+    # `metrics.lists.update`), and the picker. `{kind}` never serves `personen` here (404): the
+    # Personen page has its own admin routes above, which match first.
     "GET /stammdaten/{kind}",
     "POST /stammdaten/{kind}",
     "POST /stammdaten/{kind}/{entry_id:int}",

@@ -339,7 +339,8 @@ def _selected(html: str) -> str:
 def test_list_pages_search_filter_and_detail(seeded, monkeypatch):
     client = _team(monkeypatch)
     for slug in lists.KINDS:
-        assert client.get(f"/stammdaten/{slug}").status_code == 200
+        # The Personen page is for admins only (WM-105, tests/test_people.py).
+        assert client.get(f"/stammdaten/{slug}").status_code == (403 if slug == "personen" else 200)
     html = client.get("/stammdaten/orte?q=muster").text
     assert "Grundschule Musterstadt" in html and "Makerspace" not in html
     seeded.add(Place(name="Turnhalle", status=PROPOSED))  # e.g. from the Slack transfer

@@ -66,7 +66,13 @@ ENTRIES: list[Entry | str] = [
     Entry("Orte", "/stammdaten/orte", STAMMDATEN, counts=(_proposed("orte", "Orte"),)),
     Entry("Kontexte", "/stammdaten/kontexte", STAMMDATEN, counts=(_proposed("kontexte", "Kontexte"),)),
     Entry("Formate", "/stammdaten/formate", STAMMDATEN, counts=(_proposed("formate", "Formate"),)),
-    Entry("Personen", "/stammdaten/personen", STAMMDATEN, counts=(_proposed("personen", "Personen"),)),
+    Entry(
+        "Personen",
+        "/stammdaten/personen",
+        STAMMDATEN,
+        role=ADMIN,
+        counts=(_proposed("personen", "Personen"),),
+    ),
     Entry(
         "Prüfen",
         "/pruefen",

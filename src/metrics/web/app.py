@@ -3,8 +3,8 @@
 `/` is the public overview: chart and key figures, only time bin and period can be chosen.
 Behind the team login: `/analyse` (all filters and the internal views), one page per
 selected project (`/projekte/<slug>`, the analysis limited to the project's contexts), the
-planning prototype, the Stammdaten (`/stammdaten/<liste>`) and, for admins only, `/pruefen` and
-`/review`.
+planning prototype, the Stammdaten (`/stammdaten/<liste>`) and, for admins only, `/pruefen`,
+`/review` and the Personen page.
 A sidebar on every page holds the login and the navigation.
 """
 
@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from metrics.web import analyse, health, lists, login, planning, pruefen, public, review, theme
+from metrics.web import analyse, health, lists, login, people, planning, pruefen, public, review, theme
 from metrics.web.access import PageRefused, check_access
 from metrics.web.common import HERE, page
 from metrics.web.security import SecurityHeaders, check_csrf
@@ -28,7 +28,8 @@ app = FastAPI(
 app.add_middleware(SecurityHeaders)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
-for area in (public, analyse, planning, lists, pruefen, review, login, theme, health):
+# `people` before `lists`: its fixed /stammdaten/personen routes must match before /stammdaten/{kind}.
+for area in (public, analyse, planning, people, lists, pruefen, review, login, theme, health):
     app.include_router(area.router)
 
 

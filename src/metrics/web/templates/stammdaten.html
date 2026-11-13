@@ -24,6 +24,7 @@
     </select>
   </label>
   {% if kind.slug == "orte" %}<label class="check"><input type="checkbox" name="luecken" value="1"{% if gaps %} checked{% endif %}> nur Orte mit Lücken</label>{% endif %}
+  {% if kind.slug == "personen" %}{% for key, text in person_filters.items() %}<label class="check"><input type="checkbox" name="{{ key }}" value="1"{% if key in person_filters_on %} checked{% endif %}> {{ text }} ({{ person_filter_counts[key] }})</label>{% endfor %}{% endif %}
   <button class="btn btn-secondary btn-sm" type="submit">Anzeigen</button>
 </form>
 

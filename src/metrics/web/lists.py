@@ -3,7 +3,9 @@
 `/stammdaten/<liste>` (orte, kontexte, formate, personen) shows the entries with search and a status
 filter; `?id=` opens an entry in the detail panel (details, edit form, admin decisions, Verlauf),
 `?neu=1` the form for a new proposal. The admin decisions are separate POST routes, listed as admin
-routes in `access.py`.
+routes in `access.py`. The Personen page is admin-only and has its own routes (`web/people.py`, which
+reuses the handlers here); the generic list routes refuse it, while the people picker stays open to
+the team.
 
 The picker (`_lists.html`, macro `picker`) is a select of the active entries with a "Neu vorschlagen"
 button. `GET /stammdaten/<liste>/auswahl` renders it (htmx swaps it in place: after a change, to show
@@ -43,9 +45,10 @@ FIELD_LABELS = {
 } | {f.name: f.label for fields in lists.FIELDS.values() for f in fields}
 
 
-def _kind(slug: str) -> lists.Kind:
+def _kind(slug: str, people: bool = True) -> lists.Kind:
+    """The list of an address part; `people=False` for the routes the Personen page replaces."""
     kind = lists.KINDS.get(slug)
-    if kind is None:
+    if kind is None or (kind is lists.PEOPLE and not people):
         raise HTTPException(404, "Unbekannte Liste")
     return kind
 
@@ -167,6 +170,7 @@ def _list_page(
             "tabs": [
                 (k.slug, k.label, f"/stammdaten/{k.slug}", proposed[f"list_{k.slug}"] or None)
                 for k in lists.KINDS.values()
+                if k is not lists.PEOPLE or login.admin
             ],
             "filter_counts": {
                 **{key: status_counts.get(key, 0) for key in STATUS_FILTERS},
@@ -203,18 +207,30 @@ def _list_page(
             "PROPOSED": PROPOSED,
             "MERGED": MERGED,
         }
+        if kind is lists.PEOPLE:
+            from metrics.web import people  # the people router imports this module
+
+            context |= people.page_context(params, entries)
+            context["filter_query"] += context.pop("filter_query_people")
         return page(request, "stammdaten.html", context, status_code=status_code)
+
+
+def show(request: Request, kind: lists.Kind):
+    return _list_page(request, kind)
 
 
 @router.get("/stammdaten/{kind}", response_class=HTMLResponse)
 def list_page(kind: str, request: Request):
-    return _list_page(request, _kind(kind))
+    return show(request, _kind(kind, people=False))
 
 
 @router.post("/stammdaten/{kind}", response_class=HTMLResponse)
 async def propose(kind: str, request: Request):
     """A new proposed entry from the list page."""
-    list_kind = _kind(kind)
+    return await propose_entry(request, _kind(kind, people=False))
+
+
+async def propose_entry(request: Request, list_kind: lists.Kind):
     form = await _form(request)
     with get_sessionmaker()() as session, session.begin():
         values, errors = lists.parse(list_kind, form, lists.school_types(session), new=True)
@@ -236,12 +252,17 @@ async def propose(kind: str, request: Request):
 
 @router.post("/stammdaten/{kind}/{entry_id:int}", response_class=HTMLResponse)
 async def edit(kind: str, entry_id: int, request: Request):
-    list_kind = _kind(kind)
+    return await edit_entry(request, _kind(kind, people=False), entry_id)
+
+
+async def edit_entry(request: Request, list_kind: lists.Kind, entry_id: int):
     form = await _form(request)
     login = current_login(request)
     with get_sessionmaker()() as session, session.begin():
         entry = _entry(session, list_kind, entry_id)
         values, errors = lists.parse(list_kind, form, lists.school_types(session), new=False)
+        if list_kind is lists.PEOPLE and not errors:  # name the field that clashes (WM-105)
+            errors = lists.person_conflicts(session, values, exclude_id=entry.id)
         changed = []
         if not errors:
             try:
