@@ -3,7 +3,7 @@
 One schema for planning, tracking and analysis. The German names of the proposal map to the
 tables as follows: Ort = places, Kontext = contexts, Format = formats, Person = people,
 Kurs = courses, Termin = appointments, Herkunft = appointment_origins, Verlauf = history,
-Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions.
+Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions, Hinweis = hints.
 
 List entries (places, contexts, formats, people) carry a status: `vorgeschlagen` while a team
 member's proposal waits for an admin, `bestätigt` afterwards. An admin may instead merge an entry
@@ -330,6 +330,29 @@ class HintDecision(Base):
     reason: Mapped[str] = mapped_column(Text)
     decided_by: Mapped[str] = mapped_column(Text)
     decided_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StoredHint(Base):
+    """Hinweis: one finding of a rule on a Termin, as last computed by `metrics.hints`.
+
+    Derived data: `metrics.hints.refresh` replaces the rows of the Termine it recomputes, so these
+    rows are a cache of the rules, not a record. Decisions live in `hint_decisions`.
+    """
+
+    __tablename__ = "hints"
+    __table_args__ = (Index("ix_hints_rule_level", "rule", "level"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id", ondelete="CASCADE"), index=True)
+    rule: Mapped[str] = mapped_column(String(64))
+    level: Mapped[str] = mapped_column(String(16))  # Kritisch, Wichtig, Info
+    blocking: Mapped[bool] = mapped_column(Boolean)
+    text: Mapped[str] = mapped_column(Text)
+    # The other Termin of a conflict or a likely duplicate.
+    other_appointment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("appointments.id", ondelete="CASCADE"), index=True
+    )
+    computed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JobRun(Base):
