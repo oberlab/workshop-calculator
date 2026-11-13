@@ -425,7 +425,7 @@ def test_orte_page_and_sidebar_counters(team):
     page = team.get("/planung/orte").text
     assert "Jugendzentrum Neustadt" in page and "Adresse fehlt" in page
     sidebar = team.get("/").text
-    assert "nav-count nav-count-medium" in sidebar and 'title="1 Orte ohne Adresse"' in sidebar
+    assert "count count-warning" in sidebar and 'title="1 Orte ohne Adresse"' in sidebar
     saved = team.post(
         "/planung/orte",
         data={

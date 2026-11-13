@@ -1,5 +1,6 @@
 """Helpers shared by the routers: filters from the query string, login state, pages with the sidebar."""
 
+import zlib
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -14,12 +15,22 @@ from metrics import analytics, auth, charts, logins
 from metrics.db import ImportRun, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import overview
-from metrics.web import security
+from metrics.web import nav, security
 
 HERE = Path(__file__).parent
 TIMEZONE = ZoneInfo("Europe/Berlin")
 
 templates = Jinja2Templates(directory=HERE / "templates")
+
+AVATAR_TONES = 5
+
+
+def avatar_tone(name: str) -> int:
+    """A stable colour slot (0-4) per name, so a person keeps the same avatar colour everywhere."""
+    return zlib.crc32((name or "").encode()) % AVATAR_TONES
+
+
+templates.env.filters["avatar_tone"] = avatar_tone
 
 
 def today() -> date:
@@ -76,11 +87,12 @@ def page_context(filters: analytics.Filters, **extra) -> dict:
 def page(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
     """A page with the sidebar: login state and the links this person may open."""
     login = current_login(request)
+    counts = overview.sidebar_counts(login, today()) if login else {}
+    projects = get_instance().projects if login else []
     sidebar = {
         "login": login,
-        "counts": overview.sidebar_counts(login, today()) if login else {},
+        "nav": nav.sidebar(login, request.url.path, counts, projects),
         "auth_off": auth.mode() == "off",
-        "projects": get_instance().projects if login else [],
         "path": request.url.path,
         "csrf_token": security.csrf_token(request),
     }

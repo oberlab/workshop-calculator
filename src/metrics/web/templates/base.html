@@ -1,4 +1,5 @@
 <!doctype html>
+{% import "_ui.html" as ui %}
 <html lang="de">
 <head>
   <meta charset="utf-8">
@@ -6,67 +7,66 @@
   <title>{% block title %}Einsätze über die Zeit{% endblock %}</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='shell.js') }}" defer></script>
 </head>
 <body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
-{% macro nav_link(href, label, exact=true, badges=[]) %}
-  {% if exact %}{% set active = path == href %}
-  {% elif href == "/planung" %}{% set active = path.startswith("/planung") and not path.startswith("/planung/orte") %}
-  {% else %}{% set active = path.startswith(href) %}{% endif %}
-  <a href="{{ href }}" {% if active %}class="active" aria-current="page"{% endif %}>
-    <span>{{ label }}</span>
-    {% for kind, n, title in badges if n %}<span class="nav-count nav-count-{{ kind }}" title="{{ n }} {{ title }}">{{ n }}</span>{% endfor %}
-  </a>
-{% endmacro %}
-<div class="layout">
-  <aside class="sidebar">
+<a class="skip-link" href="#main">Zum Inhalt springen</a>
+<header class="topbar">
+  <a class="brand" href="/">Zahlen</a>
+  <button type="button" class="menu-button" aria-expanded="false" aria-controls="sidebar" data-menu-toggle><span class="menu-icon" aria-hidden="true"></span>Menü</button>
+</header>
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
+    <a class="brand" href="/">Zahlen</a>
     <section class="account" aria-label="Anmeldung">
       {% if login %}
       <div class="account-user">
-        <span class="account-initial" aria-hidden="true">{{ login.user[:1]|upper }}</span>
+        {{ ui.avatar(login.user) }}
         <div>
           <div class="account-name">{{ login.user }}</div>
-          <div class="account-role">{% if login.admin %}Admin{% else %}Team{% endif %}</div>
+          <div class="account-role">Team{% if login.admin %} · Admin{% endif %}</div>
         </div>
       </div>
       {% if not auth_off %}
-      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button secondary">Abmelden</button></form>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="btn btn-secondary btn-sm">Abmelden</button></form>
       {% endif %}
       {% else %}
-      <p class="account-hint">Team-Bereich mit Analyse und Projekten</p>
-      <a class="button" href="/login">Anmelden</a>
+      <p class="account-role">Team-Bereich mit Analyse und Projekten</p>
+      {{ ui.button("Anmelden", href="/login", size="sm") }}
       {% endif %}
     </section>
 
-    <nav class="side-nav" aria-label="Seiten">
-      {{ nav_link("/", "Übersicht") }}
-      {% if login %}
-      {{ nav_link("/analyse", "Analyse") }}
-      {% if projects %}
-      <div class="nav-group">Projekte</div>
-      {% for p in projects %}{{ nav_link("/projekte/" ~ p.slug, p.title) }}{% endfor %}
-      {% endif %}
-      <div class="nav-group">Planung <span class="tag">Prototyp</span></div>
-      {{ nav_link("/planung", "Kurse", exact=false, badges=[("high", counts.courses_high, "Kurse mit kritischem Hinweis"), ("medium", counts.courses_medium, "Kurse mit wichtigem Hinweis")]) }}
-      {{ nav_link("/planung/orte", "Orte", exact=false, badges=[("medium", counts.places, "Orte ohne Adresse")]) }}
-      {% if login.admin %}
-      <div class="nav-group">Verwaltung</div>
-      {{ nav_link("/review", "Review", badges=[("review", counts.review, "offene Punkte")]) }}
-      {% endif %}
-      {% endif %}
+    <nav class="nav" aria-label="Seiten">
+      {% for group, links in nav %}
+      {% if group %}<div class="nav-group">{{ group }}</div>{% endif %}
+      {% for link in links %}
+      <a href="{{ link.href }}"{% if link.action %} class="is-action"{% endif %}{% if link.active %} aria-current="page"{% endif %}>
+        <span>{{ link.label }}</span>
+        {% if link.note %}<span class="nav-note">{{ link.note }}</span>{% endif %}
+        {% for n, tone, title in link.counts %}{{ ui.count(n, tone, title) }}{% endfor %}
+      </a>
+      {% endfor %}
+      {% endfor %}
     </nav>
   </aside>
 
-  <main class="content">
+  <main class="content" id="main" tabindex="-1">
     {% if auth_off %}
-    <p class="warning" role="note">Anmeldung ausgeschaltet (<code>AUTH_MODE=off</code>): Alle Seiten sind für alle erreichbar. Nur für lokale Tests verwenden.</p>
+    <p class="auth-warning" role="note">Anmeldung ausgeschaltet (<code>AUTH_MODE=off</code>): Alle Seiten sind für alle erreichbar. Nur für lokale Tests verwenden.</p>
     {% endif %}
     <header class="page-header">
-      <h1>{% block heading %}Einsätze über die Zeit{% endblock %}</h1>
+      {% block crumb %}{% endblock %}
+      <div class="page-title">
+        <h1>{% block heading %}Einsätze über die Zeit{% endblock %}</h1>
+        {% if self.actions()|trim %}<div class="page-actions">{% block actions %}{% endblock %}</div>{% endif %}
+      </div>
       {% block subheading %}{% endblock %}
     </header>
     {% block content %}{% endblock %}
   </main>
 </div>
+<div class="toasts" data-toasts>{% block toasts %}{% if message %}{{ ui.toast(message) }}{% endif %}{% endblock %}</div>
 {% block scripts %}{% endblock %}
 </body>
 </html>
