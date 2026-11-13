@@ -1,0 +1,140 @@
+{# Components of the design system (PROPOSAL.md section 5.3); the look is in static/style.css.
+   Import with {% import "_ui.html" as ui %}. Forms stay plain HTML in the page templates, so every
+   POST form visibly carries its CSRF field (tests/test_security.py reads the templates). #}
+
+{# Button or link that looks like one. kind: primary, secondary, quiet, danger; size: "sm" or none.
+   attrs: further attributes, e.g. {"name": "action", "value": "done", "hx-get": "/..."}. #}
+{% macro button(label, href=none, kind="primary", type="button", size=none, attrs={}) -%}
+{% set cls = "btn" ~ (" btn-" ~ kind if kind != "primary" else "") ~ (" btn-" ~ size if size else "") %}
+{% if href %}<a class="{{ cls }}" href="{{ href }}"{{ attrs|xmlattr }}>{{ label }}</a>
+{%- else %}<button class="{{ cls }}" type="{{ type }}"{{ attrs|xmlattr }}>{{ label }}</button>{% endif %}
+{%- endmacro %}
+
+{# Counter for navigation and tabs. tone: critical, warning, neutral or none (outlined). #}
+{% macro count(n, tone=none, title=none) -%}
+<span class="count{{ ' count-' ~ tone if tone }}"{% if title %} title="{{ n }} {{ title }}"{% endif %}>{{ n }}{% if title %}<span class="visually-hidden"> {{ title }}</span>{% endif %}</span>
+{%- endmacro %}
+
+{# Stage pill. stage: geplant, bestaetigt, durchgefuehrt, abgeschlossen, abgesagt. #}
+{% macro stage_pill(stage, label) -%}
+<span class="pill pill-{{ stage }}">{{ label }}</span>
+{%- endmacro %}
+
+{# Hint badge: icon plus text. level: high (Kritisch), medium (Wichtig), low (Info); text replaces
+   the level's name, e.g. "TN fehlen". #}
+{% macro hint_badge(level, text=none) -%}
+{% set names = {"high": "Kritisch", "medium": "Wichtig", "low": "Info"} %}
+{% if level in names %}<span class="hint-badge hint-{{ level }}"{% if text %} title="Hinweis: {{ names[level] }}"{% endif %}><i aria-hidden="true">{{ "i" if level == "low" else "!" }}</i>{% if text %}<span class="visually-hidden">{{ names[level] }}: </span>{{ text }}{% else %}{{ names[level] }}{% endif %}</span>{% endif %}
+{%- endmacro %}
+
+{# Avatar with initials (or a picture); the colour follows the name. size: "sm", "lg" or none. #}
+{% macro avatar(name, size=none, image=none, label=false) -%}
+{% set parts = (name or "?").split() %}
+{% set initials = (parts[0][:1] ~ (parts[-1][:1] if parts|length > 1 else "")) | upper %}
+<span class="avatar tone-{{ name|avatar_tone }}{{ ' avatar-' ~ size if size }}"{% if label %} role="img" aria-label="{{ name }}" title="{{ name }}"{% else %} aria-hidden="true"{% endif %}>{% if image %}<img src="{{ image }}" alt="">{% else %}{{ initials }}{% endif %}</span>
+{%- endmacro %}
+
+{# Field: a labelled input. type "textarea" gives a text area. help and error show below;
+   missing marks a required value that is still empty. #}
+{% macro field(label, name, value=none, type="text", required=false, help=none, error=none, missing=false, attrs={}) -%}
+<label class="field{{ ' is-missing' if missing or error }}">
+  <span>{{ label }}{% if required %}<span class="req" aria-hidden="true"> *</span>{% endif %}</span>
+  {% if type == "textarea" %}<textarea name="{{ name }}"{{ attrs|xmlattr }}{% if required %} aria-required="true"{% endif %}>{{ value if value is not none }}</textarea>
+  {%- else %}<input type="{{ type }}" name="{{ name }}" value="{{ value if value is not none }}"{{ attrs|xmlattr }}{% if required %} aria-required="true"{% endif %}{% if error %} aria-invalid="true"{% endif %}>{% endif %}
+  {% if help %}<span class="field-help">{{ help }}</span>{% endif %}
+  {% if error %}<span class="field-error">{{ error }}</span>{% endif %}
+</label>
+{%- endmacro %}
+
+{# Table with a header row; the rows come from the call block. Wide tables scroll in their card. #}
+{% macro table(head, caption=none, class=none) -%}
+<div class="table-wrap">
+<table class="table{{ ' ' ~ class if class }}">
+  {% if caption %}<caption class="visually-hidden">{{ caption }}</caption>{% endif %}
+  <thead><tr>{% for h in head %}<th scope="col">{% if h %}{{ h }}{% else %}<span class="visually-hidden">Aktionen</span>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>{{ caller() }}</tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{# Panel: a titled section box. n shows a counter after the title; the call block is the body. #}
+{% macro panel(title=none, n=none, id=none, class=none) -%}
+<section class="panel{{ ' ' ~ class if class }}"{% if id %} id="{{ id }}"{% endif %}>
+  {% if title %}<h2>{{ title }}{% if n is not none %} {{ count(n) }}{% endif %}</h2>{% endif %}
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{# Card for one Termin: day block, title, details; the call block adds a last line (team, pills).
+   date: a date; meta: list of short texts; stage: colours the left edge; href: the whole card links. #}
+{% macro card(date, title, meta=[], stage=none, href=none) -%}
+{% set tag = "a" if href else "div" %}
+<{{ tag }} class="card{{ ' stage-' ~ stage if stage }}"{% if href %} href="{{ href }}"{% endif %}>
+  <div class="card-day">{% if date %}<span>{{ ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][date.weekday()] }}</span><b>{{ date.day }}</b><span>{{ ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"][date.month - 1] }}</span>{% else %}<b>?</b>{% endif %}</div>
+  <div>
+    <div class="card-title">{{ title }}</div>
+    {% if meta %}<div class="card-meta">{% for m in meta if m %}<span>{{ m }}</span>{% endfor %}</div>{% endif %}
+    {% if caller %}<div class="card-meta">{{ caller() }}</div>{% endif %}
+  </div>
+</{{ tag }}>
+{%- endmacro %}
+
+{# Side panel: a dialog sliding in from the right. Open it with a button carrying
+   data-side-panel="<id>" (static/shell.js); htmx can load its body (hx-target="#<id>-body"). #}
+{% macro side_panel(id, title) -%}
+<dialog class="side-panel" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <div class="side-panel-head">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    <button type="button" class="btn btn-quiet btn-sm" data-close-dialog>Schließen</button>
+  </div>
+  <div class="side-panel-body" id="{{ id }}-body">{% if caller %}{{ caller() }}{% endif %}</div>
+</dialog>
+{%- endmacro %}
+
+{# Tabs as links between views. items: list of (key, label, href) or (key, label, href, n);
+   current: the key of the open view. #}
+{% macro tabs(items, current, label) -%}
+<nav class="tabs" aria-label="{{ label }}">
+  {% for item in items %}
+  <a class="tab" href="{{ item[2] }}"{% if item[0] == current %} aria-current="page"{% endif %}>{{ item[1] }}{% if item|length > 3 and item[3] is not none %} {{ count(item[3]) }}{% endif %}</a>
+  {% endfor %}
+  {% if caller %}<div class="tabs-end">{{ caller() }}</div>{% endif %}
+</nav>
+{%- endmacro %}
+
+{# Toast: a short confirmation, closed with its button (static/shell.js). Put it into the
+   "toasts" block of base.html; htmx responses can add one with the header HX-Trigger: {"toast": "…"}. #}
+{% macro toast(message) -%}
+<div class="toast" role="status"><p>{{ message }}</p><button type="button" class="toast-close" data-close-toast aria-label="Meldung schließen">×</button></div>
+{%- endmacro %}
+
+{# Inline alert. kind: error (role alert), warning or info. messages: one text or a list. #}
+{% macro alert(messages, kind="info") -%}
+<div class="alert alert-{{ kind }}" role="{{ 'alert' if kind == 'error' else 'note' }}">
+  {% for m in ([messages] if messages is string else messages) %}<p>{{ m }}</p>{% endfor %}
+</div>
+{%- endmacro %}
+
+{# Empty state: what is missing and why; the call block may add an action. #}
+{% macro empty_state(title, text=none) -%}
+<div class="empty-state">
+  <p class="empty-state-title">{{ title }}</p>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {% if caller %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{# Workload bar: lead (and support) Termine or hours against the capacity, e.g. 4 / 3.
+   Yellow from 80 %, critical above 100 %. label replaces the "value / capacity" text. #}
+{% macro workload_bar(value, capacity, support=0, label=none) -%}
+{% set total = value + support %}
+{% set share = (total / capacity) if capacity else 0 %}
+{% set tone = " is-over" if share > 1 else (" is-warning" if share >= 0.8 else "") %}
+{% set scale = [capacity, total]|max or 1 %}
+{% set w_lead = ((value / scale * 20)|round|int * 5) %}
+{% set w_support = ((support / scale * 20)|round|int * 5) %}
+<span class="workload{{ tone }}">
+  <span class="workload-bar" aria-hidden="true"><span class="workload-fill w-{{ w_lead }}"></span>{% if support %}<span class="workload-fill is-support w-{{ [w_support, 100 - w_lead]|min }}"></span>{% endif %}</span>
+  <span class="workload-label">{{ label or (total|string ~ " / " ~ capacity|string) }}</span>
+</span>
+{%- endmacro %}

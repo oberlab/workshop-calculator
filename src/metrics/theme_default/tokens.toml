@@ -13,6 +13,12 @@ border = "#333333"
 grid = "#eeeeee"
 accent = "#4477aa"
 muted = "#777777"
+# Roles for hints and stages (optional, these are the defaults): critical = Kritisch, warning =
+# Wichtig (used only as a fill, with text in the text colour), success = Durchgeführt. The app derives
+# tints, darker text shades and surfaces from these and the colours above (static/style.css).
+critical = "#c7326c"
+warning = "#fabb3a"
+success = "#228833"
 
 [chart]
 bar_opacity = 0.9
