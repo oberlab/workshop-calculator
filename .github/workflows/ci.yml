@@ -1,5 +1,5 @@
 # Tests and lint on every push and pull request. Uses only the synthetic fixtures and
-# instance.example/; no secrets, no database.
+# instance.example/; no secrets. The database tests run against a throwaway PostgreSQL.
 name: CI
 
 on:
@@ -26,6 +26,23 @@ jobs:
       matrix:
         # 3.13 = the Docker image (production), 3.14 = current development machines.
         python: ["3.13", "3.14"]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # The tests create their own database on this server and drop it afterwards.
+      TEST_DATABASE_URL: postgresql+psycopg://test:test@127.0.0.1:5432/test
     steps:
       - uses: actions/checkout@v4
 

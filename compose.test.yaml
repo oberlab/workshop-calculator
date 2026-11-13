@@ -1,0 +1,25 @@
+# PostgreSQL for the tests (demo data only, nothing is kept: the data lives in memory).
+#   docker compose -f compose.test.yaml up -d --wait
+#   uv run pytest
+#   docker compose -f compose.test.yaml down
+# The host port is chosen by Docker (no clash with a local PostgreSQL); the tests find it
+# with `docker compose -f compose.test.yaml port db-test 5432`, or take TEST_DATABASE_URL. Every test
+# run creates its own database in it and drops it afterwards, so checkouts can share the container.
+name: workshop-calculator-test
+
+services:
+  db-test:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d test"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
