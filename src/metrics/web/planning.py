@@ -11,11 +11,11 @@ from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from metrics.instance import get_instance
 from metrics.planning import calendar as cal
-from metrics.planning import demo, places, rules, service, vocabulary
+from metrics.planning import demo, overview, places, rules, service, vocabulary
 from metrics.planning.conflicts import SEVERITY_LABELS, busy_people
 from metrics.planning.models import (
     BESTAETIGT,
@@ -34,25 +34,11 @@ from metrics.planning.models import (
     Place,
     get_planning_sessionmaker,
 )
-from metrics.web.app import current_login, page, public_base, today
+from metrics.web.common import current_login, page, public_base, today
 
 router = APIRouter()
 
 FILTERS = ("person", "from", "to", "context", "location", "category", "flagged", "unbilled")
-
-
-def _login(request: Request):
-    login = current_login(request)
-    if login is None:
-        raise HTTPException(401, "Anmeldung erforderlich")
-    return login
-
-
-def _admin(request: Request):
-    login = _login(request)
-    if not login.admin:
-        raise HTTPException(403, "Nur für Admins")
-    return login
 
 
 async def _form(request: Request) -> dict[str, list[str]]:
@@ -64,8 +50,8 @@ def _link(request: Request):
     return lambda course: f"{base}/planung/{course.id}"
 
 
-def _names(session) -> dict[str, str]:
-    return {p.key: p.name for p in vocabulary.people(session)}
+_names = overview.names
+_instance = overview.merged_instance
 
 
 CHECK_SECONDS = 120  # a real calendar is checked at most this often on page views
@@ -93,16 +79,8 @@ def _refresh(session, request: Request) -> None:
     session.commit()
 
 
-def _instance(session):
-    """The instance with the places entered in planning added to the location list."""
-    return places.merged(get_instance(), session)
-
-
 def _flags_by_course(session, courses: list[Course]) -> dict[int, list[service.Flag]]:
-    instance = _instance(session)
-    known = vocabulary.known(instance)
-    names = _names(session)
-    return {c.id: service.flags(c, courses, names, instance, known, today(), True) for c in courses}
+    return overview.flags_by_course(session, courses, today())
 
 
 def _me(session, login) -> str | None:
@@ -133,8 +111,6 @@ def _matches(course: Course, params, flags: list, me: str | None) -> bool:
 @router.get("/planung", response_class=HTMLResponse)
 def course_list(request: Request):
     login = current_login(request)
-    if login is None:
-        return RedirectResponse("/login", status_code=303)
     params = request.query_params
     stage = params.get("stage") or GEPLANT
     if stage not in STAGES:
@@ -264,8 +240,6 @@ def _course_page(request, session, course: Course, errors: list[str] | None = No
 
 @router.get("/planung/neu", response_class=HTMLResponse)
 def new_course(request: Request):
-    if current_login(request) is None:
-        return RedirectResponse("/login", status_code=303)
     with get_planning_sessionmaker()() as session:
         vocabulary.ensure_people(session)
         course = Course(stage=GEPLANT, calendar_state="none", billed=False)
@@ -279,7 +253,7 @@ def new_course(request: Request):
 
 @router.post("/planung/neu", response_class=HTMLResponse)
 async def create_course(request: Request):
-    login = _login(request)
+    login = current_login(request)
     form = await _form(request)
     with get_planning_sessionmaker()() as session:
         course = Course(stage=GEPLANT, created_by=login.user, calendar_state="none", billed=False)
@@ -306,8 +280,6 @@ def _get(session, course_id: int) -> Course:
 
 @router.get("/planung/{course_id:int}", response_class=HTMLResponse)
 def show_course(course_id: int, request: Request):
-    if current_login(request) is None:
-        return RedirectResponse("/login", status_code=303)
     with get_planning_sessionmaker()() as session:
         vocabulary.ensure_people(session)
         course = _get(session, course_id)
@@ -317,7 +289,7 @@ def show_course(course_id: int, request: Request):
 
 @router.post("/planung/{course_id:int}", response_class=HTMLResponse)
 async def save_course(course_id: int, request: Request):
-    login = _login(request)
+    login = current_login(request)
     form = await _form(request)
     with get_planning_sessionmaker()() as session:
         course = _get(session, course_id)
@@ -357,7 +329,7 @@ def _calendar_entry(session, request, course: Course, user: str) -> str:
 
 @router.post("/planung/{course_id:int}/aktion", response_class=HTMLResponse)
 async def course_action(course_id: int, request: Request):
-    login = _login(request)
+    login = current_login(request)
     form = await _form(request)
     action = service._one(form, "action")
     with get_planning_sessionmaker()() as session:
@@ -416,7 +388,6 @@ async def course_action(course_id: int, request: Request):
 @router.get("/api/planung/belegt")
 def busy(request: Request) -> JSONResponse:
     """Who is already booked at that time: {person key: course}."""
-    _login(request)
     params = request.query_params
     try:
         day = dt.date.fromisoformat(params.get("date", ""))
@@ -492,7 +463,6 @@ def _back(message: str) -> RedirectResponse:
 
 @router.post("/review/kalender/pruefen")
 def check_calendar(request: Request):
-    _admin(request)
     with get_planning_sessionmaker()() as session:
         try:
             courses = list(session.scalars(select(Course)))
@@ -506,7 +476,7 @@ def check_calendar(request: Request):
 
 @router.post("/review/kalender/ignorieren")
 async def ignore_event(request: Request):
-    login = _admin(request)
+    login = current_login(request)
     uid = service._one(await _form(request), "uid")
     with get_planning_sessionmaker()() as session:
         orphan = session.get(CalendarOrphan, uid)
@@ -518,7 +488,7 @@ async def ignore_event(request: Request):
 
 @router.post("/review/kalender/kurs")
 async def course_from_event(request: Request):
-    login = _admin(request)
+    login = current_login(request)
     uid = service._one(await _form(request), "uid")
     with get_planning_sessionmaker()() as session:
         orphan = session.get(CalendarOrphan, uid)
@@ -550,7 +520,6 @@ async def course_from_event(request: Request):
 
 @router.post("/review/demo/kalender/loeschen")
 async def demo_delete_event(request: Request):
-    _admin(request)
     uid = service._one(await _form(request), "uid")
     with get_planning_sessionmaker()() as session:
         calendar = cal.get_calendar(session)
@@ -563,7 +532,6 @@ async def demo_delete_event(request: Request):
 
 @router.post("/review/demo/zuruecksetzen")
 def demo_reset(request: Request):
-    _admin(request)
     with get_planning_sessionmaker()() as session:
         vocabulary.ensure_people(session)
         demo.reset(session, get_instance(), today(), _link(request))
@@ -573,7 +541,6 @@ def demo_reset(request: Request):
 
 @router.post("/review/personen")
 async def save_people(request: Request):
-    _admin(request)
     form = await _form(request)
     with get_planning_sessionmaker()() as session:
         active = set(form.get("active", []))
@@ -598,8 +565,6 @@ def clean(value: str) -> str:
 
 @router.get("/planung/orte", response_class=HTMLResponse)
 def place_list(request: Request):
-    if current_login(request) is None:
-        return RedirectResponse("/login", status_code=303)
     instance = get_instance()
     with get_planning_sessionmaker()() as session:
         entered = places.places(session)
@@ -623,7 +588,7 @@ def place_list(request: Request):
 
 @router.post("/planung/orte")
 async def save_place(request: Request):
-    login = _login(request)
+    login = current_login(request)
     form = await _form(request)
     name = clean(form.get("name", [""])[0])
     if not name:
@@ -656,31 +621,3 @@ async def save_place(request: Request):
             "Ort gespeichert." if place.complete else "Gespeichert, aber die Adresse ist noch unvollständig."
         )
     return RedirectResponse(f"/planung/orte?hinweis={quote(message)}", status_code=303)
-
-
-# --- sidebar counters -------------------------------------------------------------------------
-
-
-def sidebar_counts(login) -> dict[str, int]:
-    """Open items for the sidebar badges; never fails a page (empty on any error)."""
-    try:
-        with get_planning_sessionmaker()() as session:
-            courses = list(session.scalars(select(Course)))
-            flags = _flags_by_course(session, courses)
-            tops = [service.top_severity(f) for f in flags.values()]
-            counts = {
-                "courses_high": tops.count("high"),
-                "courses_medium": tops.count("medium"),
-                "places": len(places.missing(session, _instance(session))),
-            }
-            if login.admin:
-                orphans = session.scalar(
-                    select(func.count())
-                    .select_from(CalendarOrphan)
-                    .where(CalendarOrphan.ignored_by.is_(None))
-                )
-                waiting = sum(1 for c in courses if c.stage == DURCHGEFUEHRT)
-                counts["review"] = counts["courses_high"] + waiting + (orphans or 0)
-            return counts
-    except Exception:  # noqa: BLE001 - a broken prototype must not break the other pages
-        return {}

@@ -5,12 +5,6 @@
 {% block heading %}Review <span class="internal">Admin</span>{% endblock %}
 
 {% block content %}
-{% if not login.admin %}
-<div class="panel placeholder">
-  <h2>Kein Zugriff</h2>
-  <p class="hint">Diese Seite ist nur für Admins.</p>
-</div>
-{% else %}
 {% set pl = planning %}
 {% if pl.message %}<p class="notice" role="status">{{ pl.message }}</p>{% endif %}
 <p class="prototype-note"><strong>Planung (Prototyp).</strong> Die Abschnitte unten lesen und schreiben nur die Demo-Datenbank der Planung. Kalender: {{ pl.calendar_name }}.</p>
@@ -127,5 +121,4 @@
   </form>
   <p class="hint">Löscht alle Kurse der Planung, baut die Personenliste aus den aktuellen Slack-Nutzern neu auf (Login-Verknüpfungen bleiben) und legt Beispielkurse rund um heute an, die jede Art Hinweis zeigen.{% if pl.demo_events is none %} Mit dem echten Kalender werden dabei auch Testtermine dort eingetragen.{% endif %}</p>
 </section>
-{% endif %}
 {% endblock %}

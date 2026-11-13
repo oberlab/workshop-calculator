@@ -6,16 +6,18 @@ import pytest
 from fastapi import HTTPException
 from starlette.datastructures import QueryParams
 
+from metrics import auth
 from metrics.web import app as web
+from metrics.web import common, health, login, theme
 
 
 def test_parse_filters_defaults():
-    filters = web.parse_filters(QueryParams(""))
+    filters = common.parse_filters(QueryParams(""))
     assert (filters.bin, filters.preset, filters.categories) == ("month", "all", [])
 
 
 def test_parse_filters_values():
-    filters = web.parse_filters(
+    filters = common.parse_filters(
         QueryParams(
             "bin=quarter&period=custom&from=2024-01-01&to=2024-12-31&category=Code&category=Science&context=A"
         )
@@ -27,26 +29,26 @@ def test_parse_filters_values():
 
 
 def test_dates_only_count_for_custom_period():
-    filters = web.parse_filters(QueryParams("period=all&from=2024-01-01"))
+    filters = common.parse_filters(QueryParams("period=all&from=2024-01-01"))
     assert filters.date_from is None
 
 
 @pytest.mark.parametrize("query", ["bin=day", "period=forever", "period=custom&from=gestern"])
 def test_parse_filters_rejects_invalid(query):
     with pytest.raises(HTTPException) as error:
-        web.parse_filters(QueryParams(query))
+        common.parse_filters(QueryParams(query))
     assert error.value.status_code == 400
 
 
 def test_theme_css(instance):
-    css = web._theme_css(instance.theme)
+    css = theme.theme_css_text(instance.theme)
     assert "--color-text: #333333;" in css
     assert "--font-body: system-ui, sans-serif;" in css
 
 
 def test_healthz_without_database():
     # conftest points DATABASE_URL at a port nothing listens on.
-    response = web.healthz()
+    response = health.healthz()
     assert response.status_code == 503
     assert json.loads(response.body) == {"status": "error", "database": "unreachable"}
 
@@ -66,9 +68,9 @@ def test_healthz_reports_last_import(monkeypatch):
         def execute(self, statement):
             return Result()
 
-    monkeypatch.setattr(web, "get_sessionmaker", lambda: Session)
+    monkeypatch.setattr(health, "get_sessionmaker", lambda: Session)
     monkeypatch.setenv("APP_VERSION", "v1.2.3")
-    response = web.healthz()
+    response = health.healthz()
     assert response.status_code == 200
     assert json.loads(response.body) == {
         "status": "ok",
@@ -79,7 +81,7 @@ def test_healthz_reports_last_import(monkeypatch):
 
 
 def test_overview_ignores_detail_filters():
-    filters = web.parse_filters(
+    filters = common.parse_filters(
         QueryParams("bin=year&category=Code&context=A&target_group=Lehrkräfte"), detailed=False
     )
     assert filters.bin == "year"
@@ -145,14 +147,14 @@ def test_analysis_page_redirects_to_login(client):
 
 
 def test_password_login(client, monkeypatch):
-    monkeypatch.setattr(web.asyncio, "sleep", lambda _: _noop())
+    monkeypatch.setattr(login.asyncio, "sleep", lambda _: _noop())
     failed = client.post("/login", data={"password": "falsch"}, follow_redirects=False)
     assert failed.status_code == 401
     assert "metrics_team" not in failed.cookies
 
     ok = client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
     assert (ok.status_code, ok.headers["location"]) == (303, "/analyse")
-    assert web.auth.token_user(ok.cookies["metrics_team"]) == "Team"
+    assert auth.token_user(ok.cookies["metrics_team"]) == "Team"
     assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
 
     client.post("/logout", follow_redirects=False)
@@ -166,7 +168,7 @@ def test_sidebar_without_login(client):
 
 
 def test_team_sidebar_and_project_page(client, monkeypatch):
-    monkeypatch.setattr(web.asyncio, "sleep", lambda _: _noop())
+    monkeypatch.setattr(login.asyncio, "sleep", lambda _: _noop())
     client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
     html = client.get("/").text
     assert 'href="/analyse"' in html and 'href="/projekte/projekt-a"' in html
@@ -257,7 +259,7 @@ def test_oidc_login(monkeypatch):
     seen = _fake_provider(monkeypatch)
     callback = _oidc_login(client, seen)
     assert (callback.status_code, callback.headers["location"]) == (303, "/analyse")
-    assert web.auth.token_user(callback.cookies["metrics_team"]) == "Alex K"
+    assert auth.token_user(callback.cookies["metrics_team"]) == "Alex K"
     assert seen["client_secret"] == "s" and seen["code"] == "abc" and seen["code_verifier"]
     assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405
 
@@ -266,15 +268,15 @@ def test_oidc_admin_group(monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
     # Admins may log in without being in the team group.
     seen = _fake_provider(monkeypatch, groups=("/admins",))
-    login = web.auth.token_login(_oidc_login(client, seen).cookies["metrics_team"])
-    assert login == web.auth.Login("Alex K", admin=True)
+    login = auth.token_login(_oidc_login(client, seen).cookies["metrics_team"])
+    assert login == auth.Login("Alex K", admin=True)
     assert client.get("/review").status_code == 200
 
 
 def test_oidc_team_member_is_no_admin(monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
     seen = _fake_provider(monkeypatch)
-    assert web.auth.token_login(_oidc_login(client, seen).cookies["metrics_team"]).admin is False
+    assert auth.token_login(_oidc_login(client, seen).cookies["metrics_team"]).admin is False
     html = client.get("/").text
     assert 'href="/analyse"' in html and 'href="/review"' not in html
     assert client.get("/review").status_code == 403
