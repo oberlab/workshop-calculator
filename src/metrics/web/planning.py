@@ -1,6 +1,7 @@
 """Planning pages (WM-110): the course list, the course page and a new course.
 
-- `GET /planung`: Termine grouped by week; stage tabs plus "Alle offenen" (`phase`), filters
+- `GET /planung`: Termine grouped by week; stage tabs plus "Alle offenen" and "Alle" (every stage
+  but Abgesagt, as the calendar's default) (`phase`), filters
   `person` (an ID or `ich` for the person linked to the login), `von`, `bis`, `kontext`, `ort`,
   `kategorie`, `hinweise` (`kritisch`, `wichtig`, `alle`) and `abrechnung` (`offen`, `ja`).
   A table on wide screens, cards on phones.
@@ -61,7 +62,9 @@ from metrics.web.lists import picker_context
 router = APIRouter()
 
 OPEN = "offen"
-TABS = [(OPEN, "Alle offenen"), *((s, s) for s in STAGES)]
+ALL = "alle"  # every stage but Abgesagt, like the calendar's default (WM-114)
+NOT_CANCELLED = tuple(s for s in STAGES if s != ABGESAGT)
+TABS = [(OPEN, "Alle offenen"), (ALL, "Alle"), *((s, s) for s in STAGES)]
 FILTER_KEYS = ("person", "von", "bis", "kontext", "ort", "kategorie", "hinweise", "abrechnung")
 HINT_FILTERS = {
     "kritisch": (hints.KRITISCH,),
@@ -175,7 +178,7 @@ def _filtered(session: Session, params, me: Person | None):
 
 
 def _stages(tab: str) -> tuple[str, ...]:
-    return workflow.OPEN_STAGES if tab == OPEN else (tab,)
+    return {OPEN: workflow.OPEN_STAGES, ALL: NOT_CANCELLED}.get(tab, (tab,))
 
 
 def week_label(day: dt.date | None) -> str:
@@ -222,7 +225,8 @@ def course_list(request: Request):
         filtered = base.subquery()
         counted = session.execute(select(filtered.c.stage, func.count()).group_by(filtered.c.stage)).all()
         counts = dict(counted)
-        counts[OPEN] = sum(counts.get(s, 0) for s in workflow.OPEN_STAGES)
+        for key in (OPEN, ALL):
+            counts[key] = sum(counts.get(s, 0) for s in _stages(key))
         stages = _stages(tab)
         upcoming = tab in (OPEN, GEPLANT, BESTAETIGT, DURCHGEFUEHRT)
         order = Appointment.date.asc().nulls_last() if upcoming else Appointment.date.desc().nulls_last()
@@ -246,7 +250,7 @@ def course_list(request: Request):
                 "tabs": tabs,
                 "groups": by_week(rows),
                 "shown": len(rows),
-                "total": counts.get(tab, 0) if tab != OPEN else counts[OPEN],
+                "total": counts.get(tab, 0),
                 "limit": LIMIT,
                 "params": {k: params.get(k, "") for k in FILTER_KEYS},
                 "me": me,

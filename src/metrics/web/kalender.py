@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from metrics import hints, lists
-from metrics.db import ABGESAGT, STAGES, Appointment, Context, get_sessionmaker
+from metrics.db import Appointment, Context, get_sessionmaker
 from metrics.planning import lanes, workflow
 from metrics.planning.mine import monday_of
 from metrics.web import planning
@@ -32,15 +32,15 @@ router = APIRouter()
 
 WEEK, MONTH = "woche", "monat"
 VIEWS = {WEEK: "Woche", MONTH: "Monat"}
-NOT_CANCELLED = tuple(s for s in STAGES if s != ABGESAGT)
-PHASES = {"": "Alle außer abgesagte", **dict(planning.TABS)}
+# No phase is the list's "Alle" tab; `alle` itself is accepted but not offered twice.
+PHASES = {"": "Alle außer abgesagte", **{k: v for k, v in planning.TABS if k != planning.ALL}}
 FILTERS = ("person", "kontext", "phase")
 
 
 def stages(phase: str) -> tuple[str, ...]:
-    if phase not in PHASES:
+    if phase not in PHASES and phase != planning.ALL:
         raise HTTPException(400, "Unbekannte Phase")
-    return NOT_CANCELLED if not phase else planning._stages(phase)
+    return planning._stages(phase or planning.ALL)
 
 
 def span(view: str, day: dt.date) -> tuple[dt.date, dt.date]:
@@ -97,7 +97,7 @@ def calendar(request: Request):
         only = (me.id if me else -1) if person == "ich" else planning._int(person)
         found = planning.open_hints(session, [t.id for t in shown])
         list_query = {
-            "phase": params.get("phase") or "",
+            "phase": params.get("phase") or planning.ALL,
             "person": person,
             "kontext": params.get("kontext") or "",
             "von": start.isoformat(),
@@ -131,10 +131,8 @@ def calendar(request: Request):
                 "top": {i: hs[0] for i, hs in found.items()},
                 "badge": hints.BADGE,
                 "titles": {t.id: workflow.title(t) for t in shown},
-                # The course list for the same Termine: no phase there means "Alle offenen".
-                "list_href": "/planung?" + urlencode({k: v for k, v in list_query.items() if v})
-                if list_query["phase"]
-                else None,
+                # The course list for the same Termine: no phase here is its "Alle" tab.
+                "list_href": "/planung?" + urlencode({k: v for k, v in list_query.items() if v}),
             },
         )
 

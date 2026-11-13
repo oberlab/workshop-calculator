@@ -200,6 +200,13 @@ def test_course_list_groups_by_week_and_filters(world, monkeypatch):
     assert "Keine Termine" in client.get("/planung?kategorie=Gibt-es-nicht").text
     assert "(Anmeldung nicht verknüpft)" in html  # the password login has no person
     assert client.get("/planung?phase=Unsinn").status_code == 400
+    # "Alle" (WM-114): every stage but Abgesagt.
+    _termin(db, b).stage = "Abgesagt"
+    db.commit()
+    everything = client.get("/planung?phase=alle").text
+    assert ">Alle<" in everything or "Alle</" in everything
+    assert f"/planung/{a}?termin=" in everything and f"/planung/{b}?termin=" not in everything
+    assert f"/planung/{b}?termin=" in client.get("/planung?phase=Abgesagt").text
     # Meine Kurse: the person linked to the login (OIDC subject), nobody without a link.
     world.kim.login_subject = "off"
     db.commit()

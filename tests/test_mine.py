@@ -8,6 +8,7 @@ import datetime as dt
 import itertools
 import re
 from decimal import Decimal
+from urllib.parse import quote
 
 import pytest
 
@@ -235,15 +236,17 @@ def test_calendar_shows_the_same_termine_as_the_course_list(plan, monkeypatch):
         html = client.get(f"/kalender?{query}").text
         shown = _ids(html, r'hx-get="/kalender/termin/(\d+)"')
         first, last = _span(view, day)
-        if phase:  # the link to the course list names the same days
-            assert f"von={first}&amp;bis={last}" in html
-        # No phase: every stage but Abgesagt, the union of those tabs of the list.
-        stages = [phase] if phase else [key for key, _ in TABS if key not in ("offen", ABGESAGT)]
+        # The link to the course list names the same days; no phase is the list's "Alle" tab.
+        assert f"phase={quote(phase or 'alle')}" in html and f"von={first}&amp;bis={last}" in html
+        stages = [phase] if phase else [key for key, _ in TABS if key not in ("offen", "alle", ABGESAGT)]
         listed = set()
         for stage in stages:
             filters = f"phase={stage}&person={person}&kontext={context}&von={first}&bis={last}"
             listed |= _ids(client.get(f"/planung?{filters}").text)
         assert shown == listed, query
+        if not phase:  # "Alle" is every stage but Abgesagt, the union of those tabs
+            filters = f"phase=alle&person={person}&kontext={context}&von={first}&bis={last}"
+            assert _ids(client.get(f"/planung?{filters}").text) == listed, query
         checked += 1 if shown else 0
     assert checked > 100  # most combinations show something, so the check is not vacuous
 
