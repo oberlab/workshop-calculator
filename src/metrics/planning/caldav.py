@@ -30,8 +30,15 @@ When the calendar is written:
   change, so a save without calendar-relevant changes sends nothing.
 - "Kalender aktualisieren" (`push` from the course page) after the course page showed what it
   would change (`preview`), e.g. when someone edited the event in the calendar.
-The check (`check`, scheduler job "calendar" every 15 minutes) only reads: it marks events as
-missing or outdated, stores the responses and lists future events without a Termin.
+- By the check (`check`, scheduler job "calendar" every 15 minutes; Alex, 2026-11-13): an event
+  marked outdated (a push that failed because the calendar was down, a Termin back in Geplant, or
+  an event changed in the calendar) is brought up to date with the same rules as "Kalender
+  aktualisieren" (`push`: one update per Termin, SEQUENCE up, cancelled = STATUS:CANCELLED), with a
+  Verlauf row by "Kalenderabgleich (automatisch)". It never creates an event for a Termin that was
+  never entered (nor re-creates a missing one: that is a hint for a person) and never touches
+  events without a Termin.
+Otherwise the check reads: it marks events as missing or outdated, stores the responses and lists
+future events without a Termin.
 
 Standard library only. Times inside the app are naive local times (Europe/Berlin); events are
 written in UTC.
@@ -653,6 +660,9 @@ def _store_responses(session: Session, t: Appointment, event: Event) -> bool:
     return changed
 
 
+AUTOMATIC = "Kalenderabgleich (automatisch)"  # who the check's own updates are by, in the Verlauf
+
+
 @dataclass
 class CheckResult:
     checked: int = 0
@@ -660,19 +670,24 @@ class CheckResult:
     outdated: int = 0
     responses: int = 0
     orphans: int = 0
+    pushed: list[str] = field(default_factory=list)  # "Termin 12: Kalender aktualisiert: Termin."
+    failed: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
-        return (
+        text = (
             f"{self.checked} events checked: {self.missing} missing, {self.outdated} outdated, "
             f"{self.responses} with new responses; {self.orphans} future events without a Termin"
         )
+        if self.pushed:
+            text += f"; pushed {len(self.pushed)}: " + " | ".join(self.pushed)
+        if self.failed:
+            text += f"; push failed {len(self.failed)}: " + " | ".join(self.failed)
+        return text
 
 
 def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str = "") -> CheckResult:
-    """Compare the events with their Termine, read the responses, list events without a Termin.
-
-    Reads only; writes the calendar state, the responses and the orphan list in the database.
-    """
+    """Compare the events with their Termine, read the responses, list events without a Termin, and
+    push the pending changes: every Termin whose event is outdated gets it updated (`push`)."""
     result = CheckResult()
     now = dt.datetime.now(dt.UTC)
     events = {
@@ -724,6 +739,17 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
         t.calendar_checked_at = now
         if before != (t.calendar_state, [(r.email, r.partstat) for r in t.calendar_responses]):
             changed_ids.append(t.id)
+
+    for t in termine:
+        if t.calendar_state != CAL_OUTDATED:
+            continue
+        try:
+            note = push(session, calendar, t, base, AUTOMATIC)
+        except CalendarError as error:
+            result.failed.append(f"Termin {t.id}: {error}")
+            continue
+        if note and t.calendar_state != CAL_OUTDATED:  # outdated: no times, nothing was written
+            result.pushed.append(f"Termin {t.id}: {note}")
 
     seen = {
         uid: e

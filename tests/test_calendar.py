@@ -194,17 +194,37 @@ def test_check_finds_missing_outdated_answers_and_events_without_termin(world, f
         "Makerspace",
     )
     fake.store("extern-laser.ics", caldav.to_ics(foreign))
+    # The check finds the moved event and puts the Termin's time back itself (2026-11-13).
+    _outbox(fake)
     result = caldav.check(db, calendar, TODAY)
     counts = (result.checked, result.missing, result.outdated, result.responses, result.orphans)
     assert counts == (2, 0, 1, 1, 1)
-    assert (t.calendar_state, other.calendar_state) == (CAL_OK, CAL_OUTDATED)
+    assert result.pushed == [f"Termin {other.id}: Kalender aktualisiert: Termin."] and not result.failed
+    assert (t.calendar_state, other.calendar_state) == (CAL_OK, CAL_OK)
+    assert fake.event(other.calendar_uid).start.hour == 13
+    assert _outbox(fake) == [
+        ("REQUEST", "lea@example.org", "Aktualisierung"),
+        ("REQUEST", "sam@example.org", "Aktualisierung"),
+    ]
+    assert "pushed 1: Termin" in result.summary()
     rows = db.scalars(sa.select(CalendarResponse).where(CalendarResponse.appointment_id == t.id)).all()
     assert {(r.email, r.partstat, r.person_id) for r in rows} == {
         ("kim@example.org", "NEEDS-ACTION", world.kim.id),
         ("lea@example.org", "DECLINED", world.lea.id),
     }
     stored = {(h.appointment_id, h.rule) for h in db.scalars(sa.select(StoredHint))}
-    assert (t.id, "einladung-abgelehnt") in stored and (other.id, "kalender") in stored
+    assert (t.id, "einladung-abgelehnt") in stored and (other.id, "kalender") not in stored
+    by = db.scalars(
+        sa.select(HistoryEntry.changed_by).where(
+            HistoryEntry.row_id == other.id, HistoryEntry.field == "calendar_uid"
+        )
+    ).all()
+    assert by[-1] == caldav.AUTOMATIC
+    # What "Kalender aktualisieren" would change, shown on the course page.
+    moved = fake.event(other.calendar_uid)
+    moved.start += dt.timedelta(hours=1)
+    moved.end += dt.timedelta(hours=1)
+    fake.store(f"{other.calendar_uid}.ics", caldav.to_ics(moved))
     assert caldav.preview(calendar, other, "") == [
         ("Termin", f"{NEXT_WEEK:%d.%m.%Y} 14:00–15:00", f"{NEXT_WEEK:%d.%m.%Y} 13:00–14:00")
     ]
@@ -332,11 +352,87 @@ def test_course_page_enters_and_updates_the_calendar(world, fake, monkeypatch):
     changed = fake.event(uid)
     changed.location = "Turnhalle"
     fake.store(f"{uid}.ics", caldav.to_ics(changed))
-    assert scheduler.check_calendar(dt.datetime.now(dt.UTC)).startswith(
-        "1 events checked: 0 missing, 1 outdated"
-    )
+    db.get(type(t), t.id).calendar_state = CAL_OUTDATED  # as the check finds it, before it pushes
+    db.commit()
     page = client.get(f"/planung/{t.course_id}").text
     assert "Kalender aktualisieren" in page and "<del>Turnhalle</del>" in page
+    # The next check run puts the place back itself.
+    assert scheduler.check_calendar(dt.datetime.now(dt.UTC)).startswith(
+        "1 events checked: 0 missing, 1 outdated, 0 with new responses; "
+        f"0 future events without a Termin; pushed 1: Termin {t.id}"
+    )
+    assert fake.event(uid).location == "Grundschule Musterstadt"
+
+
+def test_calendar_job_pushes_what_failed_while_the_calendar_was_down(world, fake, monkeypatch):
+    """Calendar down: the change is saved and the event marked outdated; calendar back: the
+    scheduler job updates it once, writes a Verlauf row and names it in job_runs. Nothing is
+    created for Termine never entered, nothing deleted, events without a Termin untouched."""
+    from metrics.db import JobRun
+    from tests.test_lists import _team
+
+    db = world.db
+    calendar = caldav.get_calendar()
+    t = _confirmed(world)
+    caldav.enter(db, calendar, t, "", "Kim")
+    never = _confirmed(world, start_time="15:00", end_time="16:00", lead=world.sam.id)  # not entered
+    cancelled = _confirmed(world, start_time="17:00", end_time="18:00", lead=world.sam.id)
+    caldav.enter(db, calendar, cancelled, "", "Kim")
+    foreign = Event(
+        "extern-1",
+        "Laser",
+        dt.datetime.combine(NEXT_WEEK, dt.time(7)),
+        dt.datetime.combine(NEXT_WEEK, dt.time(8)),
+    )
+    fake.store("extern-1.ics", caldav.to_ics(foreign))
+    db.commit()
+    _outbox(fake)
+
+    def down(self, *args, **kwargs):
+        raise caldav.CalendarError("Der Kalender ist nicht erreichbar.")
+
+    client = _team(monkeypatch)
+    with monkeypatch.context() as m:
+        m.setattr(caldav.CalDavCalendar, "_request", down)
+        data = {
+            **{k: v[0] for k, v in world.basics(start_time="10:00", end_time="12:15").items()},
+            "support": [str(world.lea.id)],
+            "termin": t.id,
+        }
+        response = client.post(f"/planung/{t.course_id}", data=data, follow_redirects=False)
+        assert "Kalender%20nicht%20aktualisiert" in response.headers["location"]
+        response = client.post(
+            f"/planung/{cancelled.course_id}/aktion",
+            data={"action": "cancel", "termin": cancelled.id, "reason": "Krank"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        # The job fails while the calendar is down, and says so in job_runs.
+        assert scheduler.run_job(scheduler.JOBS[-1], dt.datetime.now(dt.UTC)) is False
+    db.expire_all()
+    assert {db.get(type(t), i).calendar_state for i in (t.id, cancelled.id)} == {CAL_OUTDATED}
+    assert _outbox(fake) == []
+
+    # Back: one run pushes both, once each.
+    assert scheduler.run_job(scheduler.JOBS[-1], dt.datetime.now(dt.UTC)) is True
+    message = db.scalars(
+        sa.select(JobRun.message).where(JobRun.job == "calendar").order_by(JobRun.id.desc())
+    ).first()
+    assert f"pushed 2: Termin {t.id}: Kalender aktualisiert: Termin." in message
+    assert f"Termin {cancelled.id}: Kalendereintrag abgesagt." in message
+    assert sorted(_outbox(fake)) == [
+        ("CANCEL", "lea@example.org", "Absage"),
+        ("CANCEL", "sam@example.org", "Absage"),
+        ("REQUEST", "kim@example.org", "Aktualisierung"),
+        ("REQUEST", "lea@example.org", "Aktualisierung"),
+    ]
+    event = fake.event(db.get(type(t), t.id).calendar_uid)
+    assert (event.start.hour, event.sequence) == (10, 1)
+    assert db.get(type(never), never.id).calendar_uid is None
+    assert fake.event("extern-1").summary == "Laser" and fake.deletes == 0
+    # Nothing left to push: the next run sends nothing.
+    scheduler.run_job(scheduler.JOBS[-1], dt.datetime.now(dt.UTC))
+    assert _outbox(fake) == []
 
 
 def test_calendar_job_without_a_calendar(db):

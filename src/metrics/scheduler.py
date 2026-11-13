@@ -143,7 +143,8 @@ def prune_login_sessions(now: datetime) -> str:
 
 def check_calendar(now: datetime) -> str:
     """The calendar check (WM-110): missing and outdated events, answers to invitations, events
-    without a Termin. Reads the calendar only; without CALDAV_URL there is nothing to check."""
+    without a Termin; outdated events are brought up to date (Alex, 2026-11-13), and the message
+    names what was pushed. Without CALDAV_URL there is nothing to check."""
     from metrics.planning import caldav
 
     calendar = caldav.get_calendar()

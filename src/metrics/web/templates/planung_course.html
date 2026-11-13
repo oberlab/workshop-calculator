@@ -384,7 +384,7 @@
         {% else %}<p class="help">Geplante Termine stehen nicht im Kalender. Nach „Bestätigen“ kann der Termin eingetragen werden{% if calendar.invitations %}; dann werden Kursleitung und Unterstützung eingeladen{% endif %}.</p>{% endif %}
       {% elif t.calendar_uid %}
         {% if t.calendar_state == "missing" %}<p class="help">Der Kalendereintrag ist verschwunden.</p>
-        {% elif t.calendar_state == "outdated" %}<p class="help">Der Kalendereintrag weicht vom Termin ab. „Kalender aktualisieren“ übernimmt die Angaben des Termins{% if calendar.invitations %} und schickt den Eingeladenen eine Aktualisierung{% endif %}:</p>
+        {% elif t.calendar_state == "outdated" %}<p class="help">Der Kalendereintrag weicht vom Termin ab. „Kalender aktualisieren“ übernimmt die Angaben des Termins{% if calendar.invitations %} und schickt den Eingeladenen eine Aktualisierung{% endif %}; sonst macht das der Kalenderabgleich innerhalb von 15 Minuten:</p>
           {% if calendar.changes %}
           <div class="table-wrap"><table class="table changes">
             <thead><tr><th scope="col"><span class="visually-hidden">Angabe</span></th><th scope="col">im Kalender</th><th scope="col">neu</th></tr></thead>
