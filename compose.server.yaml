@@ -21,6 +21,16 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
 
+  scheduler:
+    # The image ops/update.sh builds for the app.
+    image: workshop-calculator-app:${APP_VERSION:?run ops/update.sh, it sets APP_VERSION in .env}
+    build:
+      args:
+        APP_VERSION: ${APP_VERSION}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
   db:
     logging:
       driver: json-file

@@ -8,6 +8,7 @@ The server runs a checkout of this repository at a release tag. `ops/update.sh` 
 ├── instance/                      private instance directory (copied from the PC)
 ├── old_data/                      baseline CSV, only for the first load
 └── backups/                       database dumps written by ops/update.sh
+    └── nightly/                   nightly dumps written by the scheduler (owner uid 10001)
 ```
 
 ## Releasing a new version (PC)
@@ -45,6 +46,55 @@ ops/update.sh v0.2.0-planung.1 --from planung-prototyp
 ```
 
 Going back to a release from `main` works the same way with `ops/update.sh vX.Y.Z`. The planning prototype keeps its data in its own volume (`planning`), never in the metrics database.
+
+## Scheduler and nightly backups
+
+The `scheduler` service runs from the app's image (`metrics scheduler`, code in `src/metrics/scheduler.py`). Its jobs:
+
+| Job | When (Europe/Berlin) | What | Overdue on `/healthz` |
+| --- | --- | --- | --- |
+| `stage-moves` | daily 00:15 | Termine in stage Bestätigt with a past date move to Durchgeführt (recorded in the Verlauf as `scheduler`); Geplant ones are not moved | no success for 26 h |
+| `backup` | daily 03:30 | `pg_dump` into `backups/nightly/`, see below | no success for 26 h |
+
+A job that never ran also counts as overdue. A failed daily job is tried again an hour later. Every run is a row in `job_runs` (with the error message on failure); `/healthz` shows each job's state (`ok`, `failed`, `overdue`) and its last success, and `"status": "degraded"` (still HTTP 200) when one is not ok. Its log: `docker compose logs scheduler`. A job can be run by hand: `docker compose run --rm scheduler metrics scheduler --run backup`.
+
+**Backups.** Each night writes `metrics-daily-<date>.dump` (pg_dump custom format); the first dump of a month is also kept as `metrics-monthly-<month>.dump`. The newest 14 daily and 12 monthly dumps are kept, older ones with these exact names are deleted. This is the only automatic deletion in the application: other files in the directory (such as the `before-*.dump` files of `ops/update.sh`) are never touched, and nothing is deleted when the dump fails. The dumps sit on the same server as the database; the PBS snapshots of the VM take them off it.
+
+The directory is a bind mount and the only place the scheduler writes to. Create it once, owned by the image's user (uid 10001) and readable by your group:
+
+```sh
+cd /opt/workshop-calculator
+mkdir -p backups && sudo install -d -o 10001 -g "$(id -g)" -m 2750 backups/nightly
+```
+
+`ops/update.sh` stops when it is missing. On the PC the default is `./backups/nightly` as well (`BACKUP_DIR` in `.env` points elsewhere); without the directory the backup job fails and `/healthz` says so.
+
+### Restoring a dump into a fresh database
+
+This leaves the running database alone. Check the counts, then decide whether to switch.
+
+```sh
+DUMP=backups/nightly/metrics-daily-2026-11-13.dump
+docker compose exec -T db createdb --username metrics metrics_restore
+docker compose exec -T db pg_restore --username metrics --dbname metrics_restore --no-owner --exit-on-error < "$DUMP"
+docker compose exec -T db psql --username metrics --dbname metrics_restore -c "
+  SELECT (SELECT count(*) FROM appointments WHERE stage = 'Abgeschlossen') AS einsaetze,
+         (SELECT sum(participants_total) FROM appointments WHERE stage = 'Abgeschlossen' AND number = 1) AS teilnehmende,
+         (SELECT count(DISTINCT c.place_id) FROM appointments a JOIN courses c ON c.id = a.course_id
+           WHERE a.stage = 'Abgeschlossen') AS orte,
+         (SELECT version_num FROM alembic_version) AS revision;"
+```
+
+Run the same query against `--dbname metrics` and compare. To make the restored copy the live database (a person decides this):
+
+```sh
+docker compose stop app scheduler
+docker compose exec -T db psql --username metrics --dbname postgres -c 'ALTER DATABASE metrics RENAME TO metrics_old'
+docker compose exec -T db psql --username metrics --dbname postgres -c 'ALTER DATABASE metrics_restore RENAME TO metrics'
+docker compose start app scheduler
+```
+
+`metrics_old` stays until someone drops it by hand (`dropdb --username metrics metrics_old`).
 
 ## Rollback
 
@@ -175,6 +225,6 @@ Use the address from `PUBLIC_URL`. `remote_ip` only works if Caddy sees the real
 
 ### 8. Check
 
-- `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version.
+- `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version. A minute after the first start both scheduler jobs show `"state": "ok"` and `backups/nightly/` holds the first dump.
 - Logging in through Keycloak works and lands on the analysis page; an admin sees "Review" in the sidebar.
 - From outside the internal network the app is not reachable (with Caddy: answers 403).

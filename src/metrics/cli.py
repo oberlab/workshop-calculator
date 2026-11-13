@@ -1,5 +1,5 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`transfer-slack`, `hash-password`, `check-locations`, `export-baseline`, `load-baseline`."""
+`transfer-slack`, `hash-password`, `check-locations`, `export-baseline`, `load-baseline`, `scheduler`."""
 
 import argparse
 import getpass
@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from metrics import scheduler
 from metrics.auth import hash_password
 from metrics.config import get_settings
 from metrics.db import get_sessionmaker
@@ -175,6 +176,15 @@ def check_location_tables(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def run_scheduler(args: argparse.Namespace) -> None:
+    if not args.run:
+        scheduler.serve()
+        return
+    job = next(job for job in scheduler.JOBS if job.name == args.run)
+    if not scheduler.run_job(job, scheduler.utc_now()):
+        sys.exit(f"Job {job.name} failed (details in the log above and in job_runs).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -233,6 +243,12 @@ def main() -> None:
     baseline.add_argument("--version", required=True, help="name of this baseline, e.g. 2026-09-30")
     baseline.add_argument("--sha256", help="expected checksum; the load stops if the file differs")
     baseline.set_defaults(func=load_baseline_file)
+
+    loop = commands.add_parser("scheduler", help="Run the scheduler loop (stage moves, nightly backup)")
+    loop.add_argument(
+        "--run", choices=[job.name for job in scheduler.JOBS], help="run this one job now, then exit"
+    )
+    loop.set_defaults(func=run_scheduler)
 
     args = parser.parse_args()
     args.func(args)

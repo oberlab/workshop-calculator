@@ -40,6 +40,7 @@ _ENVIRONMENT = (
     "CALDAV_URL",
     "CALDAV_USERNAME",
     "CALDAV_PASSWORD",
+    "BACKUP_DIR",
 )
 
 

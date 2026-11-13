@@ -68,6 +68,25 @@ services:
       # Bound to localhost by default; set APP_BIND to expose it on another interface.
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
 
+  # Stage moves and the nightly pg_dump (metrics/scheduler.py). It writes only to the backup
+  # directory, which must exist and be writable by the image's user (uid 10001), see ops/DEPLOY.md.
+  scheduler:
+    build: .
+    restart: unless-stopped
+    <<: *hardened
+    tmpfs: [/tmp]
+    command: ["metrics", "scheduler"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://metrics:${POSTGRES_PASSWORD}@db:5432/metrics
+      BACKUP_DIR: /backups
+    volumes:
+      - ${BACKUP_DIR:-./backups/nightly}:/backups
+    # Time to finish a running dump after SIGTERM.
+    stop_grace_period: 2m
+
 volumes:
   pgdata:
   planning:

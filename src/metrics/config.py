@@ -30,6 +30,8 @@ class Settings:
     caldav_url: str | None = None
     caldav_username: str | None = None
     caldav_password: str | None = None
+    # Nightly dumps of the scheduler (WM-103); the only directory the scheduler writes to.
+    backup_dir: Path = Path("backups/nightly")
 
 
 AUTH_MODES = ("password", "oidc", "off")
@@ -60,6 +62,7 @@ def get_settings() -> Settings:
         caldav_url=os.environ.get("CALDAV_URL") or None,
         caldav_username=os.environ.get("CALDAV_USERNAME") or None,
         caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
+        backup_dir=Path(os.environ.get("BACKUP_DIR") or "backups/nightly"),
     )
 
 

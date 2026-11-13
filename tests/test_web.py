@@ -69,6 +69,7 @@ def test_healthz_reports_last_import(monkeypatch):
             return Result()
 
     monkeypatch.setattr(health, "get_sessionmaker", lambda: Session)
+    monkeypatch.setattr(health, "job_status", lambda session, now: {})
     monkeypatch.setenv("APP_VERSION", "v1.2.3")
     response = health.healthz()
     assert response.status_code == 200
@@ -77,6 +78,7 @@ def test_healthz_reports_last_import(monkeypatch):
         "database": "ok",
         "last_import": "2026-11-03T09:30:00+00:00",
         "version": "v1.2.3",
+        "jobs": {},
     }
 
 

@@ -11,6 +11,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
+# pg_dump for the scheduler's nightly backup (WM-103); must match the PostgreSQL 17 server.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/*
+ENV PATH="/usr/lib/postgresql/17/bin:$PATH"
+
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 

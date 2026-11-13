@@ -27,6 +27,8 @@ fi
 [[ -f .env ]] || die ".env missing (see ops/DEPLOY.md)"
 grep -q '^COMPOSE_FILE=.*compose.server.yaml' .env || die ".env needs COMPOSE_FILE=compose.yaml:compose.server.yaml"
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "local changes to tracked files; the server must run a tag unchanged"
+# The scheduler writes its nightly dumps there as uid 10001; Docker would create it as root.
+[[ -d backups/nightly ]] || die "backups/nightly missing; create it once: mkdir -p backups && sudo install -d -o 10001 -g \"\$(id -g)\" -m 2750 backups/nightly"
 
 echo "==> Fetching tags from GitHub"
 git fetch --quiet --tags origin "$BRANCH" || die "branch $BRANCH not found on GitHub"
