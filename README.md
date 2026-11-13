@@ -52,13 +52,15 @@ The analysis page needs a login. `AUTH_MODE` in `.env` selects how:
 
 | `AUTH_MODE` | Login |
 | --- | --- |
-| `password` (default) | One shared team password. Without `TEAM_PASSWORD_HASH` the page stays locked. |
+| `password` (default) | One shared team password, for small instances only. It works only with `ALLOW_PASSWORD_LOGIN=true` and `TEAM_PASSWORD_HASH`; otherwise the page stays locked. |
 | `oidc` | Single sign-on with an OpenID Connect provider such as Keycloak. |
 | `off` | No login, for local tests only; the analysis page shows a warning. |
 
-After logging in, the app keeps its own login cookie for 14 days. Set `SESSION_SECRET` to a long random string, otherwise every restart logs everyone out. After changing `.env`, run `docker compose up -d app`.
+A login opens a server-side session in the database; the cookie holds only a random ID. A session lasts at most 12 hours and ends after 2 hours without activity. "Abmelden" ends it at once, and on the review page an admin can end all sessions of a person ("Überall abmelden"), for example after removing them from a Keycloak group: their next request goes to the login page, and the groups are read again at every login. Set `SESSION_SECRET` to a long random string (it signs the short-lived login state). After changing `.env`, run `docker compose up -d app`.
 
-Shared password:
+Every form carries a CSRF token and every POST must come from the app's own origin; the pages run under a strict Content-Security-Policy without inline scripts. Login attempts and the public data endpoint are rate-limited per client address.
+
+Shared password (also set `ALLOW_PASSWORD_LOGIN=true`; leave it off wherever Keycloak is available):
 
 ```sh
 docker compose run --rm app metrics hash-password   # prints TEAM_PASSWORD_HASH=…

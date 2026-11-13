@@ -41,6 +41,7 @@ ADMIN_ROUTES = {
     "POST /review/demo/kalender/loeschen",
     "POST /review/demo/zuruecksetzen",
     "POST /review/personen",
+    "POST /review/abmelden",
 }
 
 TEAM_ROUTES = {

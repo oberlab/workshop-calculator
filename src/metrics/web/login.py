@@ -1,4 +1,8 @@
-"""Login and logout: shared team password or OpenID Connect (see `metrics.auth`, `metrics.oidc`)."""
+"""Login and logout: OpenID Connect or the shared team password (see `metrics.auth`, `metrics.oidc`).
+
+A login opens a server-side session (`metrics.logins`); the groups are read from the provider at
+every login. Both login steps are rate-limited per client address.
+"""
 
 import asyncio
 from urllib.parse import parse_qs
@@ -6,32 +10,31 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from metrics import auth, oidc
+from metrics import auth, logins, oidc
+from metrics.web import security
 from metrics.web.common import current_login, page
 
 router = APIRouter()
 
-
-def _secure(request: Request) -> bool:
-    public = auth.get_settings().public_url or ""
-    return request.url.scheme == "https" or public.startswith("https://")
+# Generous for people, slow for guessing: Keycloak has its own brute-force protection on top.
+LOGIN_LIMIT = security.RateLimit(limit=10, window=300)
 
 
 def _logged_in(request: Request, login: auth.Login) -> RedirectResponse:
     response = RedirectResponse("/analyse", status_code=303)
-    response.set_cookie(
-        auth.COOKIE_NAME,
-        auth.make_token(login.user, admin=login.admin),
-        max_age=auth.SESSION_SECONDS,
-        httponly=True,
-        samesite="lax",
-        secure=_secure(request),
-    )
+    token = logins.start(login)
+    security.set_cookie(request, response, auth.COOKIE_NAME, token, int(logins.LIFETIME.total_seconds()))
     return response
 
 
 def _login_page(request: Request, status_code: int = 200, **context) -> HTMLResponse:
-    defaults = {"mode": auth.mode(), "configured": False, "failed": False, "error": None}
+    defaults = {
+        "mode": auth.mode(),
+        "configured": False,
+        "allowed": auth.password_login_allowed(),
+        "failed": False,
+        "error": None,
+    }
     return page(request, "login.html", {**defaults, **context}, status_code=status_code)
 
 
@@ -54,14 +57,14 @@ def login_form(request: Request):
     except OSError:
         return _login_page(request, 503, configured=True, error="Der Anmeldedienst ist nicht erreichbar.")
     response = RedirectResponse(url, status_code=303)
-    response.set_cookie(
+    # SameSite=Lax: the cookie comes back on the provider's top-level redirect to the callback.
+    security.set_cookie(
+        request,
+        response,
         oidc.STATE_COOKIE,
         auth.sign(flow, oidc.STATE_SECONDS),
-        max_age=oidc.STATE_SECONDS,
-        path="/login",
-        httponly=True,
-        samesite="lax",  # sent on the provider's top-level redirect back to us
-        secure=_secure(request),
+        oidc.STATE_SECONDS,
+        "/login",
     )
     return response
 
@@ -70,6 +73,7 @@ def login_form(request: Request):
 def login_callback(request: Request):
     if auth.mode() != "oidc" or not oidc.configured():
         raise HTTPException(404)
+    LOGIN_LIMIT.check(request)
     flow = auth.unsign(request.cookies.get(oidc.STATE_COOKIE))
     try:
         user = oidc.finish(dict(request.query_params), flow, _callback_url(request))
@@ -83,8 +87,9 @@ def login_callback(request: Request):
 
 @router.post("/login", response_class=HTMLResponse)
 async def login(request: Request):
-    if auth.mode() != "password":
+    if not auth.password_login_allowed():
         raise HTTPException(405)
+    LOGIN_LIMIT.check(request)
     form = parse_qs((await request.body()).decode(errors="replace"))
     password = (form.get("password") or [""])[0]
     if auth.check_team_password(password):
@@ -94,7 +99,10 @@ async def login(request: Request):
 
 
 @router.post("/logout")
-def logout() -> RedirectResponse:
+def logout(request: Request) -> RedirectResponse:
+    logins.end(request.cookies.get(auth.COOKIE_NAME))
     response = RedirectResponse("/", status_code=303)
-    response.delete_cookie(auth.COOKIE_NAME)
+    response.delete_cookie(
+        auth.COOKIE_NAME, httponly=True, samesite="lax", secure=security.is_secure(request)
+    )
     return response

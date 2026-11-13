@@ -10,10 +10,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from starlette.datastructures import QueryParams
 
-from metrics import analytics, auth, charts
+from metrics import analytics, auth, charts, logins
 from metrics.db import ImportRun, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import overview
+from metrics.web import security
 
 HERE = Path(__file__).parent
 TIMEZONE = ZoneInfo("Europe/Berlin")
@@ -53,8 +54,19 @@ def parse_filters(params: QueryParams, detailed: bool = True) -> analytics.Filte
     )
 
 
+_NOT_LOOKED_UP = object()
+
+
 def current_login(request: Request) -> auth.Login | None:
-    return auth.current_login(request.cookies.get(auth.COOKIE_NAME))
+    """Who is logged in: the server-side session, looked up once per request."""
+    login = getattr(request.state, "login", _NOT_LOOKED_UP)
+    if login is _NOT_LOOKED_UP:
+        if auth.mode() == "off":
+            login = auth.Login(auth.OFF_USER, admin=True, subject="off")
+        else:
+            login = logins.lookup(request.cookies.get(auth.COOKIE_NAME))
+        request.state.login = login
+    return login
 
 
 def page_context(filters: analytics.Filters, **extra) -> dict:
@@ -70,8 +82,11 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
         "auth_off": auth.mode() == "off",
         "projects": get_instance().projects if login else [],
         "path": request.url.path,
+        "csrf_token": security.csrf_token(request),
     }
-    return templates.TemplateResponse(request, template, {**sidebar, **context}, status_code=status_code)
+    response = templates.TemplateResponse(request, template, {**sidebar, **context}, status_code=status_code)
+    security.remember_csrf_token(request, response)
+    return response
 
 
 def public_base(request: Request) -> str:

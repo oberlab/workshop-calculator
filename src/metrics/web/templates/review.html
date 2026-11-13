@@ -7,6 +7,28 @@
 {% block content %}
 {% set pl = planning %}
 {% if pl.message %}<p class="notice" role="status">{{ pl.message }}</p>{% endif %}
+<section class="panel">
+  <h2>Angemeldet <span class="count">{{ people|length if people else 0 }}</span></h2>
+  <p class="hint">Offene Sitzungen: höchstens 12 Stunden, nach 2 Stunden ohne Aktivität beendet. „Überall abmelden“ beendet alle Sitzungen einer Person sofort, etwa wenn sie nicht mehr im Team oder nicht mehr Admin ist (zuerst im Anmeldedienst ändern); bei der nächsten Anmeldung werden die Gruppen neu gelesen.</p>
+  {% if people is none %}<p class="hint">Nicht verfügbar: Die Datenbank ist nicht erreichbar.</p>
+  {% elif people %}
+  <table class="courses">
+    <thead><tr><th>Person</th><th>Rolle</th><th>Sitzungen</th><th>Zuletzt aktiv</th><th></th></tr></thead>
+    <tbody>
+      {% for p in people %}
+      <tr>
+        <td>{{ p.user_name }}</td>
+        <td>{{ "Admin" if p.admin else "Team" }}</td>
+        <td>{{ p.sessions }}</td>
+        <td>{{ p.last_seen }}</td>
+        <td><form method="post" action="/review/abmelden" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject" value="{{ p.subject }}"><button class="button secondary small" type="submit">Überall abmelden</button></form></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="hint">Niemand.</p>{% endif %}
+</section>
+
 <p class="prototype-note"><strong>Planung (Prototyp).</strong> Die Abschnitte unten lesen und schreiben nur die Demo-Datenbank der Planung. Kalender: {{ pl.calendar_name }}.</p>
 
 <section class="panel">
@@ -35,7 +57,7 @@
 <section class="panel">
   <h2>Kalender ohne Kurs <span class="count">{{ pl.orphans|length }}</span></h2>
   <p class="hint">Termine ab heute im Kurskalender, zu denen es keinen geplanten oder bestätigten Kurs gibt.</p>
-  <form method="post" action="/review/kalender/pruefen" class="inline"><button class="button secondary small" type="submit">Kalender jetzt prüfen</button></form>
+  <form method="post" action="/review/kalender/pruefen" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary small" type="submit">Kalender jetzt prüfen</button></form>
   {% if pl.orphans %}
   <table class="courses">
     <thead><tr><th>Termin</th><th>Zeit</th><th>Titel</th><th>Ort</th><th></th></tr></thead>
@@ -47,8 +69,8 @@
         <td>{{ o.summary }}</td>
         <td>{{ o.location or "–" }}</td>
         <td class="nowrap">
-          <form method="post" action="/review/kalender/kurs" class="inline"><input type="hidden" name="uid" value="{{ o.uid }}"><button class="button small" type="submit">Kurs anlegen</button></form>
-          <form method="post" action="/review/kalender/ignorieren" class="inline"><input type="hidden" name="uid" value="{{ o.uid }}"><button class="button secondary small" type="submit">Ignorieren</button></form>
+          <form method="post" action="/review/kalender/kurs" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ o.uid }}"><button class="button small" type="submit">Kurs anlegen</button></form>
+          <form method="post" action="/review/kalender/ignorieren" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ o.uid }}"><button class="button secondary small" type="submit">Ignorieren</button></form>
         </td>
       </tr>
       {% endfor %}
@@ -70,7 +92,7 @@
         <td class="nowrap">{{ day(e.start.date()) }}</td>
         <td class="nowrap">{{ e.start.strftime("%H:%M") }}–{{ e.end.strftime("%H:%M") }}</td>
         <td>{{ e.summary }}</td>
-        <td><form method="post" action="/review/demo/kalender/loeschen" class="inline"><input type="hidden" name="uid" value="{{ e.uid }}"><button class="button secondary small" type="submit">Löschen</button></form></td>
+        <td><form method="post" action="/review/demo/kalender/loeschen" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ e.uid }}"><button class="button secondary small" type="submit">Löschen</button></form></td>
       </tr>
       {% else %}<tr><td colspan="4" class="muted">Leer.</td></tr>{% endfor %}
     </tbody>
@@ -96,7 +118,7 @@
 <section class="panel">
   <h2>Personen</h2>
   <p class="hint">Wer in der Planung auswählbar ist. „Login“ verknüpft eine Person mit dem Anzeigenamen der Anmeldung, für den Filter „Meine Kurse“.</p>
-  <form method="post" action="/review/personen">
+  <form method="post" action="/review/personen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <table class="courses">
       <thead><tr><th>Name</th><th>aktiv</th><th>Login (Anzeigename)</th></tr></thead>
       <tbody>
@@ -116,7 +138,7 @@
 
 <section class="panel">
   <h2>Demo</h2>
-  <form method="post" action="/review/demo/zuruecksetzen" class="inline">
+  <form method="post" action="/review/demo/zuruecksetzen" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="button secondary small">Demo-Daten neu anlegen</button>
   </form>
   <p class="hint">Löscht alle Kurse der Planung, baut die Personenliste aus den aktuellen Slack-Nutzern neu auf (Login-Verknüpfungen bleiben) und legt Beispielkurse rund um heute an, die jede Art Hinweis zeigen.{% if pl.demo_events is none %} Mit dem echten Kalender werden dabei auch Testtermine dort eingetragen.{% endif %}</p>

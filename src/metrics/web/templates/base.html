@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
-<body>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
 {% macro nav_link(href, label, exact=true, badges=[]) %}
   {% if exact %}{% set active = path == href %}
   {% elif href == "/planung" %}{% set active = path.startswith("/planung") and not path.startswith("/planung/orte") %}
@@ -29,7 +29,7 @@
         </div>
       </div>
       {% if not auth_off %}
-      <form method="post" action="/logout"><button type="submit" class="button secondary">Abmelden</button></form>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button secondary">Abmelden</button></form>
       {% endif %}
       {% else %}
       <p class="account-hint">Team-Bereich mit Analyse und Projekten</p>

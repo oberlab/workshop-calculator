@@ -22,6 +22,12 @@ const EMBED_OPTIONS = {
   downloadFileName: "einsaetze",
   scaleFactor: { png: 3 },
   i18n: { PNG_ACTION: "Als PNG speichern", SVG_ACTION: "Als SVG speichern" },
+  // CSP-safe: expressions are interpreted instead of compiled with new Function (no 'unsafe-eval').
+  ast: true,
+  expr: vega.expressionInterpreter,
+  // No injected <style> elements (blocked by the CSP): vendor/vega-embed.css holds the same rules.
+  defaultStyle: false,
+  tooltip: { disableDefaultStyle: true },
 };
 
 const form = document.getElementById("filters");

@@ -1,16 +1,18 @@
-"""Team access for the analysis page: login modes and the signed session cookie.
+"""Team access: login modes, the password hash and signed short-lived values.
 
 `AUTH_MODE` selects how people log in (standard library only, no extra packages):
 
+- `oidc`: single sign-on with an OpenID Connect provider such as Keycloak (see `metrics.oidc`).
 - `password` (default): one shared team password, stored as a hash in `TEAM_PASSWORD_HASH`
   (create it with `metrics hash-password`). The hash uses colons, not `$`, so it can sit in
-  a Docker Compose `.env` file without escaping. Without a hash the page stays locked.
-- `oidc`: single sign-on with an OpenID Connect provider such as Keycloak (see `metrics.oidc`).
+  a Docker Compose `.env` file without escaping. It works only with `ALLOW_PASSWORD_LOGIN=true`;
+  without that or without a hash the team pages stay locked.
 - `off`: no login at all, for local testing only. The page shows a warning.
 
-After a successful login the app sets its own signed cookie, valid for 14 days. It records
+After a successful login the app opens a server-side session (`metrics.logins`). It records
 whether the person is an admin (only with `oidc`, as a member of `OIDC_ADMIN_GROUP`; `off`
-counts as admin so the admin pages can be tried locally).
+counts as admin so the admin pages can be tried locally). `sign` and `unsign` protect the
+short-lived OpenID Connect state cookie.
 """
 
 import base64
@@ -24,8 +26,7 @@ from functools import lru_cache
 
 from metrics.config import get_settings
 
-COOKIE_NAME = "metrics_team"
-SESSION_SECONDS = 14 * 24 * 3600
+COOKIE_NAME = "metrics_session"
 OFF_USER = "Test (Anmeldung ausgeschaltet)"
 
 
@@ -33,6 +34,7 @@ OFF_USER = "Test (Anmeldung ausgeschaltet)"
 class Login:
     user: str
     admin: bool = False
+    subject: str = ""  # stable account ID ("sub" with OpenID Connect), for "Überall abmelden"
 
 
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
@@ -69,9 +71,14 @@ def password_configured() -> bool:
     return bool(get_settings().team_password_hash)
 
 
+def password_login_allowed() -> bool:
+    """The shared password works only when switched on explicitly (off on the server)."""
+    return mode() == "password" and get_settings().allow_password_login
+
+
 @lru_cache
 def _secret() -> bytes:
-    # Without SESSION_SECRET every restart logs everyone out, which is acceptable.
+    # Without SESSION_SECRET a restart only cancels logins in progress (the provider round trip).
     configured = get_settings().session_secret
     return configured.encode() if configured else secrets.token_bytes(32)
 
@@ -99,27 +106,3 @@ def unsign(value: str | None, now: float | None = None, secret: bytes | None = N
         return data if int(data["exp"]) > (now or time.time()) else None
     except (ValueError, KeyError, TypeError):
         return None
-
-
-def make_token(user: str, now: float | None = None, secret: bytes | None = None, admin: bool = False) -> str:
-    return sign({"tier": "team", "user": user, "admin": admin}, SESSION_SECONDS, now, secret)
-
-
-def token_login(token: str | None, now: float | None = None, secret: bytes | None = None) -> Login | None:
-    """Who is logged in, or None if the cookie is missing or invalid."""
-    data = unsign(token, now, secret)
-    if not data or data.get("tier") != "team":
-        return None
-    return Login(str(data.get("user") or ""), data.get("admin") is True)
-
-
-def token_user(token: str | None, now: float | None = None, secret: bytes | None = None) -> str | None:
-    """The logged-in user's display name, or None if the cookie is missing or invalid."""
-    login = token_login(token, now, secret)
-    return login.user if login else None
-
-
-def current_login(token: str | None) -> Login | None:
-    if mode() == "off":
-        return Login(OFF_USER, admin=True)
-    return token_login(token)

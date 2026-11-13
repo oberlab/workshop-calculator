@@ -41,8 +41,10 @@
 {% endmacro %}
 
 {% macro chart_scripts() %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/vega-embed.css') }}">
 <script src="{{ url_for('static', path='vendor/vega.min.js') }}"></script>
 <script src="{{ url_for('static', path='vendor/vega-lite.min.js') }}"></script>
 <script src="{{ url_for('static', path='vendor/vega-embed.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/vega-interpreter.min.js') }}"></script>
 <script src="{{ url_for('static', path='app.js') }}"></script>
 {% endmacro %}

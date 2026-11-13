@@ -13,6 +13,7 @@ class Settings:
     slack_bot_token: str | None
     slack_list_id: str | None
     team_password_hash: str | None = None
+    allow_password_login: bool = False
     session_secret: str | None = None
     auth_mode: str = "password"
     oidc_issuer: str | None = None
@@ -42,6 +43,7 @@ def get_settings() -> Settings:
         slack_bot_token=os.environ.get("SLACK_BOT_TOKEN") or None,
         slack_list_id=os.environ.get("SLACK_LIST_ID") or None,
         team_password_hash=os.environ.get("TEAM_PASSWORD_HASH") or None,
+        allow_password_login=(os.environ.get("ALLOW_PASSWORD_LOGIN") or "").strip().lower() == "true",
         session_secret=os.environ.get("SESSION_SECRET") or None,
         auth_mode=_auth_mode(),
         oidc_issuer=os.environ.get("OIDC_ISSUER") or None,

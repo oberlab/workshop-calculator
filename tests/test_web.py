@@ -6,9 +6,9 @@ import pytest
 from fastapi import HTTPException
 from starlette.datastructures import QueryParams
 
-from metrics import auth
+from metrics import auth, logins
 from metrics.web import app as web
-from metrics.web import common, health, login, theme
+from metrics.web import common, health, login, security, theme
 
 
 def test_parse_filters_defaults():
@@ -99,11 +99,31 @@ def _settings(**overrides):
         "slack_list_id": None,
         "team_password_hash": auth.hash_password("richtiges-passwort"),
         "auth_mode": "password",
+        "allow_password_login": True,
     }
     return Settings(**{**values, **overrides})
 
 
-def _client(monkeypatch, **overrides):
+def memory_login_db(monkeypatch):
+    """Login sessions in an in-memory SQLite database (the tests have no PostgreSQL)."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from metrics import logins
+
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    logins.LoginSession.__table__.create(engine)
+    maker = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(logins, "get_sessionmaker", lambda: maker)
+    return maker
+
+
+def _client(monkeypatch, csrf=True, login_db=True, **overrides):
+    """A test client; with `csrf` it sends this site's Origin and a valid CSRF token like a browser.
+
+    `login_db=False` keeps the login database of an earlier client (a second browser).
+    """
     from fastapi.testclient import TestClient
 
     from metrics import auth, oidc
@@ -112,7 +132,14 @@ def _client(monkeypatch, **overrides):
     monkeypatch.setattr(auth, "get_settings", lambda: settings)
     monkeypatch.setattr(oidc, "get_settings", lambda: settings)
     monkeypatch.setattr(auth, "_secret", lambda: b"test-secret")
-    return TestClient(web.app)
+    if login_db:
+        memory_login_db(monkeypatch)
+    if not csrf:
+        return TestClient(web.app)
+    client = TestClient(web.app, headers={"Origin": "http://testserver"})
+    client.cookies.set(security.CSRF_COOKIE, "test-token")
+    client.headers[security.CSRF_HEADER] = "test-token"
+    return client
 
 
 @pytest.fixture
@@ -150,11 +177,11 @@ def test_password_login(client, monkeypatch):
     monkeypatch.setattr(login.asyncio, "sleep", lambda _: _noop())
     failed = client.post("/login", data={"password": "falsch"}, follow_redirects=False)
     assert failed.status_code == 401
-    assert "metrics_team" not in failed.cookies
+    assert auth.COOKIE_NAME not in failed.cookies
 
     ok = client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
     assert (ok.status_code, ok.headers["location"]) == (303, "/analyse")
-    assert auth.token_user(ok.cookies["metrics_team"]) == "Team"
+    assert logins.lookup(ok.cookies[auth.COOKIE_NAME]).user == "Team"
     assert client.get("/login", follow_redirects=False).headers["location"] == "/analyse"
 
     client.post("/logout", follow_redirects=False)
@@ -259,7 +286,7 @@ def test_oidc_login(monkeypatch):
     seen = _fake_provider(monkeypatch)
     callback = _oidc_login(client, seen)
     assert (callback.status_code, callback.headers["location"]) == (303, "/analyse")
-    assert auth.token_user(callback.cookies["metrics_team"]) == "Alex K"
+    assert logins.lookup(callback.cookies[auth.COOKIE_NAME]).user == "Alex K"
     assert seen["client_secret"] == "s" and seen["code"] == "abc" and seen["code_verifier"]
     assert client.post("/login", data={"password": "richtiges-passwort"}).status_code == 405
 
@@ -268,15 +295,15 @@ def test_oidc_admin_group(monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
     # Admins may log in without being in the team group.
     seen = _fake_provider(monkeypatch, groups=("/admins",))
-    login = auth.token_login(_oidc_login(client, seen).cookies["metrics_team"])
-    assert login == auth.Login("Alex K", admin=True)
+    login = logins.lookup(_oidc_login(client, seen).cookies[auth.COOKIE_NAME])
+    assert login == auth.Login("Alex K", admin=True, subject="Alex K")
     assert client.get("/review").status_code == 200
 
 
 def test_oidc_team_member_is_no_admin(monkeypatch):
     client = _client(monkeypatch, **OIDC, oidc_allowed_group="team", oidc_admin_group="admins")
     seen = _fake_provider(monkeypatch)
-    assert auth.token_login(_oidc_login(client, seen).cookies["metrics_team"]).admin is False
+    assert logins.lookup(_oidc_login(client, seen).cookies[auth.COOKIE_NAME]).admin is False
     html = client.get("/").text
     assert 'href="/analyse"' in html and 'href="/review"' not in html
     assert client.get("/review").status_code == 403
@@ -287,7 +314,7 @@ def test_oidc_rejects_user_outside_group(monkeypatch):
     seen = _fake_provider(monkeypatch, groups=("/andere",))
     callback = _oidc_login(client, seen)
     assert callback.status_code == 403
-    assert "metrics_team" not in callback.cookies
+    assert auth.COOKIE_NAME not in callback.cookies
 
 
 def test_oidc_reads_custom_groups_claim(monkeypatch):

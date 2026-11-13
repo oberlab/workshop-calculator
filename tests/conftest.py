@@ -13,6 +13,7 @@ from metrics.db import get_sessionmaker
 from metrics.instance import Instance, get_instance, load_instance
 from metrics.planning import vocabulary
 from metrics.planning.models import get_planning_sessionmaker
+from metrics.web import login, public
 
 ROOT = Path(__file__).parent.parent
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -24,6 +25,7 @@ _ENVIRONMENT = (
     "SLACK_LIST_ID",
     "AUTH_MODE",
     "TEAM_PASSWORD_HASH",
+    "ALLOW_PASSWORD_LOGIN",
     "SESSION_SECRET",
     "OIDC_ISSUER",
     "OIDC_CLIENT_ID",
@@ -55,6 +57,10 @@ def _clear_caches() -> None:
     for cached in _CACHED:
         cached.cache_clear()
     vocabulary.clear_cache()
+    # In-process rate limits and the public data cache must not carry over between tests.
+    login.LOGIN_LIMIT.reset()
+    public.DATA_LIMIT.reset()
+    public.clear_cache()
 
 
 @pytest.fixture(autouse=True)

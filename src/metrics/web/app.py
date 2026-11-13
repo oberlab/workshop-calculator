@@ -14,14 +14,17 @@ from fastapi.staticfiles import StaticFiles
 from metrics.web import analyse, health, login, planning, public, review, theme
 from metrics.web.access import PageRefused, check_access
 from metrics.web.common import HERE, page
+from metrics.web.security import SecurityHeaders, check_csrf
 
 app = FastAPI(
     title="Einsätze",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
-    dependencies=[Depends(check_access)],
+    # Every route: first the access rule, then the CSRF and Origin check for POSTs.
+    dependencies=[Depends(check_access), Depends(check_csrf)],
 )
+app.add_middleware(SecurityHeaders)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
 for area in (public, analyse, planning, review, login, theme, health):

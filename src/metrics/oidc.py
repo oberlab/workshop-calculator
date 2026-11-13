@@ -146,4 +146,4 @@ def finish(params: dict, flow: dict | None, redirect_uri: str) -> Login:
     admin = bool(s.oidc_admin_group) and in_allowed_group(claims, s.oidc_admin_group, s.oidc_groups_claim)
     if not admin and not in_allowed_group(claims, s.oidc_allowed_group, s.oidc_groups_claim):
         raise OidcError("Dein Konto hat keinen Zugriff auf die Analyse.")
-    return Login(display_name(claims), admin)
+    return Login(display_name(claims), admin, str(claims.get("sub") or display_name(claims)))

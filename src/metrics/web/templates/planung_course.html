@@ -22,7 +22,7 @@
 
 {% set locked = course.stage in ("abgeschlossen", "abgesagt") %}
 <div class="course-layout">
-  <form id="course-form" class="course-form" method="post" action="{% if course.id %}/planung/{{ course.id }}{% else %}/planung/neu{% endif %}" data-course="{{ course.id or '' }}">
+  <form id="course-form" class="course-form" method="post" action="{% if course.id %}/planung/{{ course.id }}{% else %}/planung/neu{% endif %}" data-course="{{ course.id or '' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <section class="panel">
       <h2>Eckdaten</h2>
       <p class="hint">{% if course.stage == "geplant" %}In „Geplant“ ist nichts Pflicht. Ab „Bestätigt“ braucht es die markierten Felder.{% else %}Die markierten Felder sind Pflicht.{% endif %}</p>
@@ -187,7 +187,7 @@
       {% if course.stage == "abgesagt" %}<p class="cancelled">Abgesagt: {{ course.cancel_reason }}</p>{% endif %}
 
       {% if course.stage == "geplant" %}
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="confirm">
         {% if course.alternatives %}
         <p class="hint">An welchem Datum findet der Kurs statt? Die anderen Daten werden verworfen.</p>
@@ -197,13 +197,13 @@
         {% endif %}
         <button type="submit" class="button">Bestätigen</button>
       </form>
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="done">
         <button type="submit" class="button secondary">Als durchgeführt markieren</button>
       </form>
       <details class="danger">
         <summary>Löschen…</summary>
-        <form method="post" action="/planung/{{ course.id }}/aktion">
+        <form method="post" action="/planung/{{ course.id }}/aktion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="delete">
           <label class="check"><input type="checkbox" name="really" value="1" required> Ja, diesen geplanten Kurs löschen</label>
           <button type="submit" class="button danger">Endgültig löschen</button>
@@ -211,18 +211,18 @@
       </details>
 
       {% elif course.stage == "bestaetigt" %}
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="done">
         <button type="submit" class="button">Als durchgeführt markieren</button>
         <p class="hint">Passiert sonst automatisch am Tag nach dem Kurs.</p>
       </form>
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="back">
         <button type="submit" class="button secondary">Zurück zu „Geplant“</button>
       </form>
       <details class="danger">
         <summary>Absagen…</summary>
-        <form method="post" action="/planung/{{ course.id }}/aktion">
+        <form method="post" action="/planung/{{ course.id }}/aktion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="cancel">
           <label class="field">Grund<textarea name="reason" rows="2" required></textarea></label>
           <button type="submit" class="button danger">Kurs absagen</button>
@@ -230,7 +230,7 @@
       </details>
 
       {% elif course.stage == "durchgefuehrt" %}
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="final">
         {% if blocking %}
         <p class="hint">Final bestätigen geht, sobald alles ausgefüllt ist:</p>
@@ -244,7 +244,7 @@
         <p class="hint">Übernimmt den Kurs in die Kennzahlen-Datenbank (im Prototyp: in eine Demo-Tabelle).</p>
       </form>
       {% if course.date and course.date >= today %}
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="undone">
         <button type="submit" class="button secondary">Zurück zu „Bestätigt“</button>
       </form>
@@ -255,7 +255,7 @@
       <p class="hint">Final bestätigt von {{ final.confirmed_by }} am {{ final.confirmed_at.strftime("%d.%m.%Y") }}.</p>
       <details><summary>Datensatz für die Kennzahlen ansehen</summary><pre class="record">{{ final.record_json }}</pre></details>
       {% endif %}
-      <form method="post" action="/planung/{{ course.id }}/aktion" class="action">
+      <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="billed">
         <label class="check"><input type="checkbox" name="billed" value="1" {% if course.billed %}checked{% endif %}> Abgerechnet</label>
         <button type="submit" class="button secondary small">Speichern</button>
@@ -278,7 +278,7 @@
     <section class="panel">
       <h2>Kalender</h2>
       {% set has_times = course.date and course.start_time and course.end_time %}
-      <form method="post" action="/planung/{{ course.id }}/aktion">
+      <form method="post" action="/planung/{{ course.id }}/aktion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="calendar">
         {% if course.calendar_state == "ok" %}
         <p class="hint">Steht im Kalender.</p>

@@ -4,8 +4,9 @@
 {% block heading %}Anmelden{% endblock %}
 
 {% block content %}
-{% if mode == "password" and configured %}
+{% if mode == "password" and configured and allowed %}
 <form method="post" action="/login" class="login">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>Teampasswort
     <input type="password" name="password" autocomplete="current-password" required autofocus>
   </label>
@@ -19,6 +20,8 @@
 </div>
 {% elif mode == "oidc" %}
 <p class="hint">Die Anmeldung über den Anmeldedienst ist nicht vollständig eingerichtet (<code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>). Die Analyse-Seite bleibt gesperrt (siehe README).</p>
+{% elif mode == "password" and not allowed %}
+<p class="hint">Die Anmeldung mit dem Teampasswort ist ausgeschaltet. Sie muss ausdrücklich eingeschaltet werden (<code>ALLOW_PASSWORD_LOGIN=true</code>, siehe README); empfohlen ist die Anmeldung über den Anmeldedienst (<code>AUTH_MODE=oidc</code>).</p>
 {% else %}
 <p class="hint">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
 {% endif %}
