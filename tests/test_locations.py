@@ -128,28 +128,6 @@ def test_example_lookup_tables(instance):
     assert "Online" not in instance.location_coordinates
 
 
-def test_check_locations_on_example_data(instance):
-    from metrics.locations_check import check_locations
-
-    report = check_locations(instance, {"Grundschule Musterstadt": 4, "Online": 2, "Neuer Ort": 1, None: 3})
-    assert report.problems == 1
-    assert report.not_in_lookup == {"Neuer Ort": 1}
-    assert report.without_municipality == {"(ohne Ort)": 3, "Online": 2, "Neuer Ort": 1}
-    assert report.municipality_mismatch == {}
-
-
-def test_check_locations_finds_contradicting_coordinates(instance, monkeypatch):
-    from metrics.locations_check import check_locations
-
-    # Coordinates in Neudorf, municipality column says Musterstadt.
-    monkeypatch.setitem(instance.location_coordinates, "Grundschule Musterstadt", (48.2, 11.3))
-    # A school with a type code that seeds/school_types.csv does not list.
-    monkeypatch.setitem(instance.location_school_types, "Mittelschule Musterstadt", "XYZ")
-    report = check_locations(instance, {})
-    assert report.municipality_mismatch == {"Grundschule Musterstadt": ("Musterstadt", "Neudorf")}
-    assert report.unknown_school_type == {"Mittelschule Musterstadt": "XYZ"}
-
-
 def test_check_names_flags_variants_and_never_changes_them(instance):
     from collections import Counter
 

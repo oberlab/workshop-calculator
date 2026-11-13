@@ -81,11 +81,7 @@ Project pages: each `[[projects]]` entry in the instance `config.toml` (`title`,
 
 ## Analysis figures
 
-Besides the main chart, the analysis page shows sessions at schools per school type and a map of sessions per municipality of one district, with the sessions outside the district and those without a municipality beside it. Both use the places and school types in the database, which are added from two lookup tables in the instance directory when data is loaded: `seeds/locations.csv` (school type, address, coordinates and municipality per location) and `seeds/school_types.csv`. Check the lookup tables against the data with:
-
-```sh
-docker compose exec app metrics check-locations   # lists missing locations, contradictions, sessions without municipality
-```
+Besides the main chart, the analysis page shows sessions at schools per school type and a map of sessions per municipality of one district, with the sessions outside the district and those without a municipality beside it. Both use the places and school types in the database, which are added from two lookup tables in the instance directory when data is loaded: `seeds/locations.csv` (school type, address, coordinates and municipality per location) and `seeds/school_types.csv`. After that the places are maintained on the Stammdaten page "Orte" (`/stammdaten/orte`); its filter "nur Orte mit Lücken" lists places without the school question, school type, address or municipality, with an unknown school type, or whose municipality does not match their coordinates (this replaces `metrics check-locations`).
 
 ## Instance directory
 

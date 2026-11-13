@@ -1,5 +1,5 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`transfer-slack`, `hash-password`, `check-locations`, `export-baseline`, `load-baseline`, `scheduler`."""
+`transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`."""
 
 import argparse
 import getpass
@@ -20,7 +20,6 @@ from metrics.ingest.legacy import LEGACY_SOURCES, read_harmonised, read_slack_ex
 from metrics.ingest.records import SessionRecord
 from metrics.ingest.slack import SlackError
 from metrics.instance import get_instance
-from metrics.locations_check import check_locations, format_report
 
 
 def _print_warnings(records: list[SessionRecord]) -> None:
@@ -162,20 +161,6 @@ def print_password_hash(args: argparse.Namespace) -> None:
     print(f"TEAM_PASSWORD_HASH={hash_password(password)}")
 
 
-def check_location_tables(args: argparse.Namespace) -> None:
-    from metrics.analytics import Filters, count_by_place
-
-    with get_sessionmaker()() as session:
-        rows = count_by_place(session, Filters(preset="all"), date.today(), 8)
-    per_place: Counter = Counter()
-    for row in rows:
-        per_place[row.place] += row.count
-    report = check_locations(get_instance(), dict(per_place))
-    print(format_report(report))
-    if report.problems:
-        sys.exit(1)
-
-
 def run_scheduler(args: argparse.Namespace) -> None:
     if not args.run:
         scheduler.serve()
@@ -222,11 +207,6 @@ def main() -> None:
 
     password = commands.add_parser("hash-password", help="Print a TEAM_PASSWORD_HASH line for .env")
     password.set_defaults(func=print_password_hash)
-
-    locations = commands.add_parser(
-        "check-locations", help="Check the location and school type lookup tables against the data"
-    )
-    locations.set_defaults(func=check_location_tables)
 
     export = commands.add_parser(
         "export-baseline", help="Write all reviewed legacy data into one baseline CSV"
