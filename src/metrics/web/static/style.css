@@ -863,4 +863,5 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .queue-accept form { display: grid; gap: 8px; margin-top: 8px; max-width: 520px; }
 @media (max-width: 600px) {
   .queue > li { grid-template-columns: minmax(0, 1fr); }
+  .queue > li > :not(.queue-body) { justify-self: start; }
 }
