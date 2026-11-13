@@ -849,3 +849,18 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .picker-new { display: grid; gap: 10px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .picker-new legend { padding: 0 4px; font-weight: 700; font-size: 0.9rem; }
 .picker-message { font-size: 0.85rem; color: var(--success-ink); }
+
+/* ---- Prüfen (WM-113): one queue of proposals, corrections and hints ----------------------------- */
+
+.queue { list-style: none; margin: 0; padding: 0; display: grid; }
+.queue > li { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 6px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.queue > li:first-child { border-top: 0; }
+.queue-body { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.queue-title { margin: 0; font-weight: 600; }
+.queue-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 0.85rem; color: var(--text-muted); }
+.queue-decision { margin: 0; font-size: 0.85rem; }
+.queue-accept summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--accent-ink); }
+.queue-accept form { display: grid; gap: 8px; margin-top: 8px; max-width: 520px; }
+@media (max-width: 600px) {
+  .queue > li { grid-template-columns: minmax(0, 1fr); }
+}

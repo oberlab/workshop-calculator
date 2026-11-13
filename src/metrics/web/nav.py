@@ -67,7 +67,16 @@ ENTRIES: list[Entry | str] = [
     Entry("Kontexte", "/stammdaten/kontexte", STAMMDATEN, counts=(_proposed("kontexte", "Kontexte"),)),
     Entry("Formate", "/stammdaten/formate", STAMMDATEN, counts=(_proposed("formate", "Formate"),)),
     Entry("Personen", "/stammdaten/personen", STAMMDATEN, counts=(_proposed("personen", "Personen"),)),
-    Entry("Prüfen", "/pruefen", VERWALTUNG, role=ADMIN, planned="WM-113"),
+    Entry(
+        "Prüfen",
+        "/pruefen",
+        VERWALTUNG,
+        role=ADMIN,
+        counts=(
+            Count("hints_high", "critical", "kritische Hinweise"),
+            Count("pruefen_open", "neutral", "Vorschläge und wichtige Hinweise"),
+        ),
+    ),
     Entry("Review", "/review", VERWALTUNG, role=ADMIN, counts=(Count("review", "neutral", "offene Punkte"),)),
     Entry("Betrieb", "/betrieb", VERWALTUNG, role=ADMIN, planned="WM-103"),
 ]

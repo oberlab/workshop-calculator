@@ -13,8 +13,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import QueryParams
 
-from metrics import analytics, auth, charts, lists, logins
-from metrics.db import ImportRun, get_sessionmaker
+from metrics import analytics, auth, charts, hints, lists, logins
+from metrics.db import ImportRun, Proposal, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import overview
 from metrics.web import nav, security
@@ -110,14 +110,23 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
 @dataclass(frozen=True)
 class ListState:
     projects: list  # project pages, from the contexts (WM-101)
-    counts: dict[str, int]  # proposed entries per list
+    counts: dict[str, int]  # proposed entries per list, open hints and proposals for "Prüfen"
 
 
 def list_state() -> ListState:
-    """Project pages and proposal counters for the sidebar; empty if the database is unreachable."""
+    """Project pages and the counters for the sidebar; empty if the database is unreachable."""
     try:
         with get_sessionmaker()() as session:
-            return ListState(lists.projects(session), lists.proposed_counts(session))
+            counts = lists.proposed_counts(session)
+            found = hints.sidebar_counts(session)
+            open_proposals = session.scalar(
+                select(func.count()).select_from(Proposal).where(Proposal.decision.is_(None))
+            )
+            counts |= {
+                "hints_high": found["hints_high"],
+                "pruefen_open": (open_proposals or 0) + found["hints_medium"],
+            }
+            return ListState(lists.projects(session), counts)
     except SQLAlchemyError:
         return ListState([], {})
 

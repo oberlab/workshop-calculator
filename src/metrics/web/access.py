@@ -46,6 +46,9 @@ ADMIN_ROUTES = {
     "POST /stammdaten/{kind}/{entry_id:int}/bestaetigen",
     "POST /stammdaten/{kind}/{entry_id:int}/zusammenfuehren",
     "POST /stammdaten/{kind}/{entry_id:int}/ablehnen",
+    # Prüfen: the queue and accepting a warning (WM-113).
+    "GET /pruefen",
+    "POST /pruefen/akzeptieren",
 }
 
 TEAM_ROUTES = {

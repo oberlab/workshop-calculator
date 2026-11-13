@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "_lists.html" as lists %}
+
+{% block title %}Prüfen{% endblock %}
+{% block heading %}Prüfen <span class="tag">Admin</span>{% endblock %}
+{% block subheading %}<p class="subheading">Was auf eine Entscheidung wartet: vorgeschlagene Listeneinträge, Korrekturen und offene Hinweise an Terminen.</p>{% endblock %}
+
+{% macro when(value) -%}{{ value.astimezone(timezone).strftime("%d.%m.%Y") }}{%- endmacro %}
+
+{% block content %}
+{% if error %}{{ ui.alert(error, "error") }}{% endif %}
+
+{% call ui.panel("Vorgeschlagene Einträge", waiting|length, id="eintraege") %}
+  {% if waiting %}
+  <ul class="queue">
+    {% for w in waiting %}
+    <li>
+      {{ lists.status_tag(w.entry.status) }}
+      <div class="queue-body">
+        <p class="queue-title">{{ w.kind.singular }} „{{ w.label }}“</p>
+        <p class="queue-meta"><span>von {{ w.proposal.proposed_by }} am {{ when(w.proposal.proposed_at) }}</span><span>{{ w.used }} {{ "Termine" if w.kind.slug == "personen" else "Kurse" }}</span>{% if w.proposal.reason %}<span>„{{ w.proposal.reason }}“</span>{% endif %}</p>
+      </div>
+      {{ ui.button("Entscheiden", href="/stammdaten/" ~ w.kind.slug ~ "?id=" ~ w.entry.id ~ "#eintrag", kind="secondary", size="sm") }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {% call ui.empty_state("Keine Vorschläge offen.") %}{% endcall %}
+  {% endif %}
+{% endcall %}
+
+{% call ui.panel("Vorgeschlagene Korrekturen", corrections|length, id="korrekturen") %}
+  {% if corrections %}
+  <ul class="queue">
+    {% for c in corrections %}
+    <li>
+      <span class="status-tag status-proposed">Korrektur</span>
+      <div class="queue-body">
+        <p class="queue-title">{{ "Termin" if c.target_table == "appointments" else c.target_table }} {{ c.target_id }}: {% for key, value in c.proposed_values.items() %}{{ key }} = {{ value }}{{ ", " if not loop.last }}{% endfor %}</p>
+        <p class="queue-meta"><span>von {{ c.proposed_by }} am {{ when(c.proposed_at) }}</span>{% if c.reason %}<span>„{{ c.reason }}“</span>{% endif %}</p>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {% call ui.empty_state("Keine Korrekturen offen.", "Hier erscheinen Änderungen an abgeschlossenen Terminen, die das Team vorschlägt.") %}{% endcall %}
+  {% endif %}
+{% endcall %}
+
+<section class="panel" id="hinweise" aria-labelledby="hinweise-titel">
+  <h2 id="hinweise-titel">Hinweise an Terminen {{ ui.count(total) }}</h2>
+  <form class="filter-row list-filters" method="get" action="/pruefen#hinweise" role="search" aria-label="Hinweise filtern">
+    <label>Stufe
+      <select name="stufe">
+        <option value="">Alle</option>
+        {% for level in levels %}<option value="{{ level }}"{% if filter.level == level %} selected{% endif %}>{{ level }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Regel
+      <select name="regel">
+        <option value="">Alle</option>
+        {% for r in rules.values() %}{% set n = by_rule.get(r.id, (0, 0)) %}<option value="{{ r.id }}"{% if filter.rule == r.id %} selected{% endif %}>{{ r.title }} ({{ n[0] }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Kontext
+      <select name="kontext">
+        <option value="">Alle</option>
+        {% for c in contexts %}<option value="{{ c.id }}"{% if filter.context_id == c.id %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Von <input type="date" name="von" value="{{ filter.date_from.isoformat() if filter.date_from }}"></label>
+    <label>Bis <input type="date" name="bis" value="{{ filter.date_to.isoformat() if filter.date_to }}"></label>
+    <label>Status
+      <select name="status">
+        {% for key, text in status_filters.items() %}<option value="{{ key }}"{% if filter.status == key %} selected{% endif %}>{{ text }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-secondary btn-sm" type="submit">Anzeigen</button>
+  </form>
+
+  {% if rows %}
+  {% if total > rows|length %}<p class="help">{{ rows|length }} von {{ total }} angezeigt, die schwersten zuerst. Filter eingrenzen, um den Rest zu sehen.</p>{% endif %}
+  <ul class="queue">
+    {% for row in rows %}
+    {% set h = row.hint %}{% set t = row.appointment %}
+    <li>
+      {{ ui.hint_badge(badge[h.level]) }}
+      <div class="queue-body">
+        <p class="queue-title">{{ h.text }}</p>
+        <p class="queue-meta">
+          <span class="mono">{{ t.date.strftime("%d.%m.%Y") if t.date else "ohne Datum" }}</span>
+          <span>{{ titles[t.id] }}</span>
+          {% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}
+          {{ ui.stage_pill(stage_pills[t.stage], t.stage) }}
+          <span>Termin {{ t.id }}{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span>
+          <span>{{ rules[h.rule].title if h.rule in rules else h.rule }}</span>
+        </p>
+        {% if row.decision %}
+        <p class="queue-decision">Akzeptiert von {{ row.decision.decided_by }} am {{ when(row.decision.decided_at) }}: „{{ row.decision.reason }}“</p>
+        {% elif h.blocking %}
+        <p class="queue-decision">Blockiert die finale Bestätigung, bis die Angaben stimmen.</p>
+        {% else %}
+        <details class="queue-accept">
+          <summary>Akzeptieren</summary>
+          <form method="post" action="/pruefen/akzeptieren"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="termin" value="{{ t.id }}"><input type="hidden" name="regel" value="{{ h.rule }}"><input type="hidden" name="zurueck" value="{{ filter_query }}">
+            {{ ui.field("Grund", "grund", type="textarea", required=true, help="Der Hinweis zählt dann nicht mehr, bleibt aber als akzeptiert sichtbar.") }}
+            <div class="row">{{ ui.button("Akzeptieren", type="submit", kind="secondary", size="sm") }}</div>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {% call ui.empty_state("Keine Hinweise.", "Mit diesen Filtern ist nichts offen.") %}{% endcall %}
+  {% endif %}
+</section>
+{% endblock %}
