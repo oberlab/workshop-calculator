@@ -1,5 +1,6 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
-`transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`, `hints`."""
+`transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`, `hints`,
+`fake-calendar`, `demo-data`."""
 
 import argparse
 import getpass
@@ -186,6 +187,30 @@ def recompute_hints(args: argparse.Namespace) -> None:
         print(f"  {level:<8} {rule_id:<22} {n}")
 
 
+def demo_data(args: argparse.Namespace) -> None:
+    """Fill an empty (throwaway) database with invented demo data and print the rows per table."""
+    from sqlalchemy import make_url
+
+    from metrics import demo
+    from metrics.config import get_settings
+
+    target = make_url(get_settings().database_url)
+    print(f"Datenbank {target.database} auf {target.host}:{target.port}")
+    day = args.today or hints.today()
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            if args.reset:
+                demo.reset(session)
+            result = demo.generate(session, day, args.seed, get_instance())
+    except demo.NotEmpty as error:
+        sys.exit(str(error))
+    print(f"Demodaten angelegt (Startwert {args.seed}, Stichtag {day.isoformat()}):")
+    for name, n in result.counts.items():
+        print(f"  {name:<26} {n}")
+    rules = ", ".join(f"{rule} {n}" for rule, n in sorted(result.hints.items()))
+    print(f"{sum(result.hints.values())} Hinweise: {rules}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="metrics")
     commands = parser.add_subparsers(required=True)
@@ -258,6 +283,21 @@ def main() -> None:
     fake.add_argument("--host", default="127.0.0.1")
     fake.add_argument("--port", type=int, default=5232)
     fake.set_defaults(func=fake_calendar)
+
+    demo = commands.add_parser(
+        "demo-data",
+        help="Fill an empty database with invented demo data (screenshots, trials; never the real one)",
+    )
+    demo.add_argument("--seed", type=int, default=1, help="same seed and day, same data (default 1)")
+    demo.add_argument(
+        "--today", type=date.fromisoformat, help="day the data is built around (default: today)"
+    )
+    demo.add_argument(
+        "--reset",
+        action="store_true",
+        help="first empty a database this command filled before (throwaway demo databases only)",
+    )
+    demo.set_defaults(func=demo_data)
 
     args = parser.parse_args()
     args.func(args)
