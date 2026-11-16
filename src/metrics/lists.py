@@ -521,6 +521,15 @@ PROPOSAL_FIELDS: dict[Kind, tuple[str, ...]] = {
 }
 
 MAX_COUNT = 10000  # the most of one piece of equipment (and of a need)
+_WHOLE = re.compile(r"[0-9]{1,9}")
+
+
+def is_whole(text: str) -> bool:
+    """A whole number in ASCII digits, as forms and links send IDs and counts. `str.isdigit` also
+    takes "²" (which `int` refuses) or other scripts' digits; nine digits at most fit an ID column."""
+    return _WHOLE.fullmatch(text) is not None
+
+
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 SLACK_ID = re.compile(r"[UW][A-Z0-9]{8,20}")
@@ -590,7 +599,7 @@ def parse(
         elif f.type == "count":
             values[f.name] = None
             if raw:
-                if not raw.isdigit() or int(raw) > MAX_COUNT:
+                if not is_whole(raw) or int(raw) > MAX_COUNT:
                     errors[f.name] = f"Bitte eine ganze Zahl zwischen 0 und {MAX_COUNT} eingeben."
                     continue
                 values[f.name] = int(raw)

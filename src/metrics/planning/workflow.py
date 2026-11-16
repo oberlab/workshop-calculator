@@ -304,7 +304,7 @@ def _pick(session: Session, model, value: str, label: str, errors: list, current
     """A list entry chosen in a picker: an active one, or the one already set (whatever its status)."""
     if not value:
         return None
-    if not value.isdigit():
+    if not lists.is_whole(value):
         errors.append(f"{label}: ungültige Auswahl")
         return current
     entry = session.get(model, int(value))
@@ -472,6 +472,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     course = t.course
     before_course, before = course_snapshot(course), appointment_snapshot(t)
     old_format = course.format
+    old_team = hints.team_of([t])  # someone taken off may lose a capacity hint elsewhere
     errors: list[str] = []
     if COURSE in allowed:
         _apply_course(session, course, form, errors)
@@ -488,7 +489,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     if course.format is not old_format:
         _follow_format(session, course, old_format, by)
     courses.renumber(session, course, by)
-    hints.refresh(session, [a.id for a in course.appointments])
+    hints.refresh(session, [a.id for a in course.appointments], extra_people=old_team)
     return changed
 
 
@@ -608,6 +609,7 @@ def delete(session: Session, t: Appointment, by: str, really: bool) -> int:
     course = t.course
     log(session, t, None, summary(t), None, by, "Termin gelöscht")
     others = [a.id for a in course.appointments if a.id != t.id]
+    team = hints.team_of([t])
     neighbours = (
         session.scalars(
             select(Appointment.id).where(Appointment.date == t.date, Appointment.id != t.id)
@@ -624,7 +626,7 @@ def delete(session: Session, t: Appointment, by: str, really: bool) -> int:
         session.flush()
     else:
         courses.renumber(session, course, by)
-    hints.refresh(session, [*others, *neighbours])
+    hints.refresh(session, [*others, *neighbours], extra_people=team)
     return course.id
 
 

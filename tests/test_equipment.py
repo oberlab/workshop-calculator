@@ -229,6 +229,9 @@ def test_new_termine_copy_the_needs_and_each_termin_can_change_them(kit):
     # Nonsense is refused with a German message.
     with pytest.raises(workflow.FormError, match="ganze Zahl"):
         workflow.save(w.db, t, _material(w, t, calliope="viele"), "Test")
+    # Digits Python's isdigit() takes but int() refuses are a form error too, not a crash (WM-140).
+    with pytest.raises(workflow.FormError, match="ganze Zahl"):
+        workflow.save(w.db, t, _material(w, t, calliope="²"), "Test")
 
 
 def test_needs_follow_a_new_format_while_untouched(kit):

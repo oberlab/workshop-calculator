@@ -88,7 +88,7 @@ async def _form(request: Request) -> workflow.Form:
 
 
 def _int(value: str | None) -> int | None:
-    return int(value) if value and value.isdigit() else None
+    return int(value) if value and lists.is_whole(value) else None
 
 
 def _date(value: str | None) -> dt.date | None:

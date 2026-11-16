@@ -538,7 +538,8 @@ class SlackMessage(Base):
     `key` names the occasion (e.g. the reminder for one Termin, date and person); a second row with
     the same key cannot exist. `status`: `sending` while the request runs, `sent`, `failed` (Slack
     answered with an error, so nothing was posted: tried again on a later run), `unclear` (the request
-    broke off, it may have arrived: never tried again). The text itself is not kept.
+    broke off, it may have arrived: never tried again), `undeliverable` (a permanent error of the
+    recipient, e.g. a stale Slack ID: never tried again). The text itself is not kept.
     """
 
     __tablename__ = "slack_messages"

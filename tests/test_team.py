@@ -395,3 +395,35 @@ def test_capacity_hint_follows_the_week(week):
     workflow.save(db, c, w.basics(date=later.isoformat(), **values), "Test")
     db.flush()
     assert c.date == later and flagged() == set()
+
+
+def test_capacity_hint_goes_when_the_person_is_taken_off_a_termin(world):  # noqa: F811
+    """A Termin that changes its lead (or is deleted) takes the old lead's week below the weekly
+    hours: the hint goes from that person's other Termin right away, not only in the nightly run."""
+    w = world
+    db = w.db
+    w.kim.weekly_hours = w.sam.weekly_hours = Decimal(6)  # one 3-hour Termin a week fits, two do not
+    x = _termin(w, NEXT_MONDAY, w.kim, start_time="09:00", end_time="12:00")
+    y = _termin(w, NEXT_MONDAY + dt.timedelta(days=3), w.kim, start_time="09:00", end_time="12:00")
+    z = _termin(w, NEXT_MONDAY + dt.timedelta(days=4), w.sam, start_time="09:00", end_time="12:00")
+    db.flush()
+    hints.refresh_all(db, TODAY)
+
+    def flagged() -> set[int]:
+        stmt = sa.select(StoredHint.appointment_id).where(StoredHint.rule == "ueber-kapazitaet")
+        return set(db.scalars(stmt))
+
+    def nightly() -> set[int]:
+        hints.refresh_all(db, TODAY)
+        return flagged()
+
+    assert flagged() == {x.id, y.id}
+    # Sam leads Y instead of Kim: Kim's X fits the week now, Sam has Y and Z.
+    values = {"lead": w.sam.id, "start_time": "09:00", "end_time": "12:00"}
+    workflow.save(db, y, w.basics(date=y.date.isoformat(), **values), "Test")
+    db.flush()
+    assert flagged() == {y.id, z.id} == nightly()
+    # Z is deleted: Sam's Y alone fits the week.
+    workflow.delete(db, z, "Test", really=True)
+    db.flush()
+    assert flagged() == set() == nightly()

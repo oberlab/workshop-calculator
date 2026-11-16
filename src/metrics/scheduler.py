@@ -92,6 +92,12 @@ class Job:
     run: Callable[[datetime], str]
 
 
+# The slots of the Slack jobs (WM-130). `messages` takes the occasion date from the slot a run belongs
+# to, not from the clock, so a retry after midnight never sends the next day's messages.
+SLACK_MORNING = Daily(time(9, 0))
+SLACK_AFTERNOON = Daily(time(15, 0))
+
+
 # --- The jobs -------------------------------------------------------------------------------
 
 
@@ -188,9 +194,9 @@ JOBS: tuple[Job, ...] = (
     Job("backup", Daily(time(3, 30)), nightly_backup),
     Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
     # Slack messages (WM-130): after the stage moves and the hints, so they see today's state.
-    Job("slack-after-course", Daily(time(9, 0)), slack_after_course),
-    Job("slack-weekly-status", Daily(time(9, 0)), slack_weekly_status),
-    Job("slack-reminders", Daily(time(15, 0)), slack_reminders),
+    Job("slack-after-course", SLACK_MORNING, slack_after_course),
+    Job("slack-weekly-status", SLACK_MORNING, slack_weekly_status),
+    Job("slack-reminders", SLACK_AFTERNOON, slack_reminders),
     Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 

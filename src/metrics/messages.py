@@ -20,8 +20,15 @@ default) and all of them off while SLACK_BOT_TOKEN is not set:
 At most once: every message gets a key (occasion, Termin, date, person) and a row in
 `slack_messages` is written before the request goes out. A row that is `sent`, still `sending` or
 `unclear` (the request broke off and may have arrived) is never sent again; only a `failed` row
-(Slack answered with an error, so nothing was posted) is tried again while its occasion lasts. A
-job with failed messages is recorded as failed, so the scheduler retries it an hour later.
+(Slack answered with an error or HTTP 429/5xx, so nothing was posted) is tried again while its
+occasion lasts. A job with failed messages is recorded as failed, so the scheduler retries it an
+hour later. A permanent error of one recipient (e.g. `channel_not_found` for a stale Slack ID) is
+recorded as `undeliverable` and is final: it neither fails the job nor is tried again.
+
+The occasion is the day of the scheduled slot a run belongs to (09:00 or 15:00), not the day of the
+clock, and a run sends only until SEND_UNTIL (21:00) of that day. A retry after that gives up for
+the occasion, so nothing goes out at night and a retry after midnight never sends the next day's
+messages ahead of their own run.
 
 This module is the messaging part of the Slack integration and stays after WM-161; the one-time
 transfer (`ingest/slack.py`, `ingest/transfer.py`) is separate. Logs name counts only, never people,
@@ -31,6 +38,7 @@ Slack IDs or message texts.
 import datetime as dt
 import json
 import logging
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -54,7 +62,7 @@ from metrics.db import (
 from metrics.instance import get_instance
 from metrics.planning import after
 from metrics.planning.workload import monday_of
-from metrics.scheduler import LOCAL
+from metrics.scheduler import LOCAL, SLACK_AFTERNOON, SLACK_MORNING, Daily
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +78,13 @@ REMINDED = (BESTAETIGT, DURCHGEFUEHRT)
 WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 SENDING, SENT, FAILED, UNCLEAR = "sending", "sent", "failed", "unclear"
+UNDELIVERABLE = "undeliverable"
+# Slack errors about the recipient that do not go away by trying again.
+PERMANENT = frozenset(
+    {"channel_not_found", "user_not_found", "account_inactive", "not_in_channel", "is_archived"}
+)
+# A run (or a retry) sends for its slot until this local time of the slot's day, then gives up.
+SEND_UNTIL = dt.time(21, 0)
 
 
 # --- The Slack client ---------------------------------------------------------------------------
@@ -125,11 +140,15 @@ def get_client() -> Client | None:
 @dataclass
 class Outcome:
     sent: int = 0
-    skipped: int = 0  # already sent (or unclear) before
+    skipped: int = 0  # already sent (or unclear or undeliverable) before
     failed: list[str] = field(default_factory=list)  # Slack error codes
+    undeliverable: list[str] = field(default_factory=list)  # permanent Slack error codes
 
     def summary(self, what: str) -> str:
         text = f"{self.sent} {what} sent, {self.skipped} already sent"
+        if self.undeliverable:
+            codes = ", ".join(sorted(set(self.undeliverable)))
+            text += f", {len(self.undeliverable)} undeliverable ({codes})"
         if self.failed:
             text += f", {len(self.failed)} failed ({', '.join(sorted(set(self.failed)))})"
         return text
@@ -168,8 +187,17 @@ def deliver(
     try:
         ts = client.post(channel, text)
     except SlackError as error:
-        _finish(row_id, FAILED, now, error=error.code[:200])
-        outcome.failed.append(error.code)
+        if error.code in PERMANENT:  # e.g. a stale Slack ID: final, so it does not fail the job forever
+            _finish(row_id, UNDELIVERABLE, now, error=error.code[:200])
+            outcome.undeliverable.append(error.code)
+        else:
+            _finish(row_id, FAILED, now, error=error.code[:200])
+            outcome.failed.append(error.code)
+        return
+    except urllib.error.HTTPError as error:  # Slack answered with an error status: nothing was posted
+        code = f"http_{error.code}"
+        _finish(row_id, FAILED, now, error=code)
+        outcome.failed.append(code)
         return
     except Exception as error:  # timeout, connection reset: it may have been posted
         _finish(row_id, UNCLEAR, now, error=type(error).__name__)
@@ -415,6 +443,22 @@ def _ready(switch: str) -> tuple[Client | None, str | None]:
     return client, None
 
 
+def occasion(now: dt.datetime, schedule: Daily) -> dt.date | None:
+    """The local day of the scheduled slot this run belongs to, or None when it is too late to send
+    for that slot: from SEND_UNTIL of its day on, or already the next day (a retry after midnight)."""
+    slot = schedule.latest_slot(now)
+    local = now.astimezone(LOCAL)
+    if local.date() != slot.date() or local.time() >= SEND_UNTIL:
+        return None
+    return slot.date()
+
+
+def _too_late(schedule: Daily, now: dt.datetime, what: str) -> str:
+    slot = schedule.latest_slot(now)
+    log.info("Slack %s: too late for the %s slot, nothing sent", what, f"{slot:%H:%M}")
+    return f"too late for the {slot:%Y-%m-%d %H:%M} {what}; nothing sent"
+
+
 def _done(outcome: Outcome, what: str) -> str:
     summary = outcome.summary(what)
     log.info("Slack %s", summary)
@@ -427,7 +471,9 @@ def send_after_course(now: dt.datetime) -> str:
     client, off = _ready(AFTER_COURSE)
     if client is None:
         return off or ""
-    today = now.astimezone(LOCAL).date()
+    today = occasion(now, SLACK_MORNING)
+    if today is None:
+        return _too_late(SLACK_MORNING, now, "after-course DMs")
     with get_sessionmaker()() as session:
         due = [
             (t, days, t.lead.slack_id, t.lead_id, after_course_text(t, days))
@@ -453,7 +499,9 @@ def send_reminders(now: dt.datetime) -> str:
     client, off = _ready(REMINDER)
     if client is None:
         return off or ""
-    today = now.astimezone(LOCAL).date()
+    today = occasion(now, SLACK_AFTERNOON)
+    if today is None:
+        return _too_late(SLACK_AFTERNOON, now, "reminders")
     with get_sessionmaker()() as session:
         due = [(t.id, t.date, p.id, p.slack_id, reminder_text(t)) for t, p in reminders_due(session, today)]
     outcome = Outcome()
@@ -479,7 +527,9 @@ def send_weekly_status(now: dt.datetime) -> str:
     channel = get_instance().messages.channel
     if not channel:
         return "no team channel configured ([messages] channel)"
-    today = now.astimezone(LOCAL).date()
+    today = occasion(now, SLACK_MORNING)
+    if today is None:  # a later day of the week catches up at its own 09:00
+        return _too_late(SLACK_MORNING, now, "weekly status")
     monday = monday_of(today)
     # Monday's run, or the first run of the week after it was missed; the key keeps it to one.
     with get_sessionmaker()() as session:

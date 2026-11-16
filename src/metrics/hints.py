@@ -761,14 +761,23 @@ def _store(session: Session, found: list[Found], ids: set[int]) -> None:
     session.flush()
 
 
-def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | None = None) -> int:
+def refresh(
+    session: Session,
+    appointment_ids: Iterable[int],
+    day: dt.date | None = None,
+    extra_people: Iterable[int] = (),
+) -> int:
     """Recompute and store the hints of these Termine after a change (WM-110 calls it after saving).
 
     Also recomputes their same-day neighbours and every Termin whose stored hints name one of them
-    (a conflict on the old date after a move). Returns the number of Termine recomputed.
+    (a conflict on the old date after a move). `extra_people` are people who were on the team of
+    one of these Termine before the change (`team_of` before saving): their other Termine with a
+    capacity hint are recomputed too, as the week may now be within their weekly hours. Returns the
+    number of Termine recomputed.
     """
     ids = set(appointment_ids)
-    if not ids:
+    extra = {p for p in extra_people if p is not None}
+    if not ids and not extra:
         return 0
     session.flush()
     linked = session.scalars(
@@ -786,18 +795,26 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
         ids |= set(
             session.scalars(select(AlternativeDate.appointment_id).where(AlternativeDate.date.in_(dates)))
         )
-    ids |= _same_week_team(session, ids, dates)
+    ids |= _same_week_team(session, ids, dates, extra)
     ids |= _short_with(session, ids)
     appointments = _load(session, Appointment.id.in_(ids))
     _store(session, compute(session, appointments, day), ids)
     return len(ids)
 
 
-def _same_week_team(session: Session, ids: set[int], dates: set[dt.date]) -> set[int]:
+def team_of(appointments: Iterable[Appointment]) -> set[int]:
+    """The IDs of the leads and support of these Termine (for `refresh(extra_people=...)`)."""
+    return {p.id for t in appointments for p in ([t.lead] if t.lead else []) + list(t.support)}
+
+
+def _same_week_team(
+    session: Session, ids: set[int], dates: set[dt.date], extra_people: set[int] = frozenset()
+) -> set[int]:
     """For "ueber-kapazitaet": the Termine in planning that share a person with these Termine in
     their weeks (the week's sum changed), and those of these people with a capacity hint (a Termin
-    that moved away may have taken the week below the weekly hours)."""
-    people = set(
+    that moved away, or that a person was taken off, may have taken the week below the weekly
+    hours). `extra_people` were on these Termine before the change."""
+    people = set(extra_people) | set(
         session.scalars(
             select(Appointment.lead_id).where(Appointment.id.in_(ids), Appointment.lead_id.is_not(None))
         )

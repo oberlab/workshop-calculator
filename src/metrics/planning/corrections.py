@@ -121,7 +121,7 @@ def _entry_id(session: Session, model, label: str, value: str, was, errors: list
     """The ID of an active list entry chosen in a select (or the one already set)."""
     if not value:
         return None
-    if not value.isdigit():
+    if not lists.is_whole(value):
         errors.append(f"{label}: ungültige Auswahl")
         return was
     entry = session.get(model, int(value))
@@ -204,7 +204,7 @@ def parse(session: Session, t: Appointment, form: workflow.Form) -> dict:
         ids = []
         had = set(values["support"])
         for value in dict.fromkeys(clean_name(v) for v in form.get("support", [])):
-            was = int(value) if value.isdigit() and int(value) in had else None
+            was = int(value) if lists.is_whole(value) and int(value) in had else None
             person = _entry_id(session, Person, "Unterstützung", value, was, errors)
             if person is not None and person != values["lead"]:
                 ids.append(person)
@@ -274,13 +274,21 @@ def open_for(session: Session, appointment_ids: list[int] | None) -> list[Propos
     return list(session.scalars(stmt.order_by(Proposal.proposed_at, Proposal.id)))
 
 
+def _locked(session: Session, model, row_id: int):
+    """The row, locked until the end of the transaction and read anew after the lock."""
+    stmt = select(model).where(model.id == row_id).with_for_update().execution_options(populate_existing=True)
+    return session.scalars(stmt).one_or_none()
+
+
 def _open(session: Session, proposal_id: int) -> tuple[Proposal, Appointment]:
-    proposal = session.get(Proposal, proposal_id)
+    """The undecided correction and its Termin, both locked: two admins deciding at once (or a form
+    sent twice) wait for each other, and the second sees the first one's decision and values."""
+    proposal = _locked(session, Proposal, proposal_id)
     if proposal is None or proposal.kind != KIND or proposal.target_table != TABLE:
         raise CorrectionError("Unbekannte Korrektur.")
     if proposal.decision is not None:
         raise CorrectionError(f"Über diese Korrektur ist schon entschieden ({proposal.decision}).")
-    t = session.get(Appointment, proposal.target_id)
+    t = _locked(session, Appointment, proposal.target_id)
     if t is None:
         raise CorrectionError("Der Termin dieser Korrektur gibt es nicht mehr.")
     return proposal, t
@@ -352,6 +360,7 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
     course = t.course
     before_course, before = workflow.course_snapshot(course), workflow.appointment_snapshot(t)
     total = t.participants_total
+    old_team = hints.team_of([t])
     _apply(session, t, changes)
     session.flush()
     workflow._record(session, "courses", course.id, before_course, workflow.course_snapshot(course), by, why)
@@ -362,7 +371,7 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
         contacts.drop_if_elsewhere(session, course, by)
     _decide(proposal, CONFIRMED, by, reason)
     courses.renumber(session, course, by)
-    hints.refresh(session, [a.id for a in course.appointments])
+    hints.refresh(session, [a.id for a in course.appointments], extra_people=old_team)
     return t
 
 
