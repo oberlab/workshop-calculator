@@ -300,16 +300,18 @@ def _planned(id, start, end, **kwargs):
 
 
 def test_rule_person_doppelt():
-    a, b = _planned(1, T(9), T(11)), _planned(2, T(10), T(12), support=(KIM,), lead=LEA)
+    a, b = _planned(1, T(9), T(11)), _planned(2, T(10), T(12), support=(KIM,), lead=LEA, number=3)
     hit = only(found(a, b), "person-doppelt")
-    assert (hit.text, hit.other_id) == ("Kim gleichzeitig eingeplant mit „Calliope-Einsteiger“ (Termin 2)", 2)
+    # People see the other Termin's Terminnummer (3); its ID (2) only names the finding (WM-113).
+    assert (hit.text, hit.other_id) == ("Kim gleichzeitig eingeplant mit „Calliope-Einsteiger“ (Termin 3)", 2)
+    assert hit.key == "termin:2"
     assert only(found(b, a), "person-doppelt").other_id == 1
 
 
 def test_rule_person_uhrzeit():
-    a, b = _planned(1, T(9), T(11)), _planned(2, None, None)
+    a, b = _planned(1, T(9), T(11)), _planned(2, None, None, number=None)
     assert only(found(a, b), "person-uhrzeit").text == (
-        "Kim am selben Tag mit „Calliope-Einsteiger“ (Termin 2), Uhrzeit fehlt"
+        "Kim am selben Tag mit „Calliope-Einsteiger“, Uhrzeit fehlt"
     )
 
 
@@ -330,7 +332,7 @@ def test_rule_alternativdatum():
     week, fortnight = TODAY + dt.timedelta(days=7), TODAY + dt.timedelta(days=14)
     a = termin(1, stage=GEPLANT, date=week)
     a.alternatives = [AlternativeDate(date=fortnight)]
-    b = termin(2, stage=BESTAETIGT, date=fortnight)  # Kim leads both
+    b = termin(2, stage=BESTAETIGT, date=fortnight, number=2)  # Kim leads both
     c = termin(3, stage=BESTAETIGT, date=fortnight, lead=LEA, start=T(14), end=T(16))
     hits = [f for f in found(a, b, c) if f.rule == "alternativdatum"]
     assert [(h.level, h.other_id) for h in hits] == [("Info", 2), ("Info", 3)]
@@ -388,10 +390,15 @@ def _needs(t: Appointment, **items: int) -> Appointment:
 def test_rule_material_knapp():
     # A kit blocks the whole day: 20 + 15 of 30 is short, though the times do not overlap.
     a = _needs(_planned(1, T(8), T(11)), calliope=20, laptops=1)
-    b = _needs(_planned(2, T(14), T(16), lead=LEA), calliope=15)
+    b = _needs(_planned(2, T(14), T(16), lead=LEA, number=4), calliope=15)
     hit = only(found(a, b), "material-knapp")
     assert (hit.level, hit.blocking, hit.other_id) == ("Kritisch", False, None)
     assert hit.text == (
+        "Calliope mini: 35 benötigt, 30 vorhanden; am selben Tag auch „Calliope-Einsteiger“ (Termin 4) 15"
+    )
+    # The text shows the Terminnummer; the key keeps the older text with the ID, so a warning
+    # accepted before WM-113 stays accepted.
+    assert hit.key == (
         "Calliope mini: 35 benötigt, 30 vorhanden; am selben Tag auch „Calliope-Einsteiger“ (Termin 2) 15"
     )
     assert only(found(b, a), "material-knapp").text.startswith("Calliope mini: 35 benötigt")
@@ -494,7 +501,9 @@ def test_rule_einladung_abgelehnt():
 
 def test_rule_doppelt():
     a, b = termin(1), termin(2)
-    assert only(found(a, b), "doppelt").text == "Gleiche Angaben wie Termin 2 am selben Tag"
+    hit = only(found(a, b), "doppelt")
+    assert hit.text == "Gleiche Angaben wie „Calliope-Einsteiger“ (Termin 1) am selben Tag"
+    assert hit.key == "termin:2"
     # A second group of the same class is not a duplicate.
     assert "doppelt" not in rules_of(found(a, termin(2, female=7)))
     assert "doppelt" not in rules_of(found(a, termin(2, start=T(12), end=T(14))))
@@ -686,6 +695,8 @@ def test_pruefen_page_lists_proposals_corrections_and_hints(seeded, monkeypatch)
     place = lists.propose(
         seeded, lists.PLACES, {"name": "Jugendhaus Seeblick", "is_school": False, "address": "See 2"}, "Kim"
     ).entry
+    earlier = courses.create_course(seeded, by="Kim")
+    courses.add_appointment(seeded, earlier, by="Kim", date=None, stage=GEPLANT)  # so IDs and numbers differ
     course = courses.create_course(seeded, by="Kim", place_id=place.id)
     t = courses.add_appointment(seeded, course, by="Kim", date=dt.date(2026, 10, 1), stage=GEPLANT)
     hints.refresh(seeded, [t.id])
@@ -697,6 +708,9 @@ def test_pruefen_page_lists_proposals_corrections_and_hints(seeded, monkeypatch)
     assert "Jugendhaus Seeblick" in page and "Vorgeschlagene Korrekturen" in page
     assert "Datum vorbei, nie bestätigt" in page and "wartet auf Bestätigung" in page
     assert 'href="/pruefen"' in page  # in the sidebar now
+    # The link names the Termin by its Terminnummer; the ID stays in the URL (WM-113).
+    assert t.number == 1 and t.id != 1
+    assert f'?termin={t.id}">Termin 1</a>' in page and f">Termin {t.id}<" not in page
     only_info = admin.get("/pruefen?stufe=Info").text
     assert "nie bestätigt" not in only_info and "wartet auf Bestätigung" in only_info
     assert "nie bestätigt" not in admin.get("/pruefen?von=2026-10-02").text

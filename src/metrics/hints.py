@@ -100,10 +100,15 @@ def today() -> dt.date:
 
 @dataclass(frozen=True)
 class Finding:
-    """What a rule found; `other_id` names the other Termin of a conflict or duplicate."""
+    """What a rule found; `other_id` names the other Termin of a conflict or duplicate.
+
+    `key` overrides the `finding_key` when the shown text is not a stable name for the finding
+    (it names Termine by their Terminnummer, which can change): see "material-knapp".
+    """
 
     text: str
     other_id: int | None = None
+    key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -158,10 +163,11 @@ class Found:
     blocking: bool
     text: str
     other_id: int | None = None
+    fixed_key: str | None = None  # `Finding.key`
 
     @property
     def key(self) -> str:
-        return finding_key(self.text, self.other_id)
+        return self.fixed_key or finding_key(self.text, self.other_id)
 
 
 def finding_key(text: str, other_id: int | None) -> str:
@@ -212,11 +218,19 @@ def _team(t: Appointment) -> dict[int, str]:
     return {p.id: p.name for p in people}
 
 
-def _title(t: Appointment) -> str:
+def _title(t: Appointment, *, by_id: bool = False) -> str:
+    """The course name for a hint text; `by_id`: the fallback of the older keys ("Termin <ID>")."""
     course = t.course
     if course.format and course.format.name:
         return course.format.name
-    return course.context.name if course.context else f"Termin {t.id}"
+    if course.context:
+        return course.context.name
+    return f"Termin {t.id}" if by_id else "Kurs ohne Namen"
+
+
+def _named(t: Appointment) -> str:
+    """Another Termin as people know it: the course name and its Terminnummer, never the ID."""
+    return f"„{_title(t)}“" + (f" (Termin {t.number})" if t.number is not None else "")
 
 
 # --- Required fields (PLANUNG_REGELN.md, "Pflichtfelder je Phase") --------------------------
@@ -313,7 +327,7 @@ def duplicate_number(t: Appointment, facts: Facts):
         Finding(
             f"Terminnummer {t.number} hat auch der Termin am {day:%d.%m.%Y}"
             if day
-            else f"Terminnummer {t.number} hat auch Termin {other}",
+            else f"Terminnummer {t.number} hat auch ein Termin ohne Datum",
             other,
         )
         for number, other, day in facts.numbers.get(t.course.id, [])
@@ -411,7 +425,7 @@ def _conflicts(t: Appointment, facts: Facts) -> Iterable[tuple[str, Finding]]:
             continue
         shared = ", ".join(sorted(name for pid, name in _team(other).items() if pid in team))
         overlap = _overlap(t, other)
-        title = f"„{_title(other)}“ (Termin {other.id})"
+        title = _named(other)
         if shared and overlap:
             yield "person-doppelt", Finding(f"{shared} gleichzeitig eingeplant mit {title}", other.id)
         elif shared and overlap is None:
@@ -456,7 +470,7 @@ def alternative_date_conflicts(t: Appointment, facts: Facts):
             if other.id == t.id or not _in_planning(other, facts.today):
                 continue
             shared = ", ".join(sorted(name for pid, name in _team(other).items() if pid in team))
-            title = f"„{_title(other)}“ (Termin {other.id})"
+            title = _named(other)
             what = f"{shared} eingeplant bei {title}" if shared else f"anderer Kurs: {title}"
             found.append(Finding(f"Alternativdatum {day:%d.%m.%Y}: {what}", other.id))
     return found
@@ -514,12 +528,17 @@ def equipment_short(t: Appointment, facts: Facts):
         total = row.quantity + sum(n for _, n in sharing)
         if total <= item.quantity:
             continue
-        with_others = ", ".join(
-            f"„{_title(o)}“ (Termin {o.id}) {n}" for o, n in sorted(sharing, key=lambda x: x[0].id)
-        )
+        sharing.sort(key=lambda x: x[0].id)
+        head = f"{item.name}: {total} benötigt, {item.quantity} vorhanden"
+        shown = ", ".join(f"{_named(o)} {n}" for o, n in sharing)
+        # The key keeps the text this rule had when it named Termine by ID, so warnings accepted
+        # then stay accepted; the shown text names them by Terminnummer (WM-113).
+        by_id = ", ".join(f"„{_title(o, by_id=True)}“ (Termin {o.id}) {n}" for o, n in sharing)
         found.append(
-            f"{item.name}: {total} benötigt, {item.quantity} vorhanden"
-            + (f"; am selben Tag auch {with_others}" if with_others else "")
+            Finding(
+                head + (f"; am selben Tag auch {shown}" if shown else ""),
+                key=head + (f"; am selben Tag auch {by_id}" if by_id else ""),
+            )
         )
     return found
 
@@ -626,7 +645,7 @@ def likely_duplicate(t: Appointment, facts: Facts):
         if other.id == t.id or (t.source in REVIEWED and other.source in REVIEWED):
             continue
         if _same_record(t, other):
-            found.append(Finding(f"Gleiche Angaben wie Termin {other.id} am selben Tag", other.id))
+            found.append(Finding(f"Gleiche Angaben wie {_named(other)} am selben Tag", other.id))
     return found
 
 
@@ -652,6 +671,7 @@ def evaluate(t: Appointment, facts: Facts) -> list[Found]:
                     r.blocking and not locked,
                     finding.text,
                     finding.other_id,
+                    finding.key,
                 )
             )
     return found
