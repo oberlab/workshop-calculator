@@ -27,6 +27,19 @@
 </fieldset>
 {% endmacro %}
 
+{# A list of checkboxes for a multi-value filter (analysis and Tabelle); no selection means all.
+   labels: optional display text per value; opened: open the list (default: when something is chosen). #}
+{% macro checklist(title, name, values, selected, labels={}, none_label="alle", opened=none) %}
+  <details class="checklist" {% if (selected if opened is none else opened) %}open{% endif %}>
+    <summary>{{ title }} <span class="selection" data-none="{{ none_label }}">{% if selected %}({{ selected|length }} ausgewählt){% else %}({{ none_label }}){% endif %}</span></summary>
+    <div class="options">
+      {% for value in values %}
+      <label><input type="checkbox" name="{{ name }}" value="{{ value }}" {% if value in selected %}checked{% endif %}> {{ labels.get(value, value) }}</label>
+      {% endfor %}
+    </div>
+  </details>
+{% endmacro %}
+
 {# totals: the three key figures below the chart (the overview); the analysis page shows the KPI
    tiles above its views instead (`kpi_tiles`). #}
 {% macro chart_and_totals(panel=true, totals=true) %}
@@ -74,6 +87,27 @@
     </dl>
   </details>
 </section>
+{% endmacro %}
+
+{# Figure export (WM-152): the section's chart as PNG or SVG in fixed sizes, with the view's title and
+   the period and filters as caption; drawn in the browser by static/app.js (no server round trip). #}
+{% set EXPORT_SIZES = [("Querformat", 1200, 675), ("Quadrat", 800, 800)] %}
+{% macro view_title(title) %}
+<div class="view-head">
+  <h2 class="view-title">{{ title }}</h2>
+  <details class="export-menu" data-export-menu>
+    <summary>Grafik exportieren</summary>
+    <div class="export-options">
+      {% for label, width, height in EXPORT_SIZES %}
+      <div class="export-size">
+        <span>{{ label }} {{ width }}&nbsp;×&nbsp;{{ height }}</span>
+        {% for kind in ["png", "svg"] %}<button type="button" class="btn btn-secondary btn-sm" data-export="{{ kind }}" data-width="{{ width }}" data-height="{{ height }}" aria-label="{{ kind|upper }} im {{ label }} {{ width }} × {{ height }} speichern">{{ kind|upper }}</button>{% endfor %}
+      </div>
+      {% endfor %}
+      <p class="help">Mit Titel, Zeitraum und Filtern als Bildunterschrift. PNG in doppelter Auflösung.</p>
+    </div>
+  </details>
+</div>
 {% endmacro %}
 
 {% macro chart_scripts() %}

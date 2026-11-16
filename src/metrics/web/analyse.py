@@ -19,7 +19,7 @@ from metrics.web.common import page, page_context, parse_filters, sessions_over_
 router = APIRouter()
 
 
-def _options(session) -> dict:
+def filter_choices(session) -> dict:
     options = analytics.filter_options(session)
     return {
         "categories": charts.category_order(get_instance().theme, options.categories),
@@ -33,7 +33,7 @@ def _analysis_page(request: Request, project: Project | None = None) -> HTMLResp
     options = None
     if project is None:  # a project page has no category, target group or context filter
         with get_sessionmaker()() as session:
-            options = _options(session)
+            options = filter_choices(session)
     instance = get_instance()
     return page(
         request,
@@ -72,7 +72,7 @@ def sessions_over_time_detailed(request: Request) -> JSONResponse:
     return sessions_over_time(parse_filters(request.query_params))
 
 
-def _period_label(preset: str, start, end) -> str:
+def period_label(preset: str, start, end) -> str:
     """The comparison period in words: "Schuljahr 2024/25", "2025" or "01.01.2025–31.12.2025"."""
     if preset in ("this_school_year", "last_school_year"):
         return f"Schuljahr {analytics.bin_label(start, 'school_year')}"
@@ -110,7 +110,7 @@ def key_figures(request: Request) -> JSONResponse:
             "previous": {
                 "from": before[0].isoformat(),
                 "to": before[1].isoformat(),
-                "label": _period_label(filters.preset, *before),
+                "label": period_label(filters.preset, *before),
             }
             if before
             else None,

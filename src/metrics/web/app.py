@@ -24,6 +24,7 @@ from metrics.web import (
     pruefen,
     public,
     sessions,
+    tabelle,
     team,
     theme,
 )
@@ -47,6 +48,7 @@ AREAS = (
     public,
     mine,
     analyse,
+    tabelle,
     planning,
     kalender,
     team,
