@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_chart.html" import time_controls, chart_and_totals, chart_scripts with context %}
+{% from "_chart.html" import time_controls, chart_and_totals, kpi_tiles, chart_scripts with context %}
 
 {% block title %}{% if project %}Projekt {{ project.title }}{% else %}Analyse{% endif %}: Einsätze über die Zeit{% endblock %}
 {% block heading %}{% if project %}{{ project.title }}{% else %}Analyse{% endif %} <span class="tag">intern</span>{% endblock %}
@@ -33,6 +33,8 @@
   {% endif %}
 </form>
 
+{{ kpi_tiles() }}
+
 {% set tabs = [("zeitverlauf", "Zeitverlauf")]
    + ([("kursleitungen", "Kursleitungen")] if instructor_ranking else [])
    + [("schularten", "Schularten")]
@@ -47,7 +49,7 @@
 
   <section class="tab-panel" role="tabpanel" tabindex="0" id="view-zeitverlauf" aria-labelledby="tab-zeitverlauf">
     <h2 class="view-title">Einsätze über die Zeit</h2>
-    {{ chart_and_totals(panel=false) }}
+    {{ chart_and_totals(panel=false, totals=false) }}
   </section>
 
   {% if instructor_ranking %}

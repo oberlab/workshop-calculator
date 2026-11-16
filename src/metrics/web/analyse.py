@@ -2,13 +2,14 @@
 project (`/projekte/<slug>`, the analysis limited to the project's contexts) and their data endpoints.
 """
 
+from decimal import Decimal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select
 
-from metrics import analytics, charts, lists
+from metrics import analytics, charts, lists, metrics
 from metrics.db import Person, get_sessionmaker
 from metrics.ingest.records import TARGET_GROUPS
 from metrics.instance import Project, get_instance
@@ -71,7 +72,53 @@ def sessions_over_time_detailed(request: Request) -> JSONResponse:
     return sessions_over_time(parse_filters(request.query_params))
 
 
-def _place_rows(filters: analytics.Filters):
+def _period_label(preset: str, start, end) -> str:
+    """The comparison period in words: "Schuljahr 2024/25", "2025" or "01.01.2025–31.12.2025"."""
+    if preset in ("this_school_year", "last_school_year"):
+        return f"Schuljahr {analytics.bin_label(start, 'school_year')}"
+    if preset in ("this_year", "last_year"):
+        return str(start.year)
+    return f"{start:%d.%m.%Y}–{end:%d.%m.%Y}"
+
+
+@router.get("/api/analyse/key-figures")
+def key_figures(request: Request) -> JSONResponse:
+    """KPI tiles (WM-150): the key figures of the selection and of the period before (all filters)."""
+    filters = parse_filters(request.query_params)
+    now = today()
+    with get_sessionmaker()() as session:
+        result = metrics.compare(session, filters, now, get_instance().school_year_start_month)
+    before = result.previous_period
+    end = result.period[1]
+
+    def number(value):
+        return float(value) if isinstance(value, Decimal) else value
+
+    figures = {}
+    for key, value in result.figures.__dict__.items():
+        previous = getattr(result.previous, key) if result.previous else None
+        figures[key] = {
+            "value": number(value),
+            "previous": number(previous),
+            "change": number(value - previous) if previous is not None else None,
+        }
+    return JSONResponse(
+        {
+            "figures": figures,
+            # A period that is not over yet (e.g. this school year) is compared with a whole one.
+            "running_until": end.isoformat() if end and end >= now else None,
+            "previous": {
+                "from": before[0].isoformat(),
+                "to": before[1].isoformat(),
+                "label": _period_label(filters.preset, *before),
+            }
+            if before
+            else None,
+        }
+    )
+
+
+def _place_rows(filters: metrics.Filters):
     instance = get_instance()
     with get_sessionmaker()() as session:
         rows = analytics.count_by_place(session, filters, today(), instance.school_year_start_month)

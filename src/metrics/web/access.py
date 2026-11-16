@@ -60,6 +60,8 @@ TEAM_ROUTES = {
     "GET /analyse",
     "GET /projekte/{slug}",
     "GET /api/analyse/sessions-over-time",
+    # KPI tiles with the comparison to the previous period (WM-150), like the other analysis data.
+    "GET /api/analyse/key-figures",
     "GET /api/analyse/schools",
     "GET /api/analyse/municipalities",
     # Herkunft map on project pages whose context asks for home municipalities (WM-134).

@@ -661,6 +661,16 @@ a.card:hover { background: var(--accent-tint); }
 .totals dd { margin: 0; font: 700 2.3rem/1.1 var(--heading); font-variant-numeric: tabular-nums; }
 .totals dt { font-size: 0.95rem; color: var(--text-muted); }
 .totals sup, .footnote sup { font-size: 0.7em; }
+/* KPI tiles of the analysis pages (WM-150): five figures, the comparison under the label. */
+.kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0 0 8px; }
+.kpis > div { justify-content: flex-end; } /* column-reverse: numbers in one row at the top */
+.kpis dd.kpi-value { font-size: 1.9rem; }
+.kpis .kpi-change { order: -1; margin: 4px 0 0; min-height: 1.3em; font: 600 0.8rem var(--heading); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.kpi-notes { font-size: 0.85rem; color: var(--text-muted); }
+.kpi-notes summary { cursor: pointer; }
+.kpi-notes dl { margin: 8px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
+.kpi-notes dt { font-weight: 600; }
+.kpi-notes dd { margin: 0; }
 .footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0 0 8px; }
 .meta { color: var(--text-muted); font-size: 0.9rem; }
 
@@ -679,8 +689,15 @@ a.card:hover { background: var(--accent-tint); }
 .map-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr); gap: 24px; align-items: center; }
 .totals.map-side { grid-template-columns: 1fr; margin: 0; }
 
+@media (max-width: 1100px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 640px) {
   .map-layout { grid-template-columns: minmax(0, 1fr); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis dd.kpi-value { font-size: 1.6rem; }
+  .kpi-notes dl { grid-template-columns: minmax(0, 1fr); }
   .totals { gap: 8px; }
   .totals > div { padding: 10px 4px; }
   .totals dd { font-size: 1.6rem; }

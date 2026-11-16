@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, cli
+from metrics import cli, metrics
 from metrics.db import (
     ABGESAGT,
     BESTAETIGT,
@@ -382,7 +382,7 @@ def test_no_transfer_without_a_baseline(db, instance):
 
 def test_baseline_is_untouched(db, instance, cutoff):
     def snapshot():
-        totals = analytics.totals(db, analytics.Filters(preset="all"), TODAY, 8)
+        totals = metrics.totals(db, metrics.Filters(preset="all"), TODAY, 8)
         rows = db.execute(
             sa.text(
                 "SELECT id, course_id, date, stage, participants_total, lead_id FROM appointments"

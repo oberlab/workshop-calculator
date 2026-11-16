@@ -13,7 +13,7 @@ default) and all of them off while SLACK_BOT_TOKEN is not set:
   reminder for the new day.
 - Weekly status (`weekly_status`, Monday at 09:00, caught up on a later day of the same week if
   Monday's run was missed): to the team channel (`channel`): the held Termine and participants of
-  this calendar year, counted exactly like the key figures on the front page (`analytics.totals`,
+  this calendar year, counted exactly like the key figures on the front page (`metrics.metrics.totals`,
   period "this_year"), and the Termine of this week from today to Sunday (Bestätigt, Geplant
   marked). One message per week (key `weekly_status:{monday}`).
 
@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import analytics, equipment, hints
+from metrics import equipment, hints, metrics
 from metrics.config import get_settings
 from metrics.db import (
     BESTAETIGT,
@@ -296,7 +296,7 @@ def number(value: int) -> str:
 @dataclass(frozen=True)
 class WeeklyFigures:
     year: int
-    totals: analytics.Totals  # held Termine of the calendar year, as on the front page
+    totals: metrics.Totals  # held Termine of the calendar year, as on the front page
     termine: list[Appointment]  # the rest of this week, Geplant and Bestätigt
 
 
@@ -383,8 +383,8 @@ def weekly_figures(session: Session, today: dt.date) -> WeeklyFigures:
     """The year's totals as the front page shows them on `today`, and this week's Termine from
     `today` to Sunday."""
     instance = get_instance()
-    year_total = analytics.totals(
-        session, analytics.Filters(preset="this_year"), today, instance.school_year_start_month
+    year_total = metrics.totals(
+        session, metrics.Filters(preset="this_year"), today, instance.school_year_start_month
     )
     sunday = monday_of(today) + dt.timedelta(days=6)
     termine = list(
