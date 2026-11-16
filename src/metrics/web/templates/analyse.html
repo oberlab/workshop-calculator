@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_chart.html" import time_controls, chart_and_totals, kpi_tiles, chart_scripts with context %}
+{% from "_chart.html" import time_controls, checklist, chart_and_totals, kpi_tiles, chart_scripts, view_title with context %}
 
 {% block title %}{% if project %}Projekt {{ project.title }}{% else %}Analyse{% endif %}: Einsätze über die Zeit{% endblock %}
 {% block heading %}{% if project %}{{ project.title }}{% else %}Analyse{% endif %} <span class="tag">intern</span>{% endblock %}
@@ -9,19 +9,8 @@
 
 {% block content %}
 {% set same_filters = "Es gilt derselbe Zeitraum wie oben." if project else "Es gelten dieselben Filter wie oben." %}
-<form id="filters" class="filters panel" data-api="{{ api }}" data-fixed="{{ fixed }}">
+<form id="filters" class="filters panel" data-api="{{ api }}" data-fixed="{{ fixed }}" data-title="{{ project.title if project else '' }}">
   {{ time_controls(filters, bins, presets, "Zurücksetzen" if project else "Alle Filter zurücksetzen") }}
-
-  {% macro checklist(title, name, values, selected) %}
-  <details class="checklist" {% if selected %}open{% endif %}>
-    <summary>{{ title }} <span class="selection">{% if selected %}({{ selected|length }} ausgewählt){% else %}(alle){% endif %}</span></summary>
-    <div class="options">
-      {% for value in values %}
-      <label><input type="checkbox" name="{{ name }}" value="{{ value }}" {% if value in selected %}checked{% endif %}> {{ value }}</label>
-      {% endfor %}
-    </div>
-  </details>
-  {% endmacro %}
 
   {% if not project %}
   <div class="filter-row">
@@ -48,7 +37,7 @@
   </div>
 
   <section class="tab-panel" role="tabpanel" tabindex="0" id="view-zeitverlauf" aria-labelledby="tab-zeitverlauf">
-    <h2 class="view-title">Einsätze über die Zeit</h2>
+    {{ view_title("Einsätze über die Zeit") }}
     {{ chart_and_totals(panel=false, totals=false) }}
   </section>
 
@@ -61,7 +50,7 @@
   {% endif %}
 
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-schularten" aria-labelledby="tab-schularten" data-figure="/api/analyse/schools" hidden>
-    <h2 class="view-title">Einsätze an Schulen nach Schulart</h2>
+    {{ view_title("Einsätze an Schulen nach Schulart") }}
     <p class="help">Nur Einsätze an Orten, die als Schule eingetragen sind. {{ same_filters }}</p>
     <div class="chart"></div>
     <p class="empty" hidden>Keine Einsätze an Schulen für diese Auswahl.</p>
@@ -69,7 +58,7 @@
 
   {% if map %}
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-gemeinden" aria-labelledby="tab-gemeinden" data-figure="/api/analyse/municipalities" hidden>
-    <h2 class="view-title">Einsätze nach Gemeinde: {{ map.title }}</h2>
+    {{ view_title("Einsätze nach Gemeinde: " ~ map.title) }}
     <p class="help">{{ same_filters }}</p>
     <div class="map-layout">
       <div class="chart"></div>
@@ -83,7 +72,7 @@
 
   {% if origins_map %}
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-herkunft" aria-labelledby="tab-herkunft" data-figure="/api/analyse/origins" hidden>
-    <h2 class="view-title">Teilnehmende nach Herkunft: {{ map.title }}</h2>
+    {{ view_title("Teilnehmende nach Herkunft: " ~ map.title) }}
     <p class="help">Wohnorte der Teilnehmenden, gezählt wie die Kennzahl Teilnehmende. {{ same_filters }}</p>
     <div class="map-layout">
       <div class="chart"></div>

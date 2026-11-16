@@ -68,6 +68,10 @@ TEAM_ROUTES = {
     "GET /api/analyse/origins",
     "GET /api/instructor-ranking",
     "GET /instructors/{key}/image",
+    # Tabelle (WM-152): the held Termine with chosen columns and their CSV. Team members' names may
+    # appear; contacts (WM-141) never do (`metrics.table`).
+    "GET /tabelle",
+    "GET /tabelle.csv",
     # Planning (WM-110): course list, course page, actions; what a stage allows is checked in
     # `metrics.planning.workflow`. Team members may accept warnings on the course page.
     "GET /planung",

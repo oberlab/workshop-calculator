@@ -62,7 +62,7 @@ ENTRIES: list[Entry | str] = [
     Entry("+ Neuer Kurs", "/planung/neu", PLANUNG, action=True),
     Entry("Analyse", "/analyse", AUSWERTUNG),
     PROJECTS,
-    Entry("Tabelle", "/tabelle", AUSWERTUNG, planned="WM-152"),
+    Entry("Tabelle", "/tabelle", AUSWERTUNG),
     Entry("Orte", "/stammdaten/orte", STAMMDATEN, counts=(_proposed("orte", "Orte"),)),
     Entry("Kontexte", "/stammdaten/kontexte", STAMMDATEN, counts=(_proposed("kontexte", "Kontexte"),)),
     Entry("Formate", "/stammdaten/formate", STAMMDATEN, counts=(_proposed("formate", "Formate"),)),

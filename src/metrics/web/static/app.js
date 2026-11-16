@@ -32,14 +32,19 @@ const EMBED_OPTIONS = {
 };
 
 const form = document.getElementById("filters");
+// Pages with their own figure export (WM-152) leave out vega-embed's menu, so there is one way to save.
+if (document.querySelector("[data-export-menu]")) EMBED_OPTIONS.actions = false;
 const chart = document.getElementById("chart");
 const empty = document.getElementById("empty");
 const meta = document.getElementById("meta");
 let requestId = 0;
+let lastMeta = null; // meta of the latest sessions-over-time response: the period of the selection
 
 // Charts sized to their container cannot be drawn while their tab is hidden (zero width):
 // keep the latest spec and draw it when the tab is shown.
 const pending = new Map();
+// The latest spec of every chart, for the figure export.
+const drawn = new Map();
 
 // Vega-Lite turns date strings in a temporal scale domain into a datetime() expression, which the
 // CSP-safe interpreter evaluates to nothing (bars of zero width). Timestamps need no expression.
@@ -54,6 +59,7 @@ function timestampDomains(spec) {
 
 async function embed(target, spec) {
   spec = timestampDomains(spec);
+  drawn.set(target, spec);
   if (target.closest("[hidden]")) {
     pending.set(target, spec);
     return;
@@ -88,7 +94,8 @@ function updateForm() {
   for (const el of form.querySelectorAll(".custom-range")) el.hidden = !custom;
   for (const details of form.querySelectorAll(".checklist")) {
     const checked = details.querySelectorAll("input:checked").length;
-    details.querySelector(".selection").textContent = checked ? `(${checked} ausgewählt)` : "(alle)";
+    const selection = details.querySelector(".selection");
+    selection.textContent = checked ? `(${checked} ausgewählt)` : `(${selection.dataset.none || "alle"})`;
   }
 }
 
@@ -115,6 +122,7 @@ async function render() {
     return;
   }
   const { spec, meta: info } = await response.json();
+  lastMeta = info;
 
   empty.hidden = info.count > 0;
   chart.hidden = info.count === 0;
@@ -266,3 +274,193 @@ if (initialTab) selectTab(initialTab);
 form.addEventListener("change", render);
 form.addEventListener("submit", (event) => { event.preventDefault(); render(); });
 document.fonts.ready.then(render);
+
+// Figure export (WM-152): a chart as PNG or SVG in a fixed size, with the view's title and the period
+// and filters of the selection as caption. Drawn here with Vega's headless renderer from the spec the
+// page already has (no new request, chart endpoints unchanged) and saved through a blob: URL, which the
+// CSP does not restrict (no inline script, no eval: the expression interpreter as for the page).
+const EXPORT_SCALE = 2; // PNG in double resolution
+const EXPORT_PAD = 20;
+const TITLE_SIZE = 22;
+const CAPTION_SIZE = 14;
+const CAPTION_LINE = 20;
+
+function schoolYear(iso) {
+  const year = Number(iso.slice(0, 4));
+  return `${year}/${String(year + 1).slice(2)}`;
+}
+
+function periodCaption() {
+  const preset = form.period.value;
+  const from = lastMeta?.period_from;
+  const to = lastMeta?.period_to;
+  const dates = (a, b) => `${formatDate(a)}–${formatDate(b)}`;
+  if (from && to) {
+    if (preset === "this_school_year" || preset === "last_school_year") return `Schuljahr ${schoolYear(from)} (${dates(from, to)})`;
+    if (preset === "this_year" || preset === "last_year") return from.slice(0, 4);
+    return dates(from, to);
+  }
+  if (from) return `ab ${formatDate(from)}`;
+  if (to) return `bis ${formatDate(to)}`;
+  return lastMeta?.first ? `gesamter Zeitraum (${dates(lastMeta.first, lastMeta.last)})` : "gesamter Zeitraum";
+}
+
+function exportCaption() {
+  const parts = [`Zeitraum: ${periodCaption()}`];
+  const chosen = new FormData(form);
+  const fixed = new URLSearchParams(form.dataset.fixed || "");
+  for (const [name, label] of [["category", "Kurskategorie"], ["target_group", "Zielgruppe"], ["context", "Kontext"]]) {
+    const values = [...chosen.getAll(name), ...fixed.getAll(name)];
+    if (values.length) parts.push(`${label}: ${values.join(", ")}`);
+  }
+  parts.push(`Stand: ${new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}`);
+  return parts.join(" · ");
+}
+
+function wrapLines(context, text, width) {
+  const lines = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && context.measureText(next).width > width) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function slug(text) {
+  const plain = text.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+  return plain.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function escapeXml(text) {
+  return String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
+function saveFile(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// The header (title and caption lines) above the chart, in the chart's own fonts and colours.
+function exportLayout(spec, caption, width) {
+  const config = spec.config || {};
+  const fonts = { title: config.legend?.titleFont || config.font || "sans-serif", body: config.font || "sans-serif" };
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = `${CAPTION_SIZE}px ${fonts.body}`;
+  const lines = wrapLines(measure, caption, width - 2 * EXPORT_PAD);
+  return {
+    fonts,
+    lines,
+    ink: config.axis?.titleColor || "#333333",
+    background: config.background || "#ffffff",
+    titleY: EXPORT_PAD + TITLE_SIZE,
+    captionY: EXPORT_PAD + TITLE_SIZE + 8 + CAPTION_SIZE,
+    header: EXPORT_PAD + TITLE_SIZE + 8 + lines.length * CAPTION_LINE + 12,
+  };
+}
+
+// The chart fitted into the box below the header, keeping its proportions.
+function fit(chartWidth, chartHeight, width, height) {
+  const scale = Math.min(width / chartWidth, height / chartHeight, 1);
+  const w = chartWidth * scale;
+  const h = chartHeight * scale;
+  return { x: (width - w) / 2, w, h };
+}
+
+async function exportPng(view, layout, title, width, height, box) {
+  const chart = await view.toCanvas(EXPORT_SCALE);
+  const canvas = document.createElement("canvas");
+  canvas.width = width * EXPORT_SCALE;
+  canvas.height = height * EXPORT_SCALE;
+  const context = canvas.getContext("2d");
+  context.scale(EXPORT_SCALE, EXPORT_SCALE);
+  context.fillStyle = layout.background;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = layout.ink;
+  context.font = `bold ${TITLE_SIZE}px ${layout.fonts.title}`;
+  context.fillText(title, EXPORT_PAD, layout.titleY, width - 2 * EXPORT_PAD);
+  context.font = `${CAPTION_SIZE}px ${layout.fonts.body}`;
+  layout.lines.forEach((line, i) => context.fillText(line, EXPORT_PAD, layout.captionY + i * CAPTION_LINE));
+  const place = fit(chart.width / EXPORT_SCALE, chart.height / EXPORT_SCALE, width, box);
+  context.drawImage(chart, place.x, layout.header, place.w, place.h);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+async function exportSvg(view, layout, title, width, height, box) {
+  const chart = new DOMParser().parseFromString(await view.toSVG(), "image/svg+xml").documentElement;
+  const place = fit(Number(chart.getAttribute("width")), Number(chart.getAttribute("height")), width, box);
+  for (const [key, value] of Object.entries({ x: place.x, y: layout.header, width: place.w, height: place.h })) {
+    chart.setAttribute(key, value);
+  }
+  const text = (y, size, weight, font, content) =>
+    `<text x="${EXPORT_PAD}" y="${y}" font-family="${escapeXml(font)}" font-size="${size}" font-weight="${weight}" fill="${escapeXml(layout.ink)}">${escapeXml(content)}</text>`;
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `<rect width="${width}" height="${height}" fill="${escapeXml(layout.background)}"/>`,
+    text(layout.titleY, TITLE_SIZE, "bold", layout.fonts.title, title),
+    ...layout.lines.map((line, i) => text(layout.captionY + i * CAPTION_LINE, CAPTION_SIZE, "normal", layout.fonts.body, line)),
+    new XMLSerializer().serializeToString(chart),
+    "</svg>",
+  ].join("\n");
+  return new Blob([svg], { type: "image/svg+xml" });
+}
+
+async function exportFigure(button) {
+  const section = button.closest(".tab-panel, section");
+  const target = section.querySelector(".chart");
+  const spec = drawn.get(target);
+  if (!spec || target.hidden) return;
+  const kind = button.dataset.export;
+  const width = Number(button.dataset.width);
+  const height = Number(button.dataset.height);
+  const viewTitle = section.querySelector(".view-title").textContent.trim();
+  const title = form.dataset.title ? `${form.dataset.title}: ${viewTitle}` : viewTitle;
+  const layout = exportLayout(spec, exportCaption(), width);
+  const box = height - layout.header;
+
+  // The page's spec at the export size; the chart endpoints stay as they are.
+  const sized = structuredClone(spec);
+  Object.assign(sized, { width, height: box, autosize: { type: "fit", contains: "padding" } });
+  vega.formatLocale(FORMAT_LOCALE);
+  vega.timeFormatLocale(TIME_FORMAT_LOCALE);
+  const runtime = vega.parse(vegaLite.compile(sized).spec, null, { ast: true });
+  const view = new vega.View(runtime, { renderer: "none", expr: vega.expressionInterpreter });
+  try {
+    await view.runAsync();
+    const period = periodCaption().replace(/ \(.*\)$/, ""); // "Schuljahr 2025/26" without its dates
+    const name = `${slug(title)}_${slug(period)}_${width}x${height}.${kind}`;
+    const exporter = kind === "svg" ? exportSvg : exportPng;
+    saveFile(await exporter(view, layout, title, width, height, box), name);
+  } finally {
+    view.finalize();
+  }
+}
+
+for (const menu of document.querySelectorAll("[data-export-menu]")) {
+  const target = menu.closest(".tab-panel, section").querySelector(".chart");
+  const buttons = menu.querySelectorAll("[data-export]");
+  // Only a chart that is drawn (data for the selection) can be saved.
+  menu.addEventListener("toggle", () => {
+    for (const button of buttons) button.disabled = !drawn.has(target) || target.hidden;
+  });
+  for (const button of buttons) {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await exportFigure(button);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+}

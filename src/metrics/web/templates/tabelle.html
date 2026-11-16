@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "_chart.html" import checklist %}
+
+{% block title %}Tabelle{% endblock %}
+{% block heading %}Tabelle <span class="tag">intern</span>{% endblock %}
+{% block subheading %}<p class="subheading">Alle Einsätze (final bestätigte Termine) der Auswahl, mit Summen je Gruppe und als CSV-Datei.</p>{% endblock %}
+
+{% block content %}
+<form id="table-filters" class="filters panel" method="get" action="/tabelle" aria-label="Auswahl">
+  <fieldset class="filter-row">
+    <legend class="visually-hidden">Zeitraum</legend>
+    <label>Zeitraum
+      <select name="period">
+        {% for key, label in presets.items() %}
+        <option value="{{ key }}" {% if filters.preset == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="custom-range">von
+      <input type="date" name="from" value="{{ filters.date_from or '' }}">
+    </label>
+    <label class="custom-range">bis
+      <input type="date" name="to" value="{{ filters.date_to or '' }}">
+    </label>
+    <label class="check"><input type="checkbox" name="schulen" value="1" {% if choice.schools_only %}checked{% endif %}> Nur Orte, die Schulen sind</label>
+    <a class="reset" href="/tabelle">Alles zurücksetzen</a>
+  </fieldset>
+
+  <div class="filter-row">
+    {{ checklist("Kurskategorie", "category", options.categories, filters.categories) }}
+    {{ checklist("Zielgruppe", "target_group", options.target_groups, filters.target_groups) }}
+    {{ checklist("Kontext / Projekt", "context", options.contexts, filters.contexts) }}
+  </div>
+
+  <div class="filter-row">
+    {{ checklist("Spalten", "spalte", columns|map(attribute="key")|list, choice.columns, labels=column_labels, none_label="Standard", opened=false) }}
+    <label>Sortieren nach
+      <select name="sortierung">
+        {% for c in columns %}<option value="{{ c.key }}" {% if choice.sort == c.key %}selected{% endif %}>{{ c.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="absteigend" value="1" {% if choice.descending %}checked{% endif %}> absteigend</label>
+    <label>Summen je
+      <select name="gruppe">
+        <option value="">keine Gruppierung</option>
+        {% for key, label in groups.items() %}<option value="{{ key }}" {% if choice.group == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <p class="help">Keine Auswahl in einer Liste bedeutet: alle (bei den Spalten: die Standardspalten).</p>
+  <div class="form-actions">
+    <button class="btn" type="submit">Anzeigen</button>
+    <a class="btn btn-secondary" href="{{ csv }}" download>Termine als CSV</a>
+    {% if csv_groups %}<a class="btn btn-secondary" href="{{ csv_groups }}" download>Summen als CSV</a>{% endif %}
+  </div>
+</form>
+
+<p class="meta">Zeitraum: {{ period }} · {{ count }} Einsätze · {{ total.participants }} Teilnehmende (gezählt)</p>
+
+{% if summary %}
+<section class="panel" aria-labelledby="summary-title">
+  <h2 id="summary-title">Summen je {{ groups[choice.group] }}</h2>
+  <div class="table-wrap">
+  <table class="table table-numbers">
+    <thead><tr>
+      <th scope="col">{{ groups[choice.group] }}</th><th scope="col" class="num">Einsätze</th><th scope="col" class="num">Teilnehmende (gezählt)</th><th scope="col" class="num">Teilnehmende (erfasst)</th><th scope="col" class="num">Stunden</th>
+    </tr></thead>
+    <tbody>
+      {% for g in summary %}
+      <tr><th scope="row">{{ g.label }}</th><td class="num">{{ g.sessions }}</td><td class="num">{{ g.participants }}</td><td class="num">{{ g.recorded }}</td><td class="num">{{ text(g.hours, "decimal") }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th scope="row">Gesamt</th><td class="num">{{ total.sessions }}</td><td class="num">{{ total.participants }}</td><td class="num">{{ total.recorded }}</td><td class="num">{{ text(total.hours, "decimal") }}</td></tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel" aria-labelledby="rows-title">
+  <h2 id="rows-title">Einsätze</h2>
+  {% if not rows %}
+  <p class="empty">Keine Einsätze für diese Auswahl.</p>
+  {% else %}
+  {% if count > shown %}<p class="help">Angezeigt werden die ersten {{ shown }} von {{ count }} Zeilen; die CSV-Datei enthält alle.</p>{% endif %}
+  <div class="table-wrap">
+  <table class="table table-numbers">
+    <caption class="visually-hidden">Einsätze der Auswahl</caption>
+    <thead><tr>{% for c in chosen %}<th scope="col"{% if c.kind in ("number", "decimal") %} class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>{% for c in chosen %}<td{% if c.kind in ("number", "decimal") %} class="num"{% endif %}>{% if c.key == "kurs" %}<a href="/planung/{{ row.course_id }}">{{ row.course_id }}</a>{% else %}{{ text(row.values[c.key], c.kind) }}{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+    {% if "tn_gezaehlt" in choice.columns or "tn_erfasst" in choice.columns %}
+    <tfoot><tr>{% for c in chosen %}<td{% if c.kind in ("number", "decimal") %} class="num"{% endif %}>{% if loop.first %}<b>Summe</b>{% elif c.key == "tn_gezaehlt" %}<b>{{ total.participants }}</b>{% elif c.key == "tn_erfasst" %}<b>{{ total.recorded }}</b>{% endif %}</td>{% endfor %}</tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+  {% endif %}
+  <p class="footnote"><b>Teilnehmende (gezählt)</b> folgt der Regel der Kennzahl Teilnehmende: gezählt beim Termin mit Terminnummer 1, damit Kinder in mehrteiligen Kursen nicht mehrfach zählen; bei fortlaufenden Formaten (z.&nbsp;B. JuLab, Repair Café) bei jedem Termin; Termine ohne Terminnummer zählen nicht. Die Summe dieser Spalte ist die Kennzahl auf der Analyse-Seite. <b>Teilnehmende (erfasst)</b> ist die am Termin eingetragene Zahl, auch bei Folgeterminen.</p>
+  <p class="footnote">CSV: UTF-8 für Excel, Semikolon als Trennzeichen, Dezimalkomma, Datum als TT.MM.JJJJ. Kontaktpersonen und Notizen sind nie enthalten.</p>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', path='tabelle.js') }}"></script>{% endblock %}
