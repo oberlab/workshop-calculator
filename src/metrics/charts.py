@@ -304,8 +304,12 @@ def _label_ink(fill: str, text: str, background: str) -> str:
     return text if _contrast(text, fill) >= _contrast(background, fill) else background
 
 
-def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: Theme) -> dict:
+def municipality_map(
+    map_config: MapConfig, counts: MunicipalityCounts, theme: Theme, measure: str = "Einsätze"
+) -> dict:
     """Choropleth of sessions per municipality, labelled with name and count.
+
+    `measure` names what is counted in the legend and tooltip (participants for the Herkunft map).
 
     Colour runs along the theme's map gradient on a log scale, so a few municipalities with
     many sessions do not push all others into the first colour. No sessions = grid colour.
@@ -368,7 +372,7 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
                         },
                         "field": "properties.count",
                         "type": "quantitative",
-                        "title": "Einsätze",
+                        "title": measure,
                         "scale": {
                             "type": "log",
                             "domain": [1, top],
@@ -385,7 +389,7 @@ def municipality_map(map_config: MapConfig, counts: MunicipalityCounts, theme: T
                     },
                     "tooltip": [
                         {"field": "properties.name", "title": "Gemeinde"},
-                        {"field": "properties.count", "title": "Einsätze"},
+                        {"field": "properties.count", "title": measure},
                     ],
                 },
             },

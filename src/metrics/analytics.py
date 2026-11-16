@@ -1,6 +1,7 @@
 """Time bins, period presets and the aggregations behind the charts."""
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import NamedTuple
@@ -8,7 +9,17 @@ from typing import NamedTuple
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from metrics.db import STAGE_COUNTED, Appointment, Context, Course, Format, Person, Place, SchoolType
+from metrics.db import (
+    STAGE_COUNTED,
+    Appointment,
+    AppointmentOrigin,
+    Context,
+    Course,
+    Format,
+    Person,
+    Place,
+    SchoolType,
+)
 from metrics.instance import Instance
 
 MONTHS = [
@@ -297,14 +308,19 @@ def by_school_type(
     return [(label, category, count) for (label, category), count in counts.items()], order
 
 
+class OriginCount(NamedTuple):
+    municipality: str | None  # None: participants without a Herkunft
+    count: int
+
+
 @dataclass
 class MunicipalityCounts:
     inside: dict[str, int]  # every municipality on the map, including those with 0
     outside: int  # a municipality is set but is not on the map
-    unassigned: int  # no place, or no municipality set (e.g. "Online")
+    unassigned: int  # no place, or no municipality set (e.g. "Online"); for Herkunft: none recorded
 
 
-def by_municipality(rows: list[PlaceCount], instance: Instance) -> MunicipalityCounts:
+def by_municipality(rows: Iterable[PlaceCount | OriginCount], instance: Instance) -> MunicipalityCounts:
     names = [m.name for m in instance.map.municipalities] if instance.map else []
     inside = dict.fromkeys(names, 0)
     outside = unassigned = 0
@@ -377,3 +393,46 @@ def period_caption(first: date, last: date) -> str:
     first_text = f"{MONTHS[first.month - 1]} {first.year}"
     last_text = f"{MONTHS[last.month - 1]} {last.year}"
     return first_text if first_text == last_text else f"{first_text} – {last_text}"
+
+
+def count_participants_by_origin(
+    session: Session, filters: Filters, today: date, school_year_start_month: int
+) -> list[OriginCount]:
+    """Participants per home municipality (Herkunft) on held Termine, with all filters applied.
+
+    Termine and participants count as in the key figures (`totals`): held Termine only, and only the
+    Termine whose participants count (`COUNTS_PARTICIPANTS`). Participants of such a Termin that
+    its Herkunft does not cover (no Herkunft recorded, or fewer than the total) come back as one
+    row with municipality None; they are not assigned to any municipality.
+    """
+    by_origin, _ = _held_sessions(
+        select(AppointmentOrigin.municipality, func.sum(AppointmentOrigin.participants)).group_by(
+            AppointmentOrigin.municipality
+        ),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    by_origin = by_origin.join(AppointmentOrigin, AppointmentOrigin.appointment_id == Appointment.id).where(
+        COUNTS_PARTICIPANTS
+    )
+    recorded = (
+        select(
+            AppointmentOrigin.appointment_id,
+            func.sum(AppointmentOrigin.participants).label("participants"),
+        )
+        .group_by(AppointmentOrigin.appointment_id)
+        .subquery()
+    )
+    missing = func.greatest(
+        func.coalesce(Appointment.participants_total, 0) - func.coalesce(recorded.c.participants, 0), 0
+    )
+    without_origin, _ = _held_sessions(
+        select(func.coalesce(func.sum(missing), 0)), filters, today, school_year_start_month
+    )
+    without_origin = without_origin.outerjoin(recorded, recorded.c.appointment_id == Appointment.id).where(
+        COUNTS_PARTICIPANTS
+    )
+    rows = [OriginCount(municipality, int(count)) for municipality, count in session.execute(by_origin)]
+    unassigned = int(session.execute(without_origin).scalar_one())
+    return [*rows, OriginCount(None, unassigned)] if unassigned else rows

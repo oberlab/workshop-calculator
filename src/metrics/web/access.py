@@ -62,6 +62,8 @@ TEAM_ROUTES = {
     "GET /api/analyse/sessions-over-time",
     "GET /api/analyse/schools",
     "GET /api/analyse/municipalities",
+    # Herkunft map on project pages whose context asks for home municipalities (WM-134).
+    "GET /api/analyse/origins",
     "GET /api/instructor-ranking",
     "GET /instructors/{key}/image",
     # Planning (WM-110): course list, course page, actions; what a stage allows is checked in
