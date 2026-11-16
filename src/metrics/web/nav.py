@@ -61,6 +61,7 @@ ENTRIES: list[Entry | str] = [
     Entry("Team", "/team", PLANUNG),
     Entry("+ Neuer Kurs", "/planung/neu", PLANUNG, action=True),
     Entry("Analyse", "/analyse", AUSWERTUNG),
+    Entry("Planungszahlen", "/analyse/planung", AUSWERTUNG),
     PROJECTS,
     Entry("Tabelle", "/tabelle", AUSWERTUNG),
     Entry("Orte", "/stammdaten/orte", STAMMDATEN, counts=(_proposed("orte", "Orte"),)),

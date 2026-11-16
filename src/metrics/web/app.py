@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from metrics.web import (
     analyse,
     health,
+    insights,
     kalender,
     lists,
     login,
@@ -49,6 +50,7 @@ AREAS = (
     mine,
     analyse,
     tabelle,
+    insights,
     planning,
     kalender,
     team,

@@ -68,6 +68,15 @@ TEAM_ROUTES = {
     # Herkunft map on project pages whose context asks for home municipalities (WM-134).
     "GET /api/analyse/origins",
     "GET /api/instructor-ranking",
+    # Standard views (WM-151): breakdowns by context, format, school and class/age, the cumulative
+    # count and the point map of places, like the other analysis data.
+    "GET /api/analyse/by/{dimension}",
+    "GET /api/analyse/cumulative",
+    "GET /api/analyse/places",
+    # Planungszahlen (WM-151): names team members (hours per person) and courses, so team only, never
+    # public; read only.
+    "GET /analyse/planung",
+    "GET /api/analyse/planung/stunden",
     "GET /instructors/{key}/image",
     # Tabelle (WM-152): the held Termine with chosen columns and their CSV. Team members' names may
     # appear; contacts (WM-141) never do (`metrics.table`).

@@ -17,6 +17,7 @@ PARAMS = {
     "{entry_id:int}": "1",
     "{place_id:int}": "1",
     "{contact_id:int}": "1",
+    "{dimension}": "kontext",
 }
 
 
