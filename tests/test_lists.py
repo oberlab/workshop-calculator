@@ -436,6 +436,13 @@ def test_done_when_a_proposed_place_is_used_merged_and_counted(seeded, monkeypat
     assert (data["count"], data["totals"]["participants"], data["totals"]["locations"]) == (1, 9, 1)
 
 
+def test_hour_labels_say_std():
+    labels = [f.label for fields in lists.FIELDS.values() for f in fields]
+    assert not [label for label in labels if "(h)" in label]
+    soldering = Format(name="Löten", category="Engineering", duration_hours=2)
+    assert "Dauer 2 Std." in lists.describe(soldering, {})
+
+
 def test_admin_decisions_through_the_pages(seeded, monkeypatch):
     team = _team(monkeypatch)
     team.post(
@@ -455,6 +462,8 @@ def test_admin_decisions_through_the_pages(seeded, monkeypatch):
     admin = _admin(monkeypatch)
     page = admin.get(f"/stammdaten/formate?id={fmt.id}").text
     assert f'action="/stammdaten/formate/{fmt.id}/bestaetigen"' in page and 'name="ziel"' in page
+    # Hours read "(Std.)" as in the course's "Arbeitszeit" panel (WM-131).
+    assert "Übliche Dauer (Std.)" in page and "Zuschlag Kursleitung (Std.)" in page and "(h)" not in page
     no_reason = admin.post(f"/stammdaten/formate/{fmt.id}/ablehnen", data={"reason": ""})
     assert no_reason.status_code == 422 and "Grund" in no_reason.text
     assert admin.post(f"/stammdaten/formate/{fmt.id}/bestaetigen", follow_redirects=False).status_code == 303
