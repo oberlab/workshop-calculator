@@ -170,7 +170,7 @@ def slack_reminders(now: datetime) -> str:
 
 
 def slack_weekly_status(now: datetime) -> str:
-    """The weekly status to the team channel (WM-130); sends on Friday, Saturday and Sunday catch up."""
+    """The weekly status to the team channel (WM-130): Monday 09:00, later days of the week catch up."""
     from metrics import messages
 
     return messages.send_weekly_status(now)
@@ -189,8 +189,8 @@ JOBS: tuple[Job, ...] = (
     Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
     # Slack messages (WM-130): after the stage moves and the hints, so they see today's state.
     Job("slack-after-course", Daily(time(9, 0)), slack_after_course),
-    Job("slack-weekly-status", Daily(time(12, 0)), slack_weekly_status),
-    Job("slack-reminders", Daily(time(16, 0)), slack_reminders),
+    Job("slack-weekly-status", Daily(time(9, 0)), slack_weekly_status),
+    Job("slack-reminders", Daily(time(15, 0)), slack_reminders),
     Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 
