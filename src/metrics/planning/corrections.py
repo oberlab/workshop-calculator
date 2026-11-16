@@ -274,13 +274,21 @@ def open_for(session: Session, appointment_ids: list[int] | None) -> list[Propos
     return list(session.scalars(stmt.order_by(Proposal.proposed_at, Proposal.id)))
 
 
+def _locked(session: Session, model, row_id: int):
+    """The row, locked until the end of the transaction and read anew after the lock."""
+    stmt = select(model).where(model.id == row_id).with_for_update().execution_options(populate_existing=True)
+    return session.scalars(stmt).one_or_none()
+
+
 def _open(session: Session, proposal_id: int) -> tuple[Proposal, Appointment]:
-    proposal = session.get(Proposal, proposal_id)
+    """The undecided correction and its Termin, both locked: two admins deciding at once (or a form
+    sent twice) wait for each other, and the second sees the first one's decision and values."""
+    proposal = _locked(session, Proposal, proposal_id)
     if proposal is None or proposal.kind != KIND or proposal.target_table != TABLE:
         raise CorrectionError("Unbekannte Korrektur.")
     if proposal.decision is not None:
         raise CorrectionError(f"Über diese Korrektur ist schon entschieden ({proposal.decision}).")
-    t = session.get(Appointment, proposal.target_id)
+    t = _locked(session, Appointment, proposal.target_id)
     if t is None:
         raise CorrectionError("Der Termin dieser Korrektur gibt es nicht mehr.")
     return proposal, t
