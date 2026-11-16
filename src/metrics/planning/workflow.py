@@ -355,7 +355,8 @@ def _apply_appointment(session: Session, t: Appointment, form: Form, allowed: se
         t.support = support
     if HELD in allowed:
         for name, label in PARTICIPANT_FIELDS:
-            setattr(t, name, _count(one(form, name), f"TN {label}", errors))
+            if name in form:  # the phone form (WM-133) leaves out counts that are already entered
+                setattr(t, name, _count(one(form, name), f"TN {label}", errors))
         t.participants_total = participants_total(t)
         if "origin_name" in form:
             origins: dict[str, int] = {}
@@ -400,9 +401,10 @@ def create(session: Session, form: Form, by: str) -> Appointment:
     return t
 
 
-def save(session: Session, t: Appointment, form: Form, by: str) -> list[str]:
-    """Copy what the Termin's stage allows from the form; returns the names of the changed fields."""
-    allowed = editable(t)
+def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] | None = None) -> list[str]:
+    """Copy what the Termin's stage allows from the form; returns the names of the changed fields.
+    `only` limits it to some parts (the phone form after the course saves `HELD` alone, WM-133)."""
+    allowed = editable(t) if only is None else editable(t) & only
     if not allowed:
         raise FormError(f"Ein Termin in „{t.stage}“ kann nicht mehr geändert werden.")
     course = t.course

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{# The phone form after the course (WM-133): only what is missing, big plus and minus buttons.
+   Without JavaScript the buttons stay hidden and the number fields are sent as they are
+   (static/after.js shows them and keeps the sums up to date). #}
+
+{% block title %}Nach dem Kurs: {{ title }}{% endblock %}
+{% block crumb %}<p class="crumb"><a href="/mein-bereich">Mein Bereich</a> / Nach dem Kurs</p>{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+{% block subheading %}
+<p class="subheading">{% if t.number %}Termin {{ t.number }} · {% endif %}{{ day_text }}{% if t.start_time %} · {{ t.start_time.strftime("%H:%M") }}{% if t.end_time %}–{{ t.end_time.strftime("%H:%M") }}{% endif %}{% endif %}</p>
+<p class="subheading">{% if t.course.place %}{{ t.course.place.name }}{% endif %}{% if t.course.class_age_text %} · {{ t.course.class_age_text }}{% endif %}{% if t.lead %} · {{ t.lead.name }} (Leitung){% endif %}{% for p in t.support %}, {{ p.name }}{% endfor %}</p>
+{% endblock %}
+
+{# One count with minus and plus. #}
+{% macro stepper(id, name, label, value, kind) -%}
+<div class="stepper" data-stepper>
+  <label class="stepper-label" for="{{ id }}">{{ label }}</label>
+  <div class="stepper-control">
+    <button type="button" class="stepper-step" data-step="-1" hidden aria-label="{{ label }}: eins weniger">−</button>
+    <input type="number" id="{{ id }}" name="{{ name }}" value="{{ value }}" min="0" max="999" inputmode="numeric" data-{{ kind }}>
+    <button type="button" class="stepper-step" data-step="1" hidden aria-label="{{ label }}: eins mehr">+</button>
+  </div>
+</div>
+{%- endmacro %}
+
+{% block content %}
+{% if errors %}{{ ui.alert(errors, "error") }}{% endif %}
+
+{% if not open %}
+{% call ui.panel() %}
+{{ ui.empty_state("Hier ist nichts mehr einzutragen.", "Der Termin ist „" ~ t.stage ~ "“. Korrekturen gehen über die Kursseite.") }}
+<p class="after-links"><a href="{{ course_href }}">Zum Kurs</a> · <a href="/mein-bereich">Mein Bereich</a></p>
+{% endcall %}
+
+{% elif not gaps.any %}
+{% call ui.panel() %}
+{{ ui.empty_state("Alles eingetragen.", "Teilnehmende" ~ (" und Herkunft" if t.course.context and t.course.context.asks_municipalities else "") ~ " sind da. Ändern geht auf der Kursseite.") }}
+<p class="after-summary"><span>Teilnehmende: <b class="mono">{{ total }}</b></span>{% for name, label in participant_fields if t[name] is not none %}<span>{{ label }} {{ t[name] }}</span>{% endfor %}</p>
+<p class="after-links"><a href="{{ course_href }}">Zum Kurs</a> · <a href="/mein-bereich">Mein Bereich</a></p>
+{% endcall %}
+
+{% else %}
+<form method="post" action="{{ action }}" class="after-form" data-after-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% if gaps.counts %}
+  <section class="panel">
+    <h2>Teilnehmende</h2>
+    <div class="steppers">
+      {% for name, label in participant_fields %}{{ stepper("f-" ~ name, name, label, t[name] if t[name] is not none else 0, "count") }}{% endfor %}
+    </div>
+    <p class="after-total">Zusammen: <b class="mono" data-count-total>{{ total or 0 }}</b></p>
+  </section>
+  {% else %}
+  <p class="after-summary" data-fixed-total="{{ total or 0 }}"><span>Teilnehmende: <b class="mono">{{ total }}</b></span>{% for name, label in participant_fields if t[name] is not none %}<span>{{ label }} {{ t[name] }}</span>{% endfor %}</p>
+  {% endif %}
+
+  {% if gaps.origins %}
+  <section class="panel">
+    <h2>Herkunft</h2>
+    <p class="help">Wie viele kamen aus welcher Gemeinde? Zusammen so viele wie Teilnehmende.</p>
+    <div class="origins">
+      {% for m in suggested %}
+      <div class="origin-row">
+        <input type="hidden" name="origin_name" value="{{ m }}">
+        {{ stepper("f-origin-" ~ loop.index, "origin_count", m, origins.get(m, ""), "origin") }}
+      </div>
+      {% endfor %}
+      {% for i in range(free_rows) %}
+      <div class="origin-row origin-free">
+        <input name="origin_name" list="dl-municipality" placeholder="Weitere Gemeinde" aria-label="Weitere Gemeinde {{ i + 1 }}">
+        <input type="number" name="origin_count" min="0" max="999" inputmode="numeric" aria-label="Teilnehmende aus weiterer Gemeinde {{ i + 1 }}" data-origin>
+      </div>
+      {% endfor %}
+    </div>
+    <datalist id="dl-municipality">{% for m in municipalities %}<option value="{{ m }}">{% endfor %}</datalist>
+    <p class="after-sum" data-origin-sum aria-live="polite">Herkunft: <b class="mono">{{ origins_total }}</b> von <b class="mono">{{ total or 0 }}</b></p>
+  </section>
+  {% endif %}
+
+  <label class="field after-note">
+    <span>Notiz <span class="muted">(optional)</span></span>
+    <textarea name="note" rows="2" placeholder="Was war besonders?">{{ note }}</textarea>
+  </label>
+
+  <button type="submit" class="btn after-done">Fertig</button>
+  <p class="help after-links">Steht danach im Verlauf des Kurses. <a href="{{ course_href }}">Alle Angaben auf der Kursseite</a></p>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', path='after.js') }}" defer></script>{% endblock %}

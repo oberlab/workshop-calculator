@@ -70,9 +70,12 @@ class Task:
     text: str
     action: str  # the button's label
     more: int = 0  # further open hints on the Termin
+    after: bool = False  # participants to enter: the phone form (WM-133) instead of the course page
 
     @property
     def href(self) -> str:
+        if self.after:
+            return f"/mein-bereich/nach-dem-kurs/{self.t.id}"
         return f"/planung/{self.t.course_id}?termin={self.t.id}"
 
 
@@ -111,7 +114,7 @@ def tasks(session: Session, person: Person, today: dt.date) -> list[Task]:
             gaps = [g for g in hints.missing(t, hints.FINAL_FIELDS) if g in PARTICIPANT_LABELS]
             others = [h for h in open_hints if h.rule != "pflicht-abschluss"]
             text = f"Teilnehmende eintragen ({', '.join(gaps)})"
-            result.append(Task(t, hints.KRITISCH, "Teilnehmende", text, "Eintragen", len(others)))
+            result.append(Task(t, hints.KRITISCH, "Teilnehmende", text, "Eintragen", len(others), after=True))
         elif open_hints:
             top = open_hints[0]
             result.append(Task(t, top.level, top.level, top.text, "Ansehen", len(open_hints) - 1))

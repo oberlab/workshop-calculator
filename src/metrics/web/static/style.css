@@ -1020,3 +1020,43 @@ table.mun input[type="number"] { width: 90px; }
 .bulk form { margin: 0; }
 .add-form > .btn { justify-self: start; }
 .add-termine + .field-label { margin-top: 16px; }
+/* After the course: the phone form (WM-133) */
+.after-form { display: grid; gap: 16px; max-width: 560px; }
+.steppers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.stepper { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); text-align: center; }
+.stepper-label { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+.stepper-control { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.stepper-control input { width: 100%; min-width: 0; min-height: 44px; padding: 0 2px; text-align: center; font: 700 1.5rem var(--heading); border-color: transparent; background: transparent; -moz-appearance: textfield; appearance: textfield; }
+.stepper-control input::-webkit-inner-spin-button, .stepper-control input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper-control input:focus { border-color: var(--line-control); }
+.stepper-step {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line-control);
+  background: var(--surface);
+  color: var(--link);
+  font: 700 1.4rem/1 var(--heading);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.stepper-step:hover { background: var(--accent-tint); }
+/* Without JavaScript the buttons stay hidden: the field looks like a field. */
+.stepper:has(.stepper-step[hidden]) input { border-color: var(--line-control); background: var(--surface); }
+.after-total { margin: 10px 0 0; }
+.origins { display: grid; gap: 8px; margin-top: 10px; }
+.origin-row .stepper { grid-template-columns: minmax(0, 1fr) 150px; align-items: center; text-align: left; padding: 6px 10px; }
+.origin-row .stepper-step { width: 40px; height: 40px; }
+.origin-row .stepper-control input { font-size: 1.2rem; min-height: 40px; }
+.origin-free { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 8px; }
+.origin-free input[type="number"] { text-align: center; }
+.after-sum { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--warning-tint); font-weight: 600; }
+.after-sum.is-ok { background: var(--success-tint); color: var(--success-ink); }
+.after-summary { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
+.after-done { width: 100%; min-height: 48px; font-size: 1.05rem; }
+.after-links { margin: 8px 0 0; text-align: center; }
+@media (max-width: 400px) {
+  .origin-row .stepper { grid-template-columns: minmax(0, 1fr) 132px; }
+  .origin-row .stepper-step { width: 36px; height: 36px; }
+}

@@ -69,7 +69,7 @@ def plan(world):
     return w, {"a": a.id, "b": b.id, "held": held.id, "late": late.id}
 
 
-def _ids(html: str, pattern: str = r"\?termin=(\d+)") -> set[int]:
+def _ids(html: str, pattern: str = r"(?:\?termin=|/nach-dem-kurs/)(\d+)") -> set[int]:
     return {int(i) for i in re.findall(pattern, html)}
 
 

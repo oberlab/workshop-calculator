@@ -76,6 +76,10 @@ TEAM_ROUTES = {
     "GET /mein-bereich",
     "GET /kalender",
     "GET /kalender/termin/{appointment_id:int}",
+    # After the course (WM-133): the phone form for participants, Herkunft and a note; any team
+    # member may enter them, like on the course page. Saving goes through `metrics.planning.workflow`.
+    "GET /mein-bereich/nach-dem-kurs/{appointment_id:int}",
+    "POST /mein-bereich/nach-dem-kurs/{appointment_id:int}",
     # Series (WM-111): add Termine, bulk actions over the Termine of a course.
     "POST /planung/{course_id:int}/termine",
     "POST /planung/{course_id:int}/alle",
