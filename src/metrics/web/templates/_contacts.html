@@ -1,0 +1,24 @@
+{# Contact persons (WM-141): how one is shown and its form fields, for the course page and the place
+   in Stammdaten. Import with {% import "_contacts.html" as contacts %}. Contact data is personal data
+   of people outside the team: it appears only on these pages, never in a link to this app. #}
+{% import "_ui.html" as ui %}
+
+{# One contact: name, role, and phone and e-mail as links for the phone or mail program. #}
+{% macro card(c) -%}
+<div class="contact">
+  <p class="contact-name">{{ c.name }}{% if c.role %} <span class="muted">({{ c.role }})</span>{% endif %}</p>
+  {% if c.phone or c.email %}<p class="contact-ways">
+    {%- if c.phone %}<a href="tel:{{ c.phone|replace(' ', '') }}">{{ c.phone }}</a>{% endif %}
+    {%- if c.phone and c.email %} · {% endif %}
+    {%- if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The fields of a contact. fields: (name, label) pairs; values and errors by field name. #}
+{% macro fields(fields, values, errors) -%}
+<div class="fields">
+  {% for name, label in fields %}
+  {{ ui.field(label, name, values.get(name), type={"email": "email", "phone": "tel"}.get(name, "text"), required=name == "name", error=errors.get(name), attrs={"autocomplete": "off", "maxlength": 254 if name == "email" else (40 if name == "phone" else 120)}) }}
+  {% endfor %}
+</div>
+{%- endmacro %}

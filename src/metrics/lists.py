@@ -816,6 +816,10 @@ def merge(session: Session, kind: Kind, entry, target, by: str, reason: str | No
             session.refresh(course)
         if kind in (PLACES, CONTEXTS):
             _recompute_target_groups(session, courses, by, why)
+        if kind is PLACES:
+            from metrics import contacts  # contacts imports this module
+
+            contacts.move(session, entry, target, by, why)
         moved = len(courses)
     table = kind.model.__tablename__
     _log(session, table, entry.id, "status", entry.status, MERGED, by, why)

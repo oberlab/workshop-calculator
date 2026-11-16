@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from metrics import courses, hints, lists
+from metrics import contacts, courses, hints, lists
 from metrics.db import (
     ABGESCHLOSSEN,
     ACTIVE_STATUSES,
@@ -312,6 +312,8 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
     workflow._record(session, TABLE, t.id, before, workflow.appointment_snapshot(t), by, why)
     if total != t.participants_total:
         workflow.log(session, t, "participants_total", total, t.participants_total, by, why)
+    if "place" in changes:
+        contacts.drop_if_elsewhere(session, course, by)
     _decide(proposal, CONFIRMED, by, reason)
     courses.renumber(session, course, by)
     hints.refresh(session, [a.id for a in course.appointments])

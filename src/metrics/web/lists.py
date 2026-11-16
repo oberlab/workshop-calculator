@@ -7,6 +7,11 @@ routes in `access.py`. The Personen page is admin-only and has its own routes (`
 reuses the handlers here); the generic list routes refuse it, while the people picker stays open to
 the team.
 
+The place detail also lists its contact persons (WM-141, `metrics.contacts`): add
+(`POST /stammdaten/orte/<id>/kontakte`), change (`.../kontakte/<kontakt>`) and delete on request
+(`.../kontakte/<kontakt>/loeschen`, with a confirmation). Any team member may; contact data never goes
+into an address or the page message.
+
 The picker (`_lists.html`, macro `picker`) is a select of the active entries with a "Neu vorschlagen"
 button. `GET /stammdaten/<liste>/auswahl` renders it (htmx swaps it in place: after a change, to show
 the details of the chosen entry, or with the proposal fields open); `POST` to the same address adds
@@ -22,8 +27,8 @@ from urllib.parse import parse_qs, quote, urlencode
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from metrics import hints, lists
-from metrics.db import CONFIRMED, MERGED, PROPOSED, get_sessionmaker
+from metrics import contacts, hints, lists
+from metrics.db import CONFIRMED, MERGED, PROPOSED, Contact, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.web import sessions
 from metrics.web.common import TIMEZONE, current_login, page, templates
@@ -43,6 +48,7 @@ FIELD_LABELS = {
     "status": "Status",
     "merged_into_id": "Zusammengeführt in",
     "login_subject": "Anmeldung",
+    "contact": "Kontaktperson",  # WM-141: the Verlauf names the event, never the values
 } | {f.name: f.label for fields in lists.FIELDS.values() for f in fields}
 
 
@@ -113,7 +119,10 @@ def _list_page(
     status_code: int = 200,
     error: str | None = None,
     selected_id: int | None = None,
+    contact_form: dict | None = None,
 ):
+    """`contact_form`: a contact form to show again with its errors (`id` None for a new contact,
+    `values`, `errors`)."""
     params = request.query_params
     query = (params.get("q") or "").strip()[:100]
     status = params.get("status") or "aktiv"
@@ -209,6 +218,15 @@ def _list_page(
             "timezone": TIMEZONE,
             "PROPOSED": PROPOSED,
             "MERGED": MERGED,
+            "contacts": (
+                {
+                    "list": contacts.for_place(session, entry),
+                    "fields": contacts.FIELDS,
+                    "form": contact_form or {},
+                }
+                if kind is lists.PLACES and detail is not None and entry.status != MERGED
+                else None
+            ),
         }
         if kind is lists.PEOPLE:
             from metrics.web import people  # the people router imports this module
@@ -286,6 +304,78 @@ def _entry(session, kind: lists.Kind, entry_id: int):
     if entry is None:
         raise HTTPException(404, "Unbekannter Eintrag")
     return entry
+
+
+# --- Contact persons at a place (WM-141) -------------------------------------------------------
+
+
+def _place(session, place_id: int):
+    place = lists.get(session, lists.PLACES, place_id)
+    if place is None or place.status == MERGED:
+        raise HTTPException(404, "Unbekannter Ort")
+    return place
+
+
+def _contact(session, place_id: int, contact_id: int) -> Contact:
+    contact = session.get(Contact, contact_id)
+    if contact is None or contact.place_id != place_id:
+        raise HTTPException(404, "Unbekannte Kontaktperson")
+    return contact
+
+
+def _contact_refused(request: Request, place_id: int, form: dict, contact_id, errors=None, error=None):
+    shown = {name: form.get(name, "") for name, _ in contacts.FIELDS}
+    return _list_page(
+        request,
+        lists.PLACES,
+        status_code=422,
+        error=error,
+        selected_id=place_id,
+        contact_form={"id": contact_id, "values": shown, "errors": errors or {}},
+    )
+
+
+@router.post("/stammdaten/orte/{place_id:int}/kontakte", response_class=HTMLResponse)
+async def add_contact(place_id: int, request: Request):
+    form = await _form(request)
+    with get_sessionmaker()() as session, session.begin():
+        place = _place(session, place_id)
+        values, errors = contacts.parse(form)
+        if not errors:
+            contacts.add(session, place, values, _who(request))
+    if errors:
+        return _contact_refused(request, place_id, form, None, errors)
+    return _back(lists.PLACES, place_id, "Kontaktperson angelegt.")
+
+
+@router.post("/stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}", response_class=HTMLResponse)
+async def edit_contact(place_id: int, contact_id: int, request: Request):
+    form = await _form(request)
+    with get_sessionmaker()() as session, session.begin():
+        contact = _contact(session, place_id, contact_id)
+        values, errors = contacts.parse(form)
+        changed = [] if errors else contacts.update(session, contact, values, _who(request))
+    if errors:
+        return _contact_refused(request, place_id, form, contact_id, errors)
+    return _back(lists.PLACES, place_id, "Kontaktperson gespeichert." if changed else "Nichts geändert.")
+
+
+@router.post(
+    "/stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}/loeschen", response_class=HTMLResponse
+)
+async def delete_contact(place_id: int, contact_id: int, request: Request):
+    """Delete a contact on request (the one sanctioned deletion of WM-141), after a confirmation."""
+    form = await _form(request)
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            contact = _contact(session, place_id, contact_id)
+            n = contacts.delete(session, contact, _who(request), form.get("really") == "1")
+    except contacts.ContactError as error:
+        return _list_page(request, lists.PLACES, status_code=422, error=str(error), selected_id=place_id)
+    message = "Kontaktperson gelöscht."
+    if n:
+        message += f" Aus {n} Kurs(en) entfernt; dort steht „Kontakt gelöscht“ im Verlauf."
+    return _back(lists.PLACES, place_id, message)
 
 
 def _decision(request: Request, kind: lists.Kind, entry_id: int, error: lists.ListError):

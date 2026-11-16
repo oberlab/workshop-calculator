@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 {% import "_lists.html" as lists %}
+{% import "_contacts.html" as contact_ui %}
 
 {% block title %}{{ kind.label }}{% endblock %}
 {% block heading %}{{ kind.label }}{% endblock %}
@@ -118,6 +119,43 @@
         <div class="row">{{ ui.button("Ablehnen", type="submit", kind="danger") }}</div>
       </form>
       {% endif %}
+    </section>
+    {% endif %}
+
+    {% if contacts %}
+    {% set cf = contacts.form %}
+    <section class="contacts" id="kontakte" aria-labelledby="kontakte-titel">
+      <h3 id="kontakte-titel">Kontaktpersonen {{ ui.count(contacts.list|length) }}</h3>
+      <p class="help">Werden im Kurs gewählt und nur dort und hier gezeigt, nie in Auswertungen oder Exporten. Nur was für die Planung nötig ist.</p>
+      {% for c in contacts.list %}
+      {% set editing = cf and cf.id == c.id %}
+      <div class="contact-entry">
+        {{ contact_ui.card(c) }}
+        <details{% if editing %} open{% endif %}>
+          <summary>Ändern</summary>
+          <form method="post" action="/stammdaten/orte/{{ e.id }}/kontakte/{{ c.id }}" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {{ contact_ui.fields(contacts.fields, cf["values"] if editing else {"name": c.name, "role": c.role, "email": c.email, "phone": c.phone}, cf.errors if editing else {}) }}
+            <div class="row">{{ ui.button("Speichern", type="submit", kind="secondary", size="sm") }}</div>
+          </form>
+        </details>
+        <details class="danger">
+          <summary>Löschen …</summary>
+          <form method="post" action="/stammdaten/orte/{{ e.id }}/kontakte/{{ c.id }}/loeschen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="check"><input type="checkbox" name="really" value="1" required> Ja, diese Kontaktperson auf Wunsch löschen</label>
+            <p class="help">Löscht Name, Funktion, E-Mail und Telefon endgültig und entfernt die Person aus allen Kursen. Im Verlauf steht nur „Kontakt gelöscht“ mit wer und wann.</p>
+            {{ ui.button("Endgültig löschen", type="submit", kind="danger", size="sm") }}
+          </form>
+        </details>
+      </div>
+      {% else %}<p class="help">Noch keine Kontaktpersonen.</p>{% endfor %}
+      {% set adding = cf and cf.id is none %}
+      <details class="add-contact"{% if adding %} open{% endif %}>
+        <summary class="btn btn-secondary btn-sm">+ Kontaktperson</summary>
+        <form method="post" action="/stammdaten/orte/{{ e.id }}/kontakte" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          {{ contact_ui.fields(contacts.fields, cf["values"] if adding else {}, cf.errors if adding else {}) }}
+          <div class="row">{{ ui.button("Anlegen", type="submit") }}</div>
+        </form>
+      </details>
     </section>
     {% endif %}
 

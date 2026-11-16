@@ -15,6 +15,9 @@
 - `POST /planung/{course_id}/termine`: "Termine hinzufügen" (weekly, every two weeks, or dates).
 - `POST /planung/{course_id}/alle`: bulk actions over the course's Termine (`action`: `confirm`,
   `calendar`, `cancel`); the calendar gets one update per changed Termin.
+- `POST /planung/{course_id}/kontakt`: the Kontaktperson of the course (WM-141, `metrics.contacts`):
+  `action` `waehlen` (one of the place's contacts, `kontakt`), `neu` (add one to the place and choose
+  it) or `entfernen`. Contact data never goes into an address or the page message.
 - `POST /planung/{course_id}/korrektur`: propose a correction of an Abgeschlossen Termin with a
   reason (WM-132, `metrics.planning.corrections`); it changes nothing until an admin confirms it.
 - `GET /planung/termin/{id}`: the course page of a Termin (links from hints and the calendar).
@@ -34,7 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import courses, hints, lists
+from metrics import contacts, courses, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -46,6 +49,7 @@ from metrics.db import (
     STAGES,
     Appointment,
     AppointmentOrigin,
+    Contact,
     Context,
     Course,
     Format,
@@ -415,12 +419,26 @@ def course_context(
         "blocking": blocking,
         "warnings": warnings,
         "history": history,
+        "contact": contact_context(session, course) if not new else None,
         "labels": workflow.LABELS,
         "badge": hints.BADGE,
         "today": today(),
         "timezone": TIMEZONE,
         "errors": errors or [],
         "message": request.query_params.get("hinweis"),
+    }
+
+
+def contact_context(session: Session, course: Course, values=None, errors=None) -> dict:
+    """The Kontakt section: the chosen contact, the place's contacts and the form for a new one."""
+    place = contacts.place_of(session, course)
+    return {
+        "place": place,
+        "chosen": course.contact,
+        "choices": contacts.for_place(session, place),
+        "fields": contacts.FIELDS,
+        "entered": values or {},
+        "errors": errors or {},
     }
 
 
@@ -808,6 +826,57 @@ async def accept_hint(course_id: int, request: Request):
             return _refused(request, session, course_id, termin_id, FormError(str(error)))
         session.commit()
         return _back(t, "Hinweis akzeptiert.")
+
+
+CONTACT_DONE = {
+    "waehlen": "Kontaktperson gewählt.",
+    "neu": "Kontaktperson angelegt und gewählt.",
+    "entfernen": "Kontaktperson entfernt.",
+}
+
+
+@router.post("/planung/{course_id:int}/kontakt", response_class=HTMLResponse)
+async def course_contact(course_id: int, request: Request):
+    """Choose, add or remove the Kontaktperson of a course (WM-141). Works in every stage: the
+    contact is planning data and never counted."""
+    form = await _form(request)
+    action = workflow.one(form, "action")
+    termin_id = _int(workflow.one(form, "termin"))
+    by = _who(request)
+    if action not in CONTACT_DONE:
+        raise HTTPException(400, "Unbekannte Aktion")
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
+        values, errors = {}, {}
+        try:
+            if action == "waehlen":
+                contact_id = _int(workflow.one(form, "kontakt"))
+                contact = session.get(Contact, contact_id) if contact_id else None
+                if contact is None:
+                    raise contacts.ContactError("Bitte eine Kontaktperson wählen.")
+                contacts.choose(session, course, contact, by)
+            elif action == "neu":
+                place = contacts.place_of(session, course)
+                if place is None:
+                    raise contacts.ContactError("Bitte zuerst einen Ort wählen.")
+                values, errors = contacts.parse({k: workflow.one(form, k) for k, _ in contacts.FIELDS})
+                if errors:
+                    raise contacts.ContactError("Bitte die markierten Angaben prüfen.")
+                contacts.choose(session, course, contacts.add(session, place, values, by), by)
+            else:
+                contacts.choose(session, course, None, by)
+        except contacts.ContactError as error:
+            session.rollback()
+            course = _get_course(session, course_id)
+            t = _selected(course, termin_id)
+            shown = {k: workflow.one(form, k) for k, _ in contacts.FIELDS} if action == "neu" else None
+            extra = {"contact": contact_context(session, course, shown, errors), "contact_open": True}
+            return _course_page(
+                request, session, course, t, errors=[str(error)], status_code=400, extra=extra
+            )
+        session.commit()
+        return _back(t, CONTACT_DONE[action])
 
 
 @router.post("/planung/{course_id:int}/korrektur", response_class=HTMLResponse)
