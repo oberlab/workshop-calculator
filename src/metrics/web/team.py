@@ -4,7 +4,8 @@
 - `ansicht` (`woche`, default, or `monat`) and `datum` (any day of the week or month, default
   today): the calendar lanes, one per active team member and anyone else with a Termin, every
   stage but Abgesagt (the calendar's lanes and side panel, `_lanes.html`); absences as grey
-  blocks once WM-142 fills `workload.absences`.
+  blocks once WM-142 fills `workload.absences`. Below them the equipment lanes of the same days
+  (WM-140), when there is a Material list.
 - The workload table per person and calendar week: four weeks from the week shown, or the weeks
   of the month shown, with the estimated working hours (`metrics.planning.workload`) against the
   person's weekly hours, and the formula in words.
@@ -18,7 +19,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from metrics import hints, lists
+from metrics import equipment, hints, lists
 from metrics.db import get_sessionmaker
 from metrics.planning import lanes, workflow, workload
 from metrics.web import planning
@@ -62,6 +63,10 @@ def team(request: Request):
         away = workload.absences(session, start, max(end, table_end))
         found = planning.open_hints(session, [t.id for t in in_lanes])
         rows = workload.table(session, team_people, start, weeks, shown)
+        # Equipment lanes (WM-140) for the same days, when there is a Material list.
+        items = equipment.listed(session)
+        booked = equipment.booked_between(session, start, end) if items else []
+        found |= planning.open_hints(session, [t.id for t in booked if t.id not in found])
         return page(
             request,
             "team.html",
@@ -71,6 +76,7 @@ def team(request: Request):
                 "day": day,
                 "title": _title(view, day, start, end),
                 "weeks": lanes.weeks(in_lanes, start, end, people=team_people, absences=away),
+                "equipment_weeks": lanes.equipment_weeks(booked, start, end, items) if items else [],
                 "count": len(in_lanes),
                 "today": today(),
                 "prev": link(datum=_shift(view, day, -1).isoformat()),
@@ -84,7 +90,7 @@ def team(request: Request):
                 "free": workload.who_is_free(session, free_day, free_start, free_end),
                 "top": {i: hs[0] for i, hs in found.items()},
                 "badge": hints.BADGE,
-                "titles": {t.id: workflow.title(t) for t in in_lanes},
+                "titles": {t.id: workflow.title(t) for t in in_lanes + booked},
                 "hours": workload.number,
             },
         )

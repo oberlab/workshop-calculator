@@ -21,6 +21,11 @@
       <h2 class="cal-title">{{ title }} <span class="muted small">{{ count }} Termin{{ "e" if count != 1 }}</span></h2>
     </div>
     {% for week in weeks %}{{ cal.week_section(week, loop.index) }}{% endfor %}
+    {% if equipment_weeks %}
+    <h2 class="cal-title team-equipment">Material</h2>
+    <p class="help">Was die Termine eines Tages zusammen brauchen; ein Satz ist den ganzen Tag belegt.</p>
+    {% for week in equipment_weeks %}{{ cal.equipment_section(week, loop.index) }}{% endfor %}
+    {% endif %}
   </div>
 </div>
 

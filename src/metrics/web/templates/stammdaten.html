@@ -33,7 +33,7 @@
   <section class="panel list-pane" aria-labelledby="liste-titel">
     <h2 id="liste-titel">{{ entries|length }} {{ "Eintrag" if entries|length == 1 else "Einträge" }}</h2>
     {% if entries %}
-    {% call ui.table(["Name", "Status", "Angaben", "Termine" if kind.slug == "personen" else "Kurse"], caption=kind.label) %}
+    {% call ui.table(["Name", "Status", "Angaben", "Termine" if kind.slug in ("personen", "material") else "Kurse"], caption=kind.label) %}
       {% for e in entries %}
       {% set u = usage.get(e.id) %}
       <tr>
@@ -43,7 +43,7 @@
           {% if describe[e.id] %}<span class="muted">{{ describe[e.id] }}</span>{% endif %}
           {% for problem in problems.get(e.id, []) %} {{ ui.hint_badge("medium", problem) }}{% endfor %}
         </td>
-        <td class="mono">{{ (u.appointments if kind.slug == "personen" else u.courses) if u else 0 }}</td>
+        <td class="mono">{{ (u.appointments if kind.slug in ("personen", "material") else u.courses) if u else 0 }}</td>
       </tr>
       {% endfor %}
     {% endcall %}
@@ -55,7 +55,7 @@
   {% if new %}
   <section class="panel detail-pane" id="eintrag" aria-labelledby="eintrag-titel">
     <h2 id="eintrag-titel">Neu vorschlagen: {{ kind.singular }}</h2>
-    <p class="help">Sofort nutzbar. Ein Admin bestätigt den Eintrag, führt ihn mit einem vorhandenen zusammen oder lehnt ihn ab; bis dahin kann kein Termin damit abgeschlossen werden.</p>
+    <p class="help">Sofort nutzbar. Ein Admin bestätigt den Eintrag, führt ihn mit einem vorhandenen zusammen oder lehnt ihn ab{% if kind.slug != "material" %}; bis dahin kann kein Termin damit abgeschlossen werden{% endif %}.</p>
     <form method="post" action="/stammdaten/{{ kind.slug }}" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {{ lists.entry_fields(fields_new, new_values, new_errors, school_types, categories, new=true, autofocus=true) }}
       {{ ui.field("Anmerkung für den Admin", "reason", new_values.get("reason"), type="textarea") }}
@@ -68,7 +68,7 @@
     <div class="detail-head"><h2 id="eintrag-titel">{{ detail_label }}</h2>{{ lists.status_tag(e.status) }}</div>
     {% if error %}{{ ui.alert(error, "error") }}{% endif %}
     <p class="help">
-      {% if kind.slug == "personen" %}In {{ detail.usage.appointments }} Terminen eingetragen{% else %}Verwendet in {{ detail.usage.courses }} Kursen mit {{ detail.usage.appointments }} Terminen{% endif %}, davon {{ detail.usage.final }} abgeschlossen.
+      {% if kind.slug == "personen" %}In {{ detail.usage.appointments }} Terminen eingetragen{% elif kind.slug == "material" %}Eingeplant in {{ detail.usage.appointments }} Terminen von {{ detail.usage.courses }} Kursen{% else %}Verwendet in {{ detail.usage.courses }} Kursen mit {{ detail.usage.appointments }} Terminen{% endif %}, davon {{ detail.usage.final }} abgeschlossen.
     </p>
     {% if detail.merged_into %}
     {{ ui.alert("Zusammengeführt in „" ~ merged_label ~ "“: alle Kurse und Termine stehen jetzt dort.", "info") }}
@@ -93,6 +93,24 @@
       {% for f in fields_edit %}<dt>{{ f.label }}</dt><dd>{{ readable(f, detail.values.get(f.name)) }}</dd>{% endfor %}
     </dl>
     {% if e.status != MERGED %}<p class="help">Bestätigte Einträge ändert ein Admin.</p>{% endif %}
+    {% endif %}
+    {% if needs %}
+    <section aria-labelledby="material-titel">
+      <h3 id="material-titel">Material</h3>
+      <p class="help">Was das Format üblicherweise braucht. Neue Termine übernehmen es und können es ändern; vorhandene Termine bleiben, wie sie sind.</p>
+      {% if needs.rows and detail.editable %}
+      <form method="post" action="/stammdaten/formate/{{ e.id }}/material" class="entry-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="fields">
+          {% for item, n in needs.rows %}{{ ui.field(item.name, "material_" ~ item.id, n, type="number", help=(item.quantity ~ " vorhanden") if item.quantity is not none else "Anzahl noch offen", attrs={"min": 0, "inputmode": "numeric"}) }}{% endfor %}
+        </div>
+        <div class="row">{{ ui.button("Material speichern", type="submit", kind="secondary") }}</div>
+      </form>
+      {% elif needs.rows %}
+      <p>{{ needs.text or "Kein Material." }}</p>
+      {% else %}
+      <p class="help">Die Materialliste ist leer: unter <a href="/stammdaten/material">Material</a> vorschlagen.</p>
+      {% endif %}
+    </section>
     {% endif %}
     {% if kind.slug == "personen" %}<p class="help">Anmeldung: {{ "verknüpft" if e.login_subject else "noch nicht verknüpft (beim ersten Login über die E-Mail-Adresse)" }}.</p>{% endif %}
 

@@ -5,7 +5,7 @@
 {% block title %}Kalender{% endblock %}
 {% block heading %}Kalender{% endblock %}
 {% block actions %}{{ ui.button("+ Neuer Kurs", href="/planung/neu") }}{% endblock %}
-{% block subheading %}<p class="subheading">Eine Spur pro Person; gestrichelt ist Unterstützung. Ein Klick zeigt den Kurs.</p>{% endblock %}
+{% block subheading %}<p class="subheading">{% if lanes_by == "material" %}Eine Spur pro Material: was die Termine eines Tages zusammen brauchen. Ein Satz ist den ganzen Tag belegt.{% else %}Eine Spur pro Person; gestrichelt ist Unterstützung.{% endif %} Ein Klick zeigt den Kurs.</p>{% endblock %}
 
 {% block content %}
 <div class="panel panel-flush">
@@ -18,7 +18,11 @@
   {% endcall %}
   <div class="tab-panel cal-panel">
     <div class="cal-head">
-      <h2 class="cal-title">{{ title }} <span class="muted small">{{ count }} Termin{{ "e" if count != 1 }}</span></h2>
+      <h2 class="cal-title">{{ title }} <span class="muted small">{{ count }} Termin{{ "e" if count != 1 }}{{ " mit Material" if lanes_by == "material" }}</span></h2>
+      {{ ui.tabs(lane_kinds, lanes_by, "Spuren") }}
+      {% if lanes_by == "material" %}
+      <p class="help">Alle Termine außer abgesagten, unabhängig von Person, Kontext und Phase: Material teilt sich das ganze Team.</p>
+      {% else %}
       <form class="filter-row cal-filters" method="get" action="/kalender" aria-label="Filter">
         <input type="hidden" name="ansicht" value="{{ view }}">
         <input type="hidden" name="datum" value="{{ day.isoformat() }}">
@@ -38,10 +42,12 @@
         {{ ui.button("Anzeigen", type="submit", kind="secondary", size="sm") }}
         {% if params.values()|select|list %}<a class="reset" href="/kalender?ansicht={{ view }}&amp;datum={{ day.isoformat() }}">Zurücksetzen</a>{% endif %}
       </form>
+      {% endif %}
     </div>
 
-    {% for week in weeks %}{{ cal.week_section(week, loop.index) }}{% endfor %}
-    {% if list_href %}<p class="help"><a href="{{ list_href }}">Dieselben Termine in der Kursliste</a></p>{% endif %}
+    {% for week in weeks %}{% if lanes_by == "material" %}{{ cal.equipment_section(week, loop.index) }}{% else %}{{ cal.week_section(week, loop.index) }}{% endif %}{% endfor %}
+    {% if lanes_by == "material" and not weeks[0].lanes %}<p class="help">Die Materialliste ist leer: unter <a href="/stammdaten/material">Material</a> vorschlagen.</p>{% endif %}
+    {% if list_href and lanes_by != "material" %}<p class="help"><a href="{{ list_href }}">Dieselben Termine in der Kursliste</a></p>{% endif %}
   </div>
 </div>
 

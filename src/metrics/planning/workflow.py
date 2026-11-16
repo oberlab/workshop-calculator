@@ -2,11 +2,13 @@
 availability and what is still missing. Ported from the prototype's `service.py` (WM-90).
 
 The stage lives on the Termin (`Appointment.stage`). The shared fields (format, context, place,
-class/age, note) are on the course; date, times, alternatives, team, participants, Herkunft and
-`billed` on the Termin. Every function here takes the Termin it acts on, so they work per Termin
-of a series; adding Termine, "dieser und alle folgenden" and the bulk actions are in
-`metrics.planning.series` (WM-111). Saving, cancelling and deleting recompute the Terminnummer of
-the course (`courses.renumber`: by date, cancelled Termine have none).
+class/age, note) are on the course; date, times, alternatives, team, equipment, participants,
+Herkunft and `billed` on the Termin. A new Termin copies the equipment its format needs, and the
+needs follow a new format while nobody changed them (`metrics.equipment`, WM-140). Every function
+here takes the Termin it acts on, so they work per Termin of a series; adding Termine, "dieser und
+alle folgenden" and the bulk actions are in `metrics.planning.series` (WM-111). Saving, cancelling
+and deleting recompute the Terminnummer of the course (`courses.renumber`: by date, cancelled
+Termine have none).
 
 Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
 - Geplant enforces nothing (a day without times is fine) and allows alternative dates;
@@ -37,7 +39,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics import contacts, courses, hints, lists
+from metrics import contacts, courses, equipment, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -78,12 +80,13 @@ COURSE = "course"  # format, context, place, class/age, note
 TIMES = "times"  # date, start, end
 ALTERNATIVES = "alternatives"
 TEAM = "team"
+EQUIPMENT = "equipment"  # what the Termin needs of the Material list (WM-140)
 HELD = "held"  # participants, Herkunft
 BILLED = "billed"
 EDITABLE = {
-    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM, HELD},
-    BESTAETIGT: {COURSE, TIMES, TEAM, HELD},
-    DURCHGEFUEHRT: {COURSE, TIMES, TEAM, HELD, BILLED},
+    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM, EQUIPMENT, HELD},
+    BESTAETIGT: {COURSE, TIMES, TEAM, EQUIPMENT, HELD},
+    DURCHGEFUEHRT: {COURSE, TIMES, TEAM, EQUIPMENT, HELD, BILLED},
     ABGESCHLOSSEN: {BILLED},
     ABGESAGT: set(),
 }
@@ -104,6 +107,7 @@ LABELS = {
     "alternatives": "Alternativdaten",
     "lead": "Kursleitung",
     "support": "Unterstützung",
+    "equipment": "Material",
     "participants_female": "TN weiblich",
     "participants_male": "TN männlich",
     "participants_diverse": "TN divers",
@@ -215,6 +219,7 @@ def appointment_snapshot(t: Appointment) -> dict[str, str]:
         "alternatives": ", ".join(_show(a.date) for a in t.alternatives),
         "lead": _entry(t.lead),
         "support": ", ".join(sorted(p.name for p in t.support)),
+        "equipment": equipment.text(t.equipment),
         **{name: _show(getattr(t, name)) for name, _ in PARTICIPANT_FIELDS},
         "origins": "; ".join(f"{o.municipality} {o.participants}" for o in t.origins),
         "billed": _show(t.billed),
@@ -369,6 +374,11 @@ def _apply_appointment(session: Session, t: Appointment, form: Form, allowed: se
             if person is not None and person is not lead and person not in support:
                 support.append(person)
         t.support = support
+    if EQUIPMENT in allowed and "material" in form:  # forms without the fields leave it alone
+        current = equipment.needs_of(t.equipment)
+        needs = equipment.parse(session, form, current, errors)
+        if needs != current:
+            equipment.set_needs(session, t, needs)
     if HELD in allowed:
         for name, label in PARTICIPANT_FIELDS:
             if name in form:  # the phone form (WM-133) leaves out counts that are already entered
@@ -402,6 +412,7 @@ def create(session: Session, form: Form, by: str) -> Appointment:
     course = courses.create_course(session, by=by)
     _apply_course(session, course, form, errors)
     t = courses.add_appointment(session, course, by=by, date=None, stage=GEPLANT)
+    equipment.copy_needs(session, t, course.format)
     _apply_appointment(session, t, form, EDITABLE[GEPLANT], errors)
     if errors:
         raise FormError(errors)
@@ -420,6 +431,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
         raise FormError(f"Ein Termin in „{t.stage}“ kann nicht mehr geändert werden.")
     course = t.course
     before_course, before = course_snapshot(course), appointment_snapshot(t)
+    old_format = course.format
     errors: list[str] = []
     if COURSE in allowed:
         _apply_course(session, course, form, errors)
@@ -431,9 +443,28 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     changed += _record(session, "appointments", t.id, before, appointment_snapshot(t), by)
     if "place" in changed:
         contacts.drop_if_elsewhere(session, course, by)
+    if course.format is not old_format:
+        _follow_format(session, course, old_format, by)
     courses.renumber(session, course, by)
     hints.refresh(session, [a.id for a in course.appointments])
     return changed
+
+
+def _follow_format(session: Session, course: Course, old: Format | None, by: str) -> None:
+    """The Termine in planning whose equipment was still the old format's take the new format's."""
+    planning = [a for a in course.appointments if EQUIPMENT in EDITABLE[a.stage]]
+    before = {a.id: equipment.text(a.equipment) for a in planning}
+    for a in equipment.follow_format(session, planning, old, course.format):
+        lists._log(
+            session,
+            "appointments",
+            a.id,
+            "equipment",
+            before[a.id] or None,
+            equipment.text(a.equipment) or None,
+            by,
+            "vom neuen Format übernommen",
+        )
 
 
 def set_billed(session: Session, t: Appointment, billed: bool, by: str) -> None:

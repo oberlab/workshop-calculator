@@ -50,3 +50,43 @@
   {% endif %}
 </section>
 {%- endmacro %}
+
+
+{# The equipment lanes of one calendar week (WM-140): a row per item, a cell per day with what the
+   Termine of that day need together. A kit blocks the whole day, so a cell is over when its sum is
+   above the number available. Reads today, top, titles and badge of the page. #}
+{% macro equipment_section(week, index) -%}
+<section class="cal-week" aria-labelledby="material-kw-{{ index }}">
+  <h3 class="week-title" id="material-kw-{{ index }}">Material in KW {{ week.number }} · {{ week.monday.strftime("%d.%m.") }}–{{ week.days[-1].strftime("%d.%m.") }}</h3>
+  {% if week.booked %}
+  <div class="table-wrap">
+    <table class="cal-grid cal-equipment">
+      <caption class="visually-hidden">Material in KW {{ week.number }}: benötigt pro Tag</caption>
+      <thead><tr>
+        <th scope="col" class="cal-person">Material</th>
+        {% for d in week.days %}<th scope="col" class="{{ 'is-today' if d == today }}{{ ' is-quiet' if week.weekend_free and d.weekday() > 4 }}">{{ ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][d.weekday()] }} {{ d.day }}.</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for lane in week.lanes %}
+        <tr>
+          <th scope="row" class="cal-person"><span>{{ lane.item.name }}</span> <span class="muted mono" title="vorhanden">{{ lane.item.quantity if lane.item.quantity is not none else "?" }}</span></th>
+          {% for b in lane.days %}{% set d = week.days[loop.index0] %}
+          <td class="{{ 'is-today' if d == today }}{{ ' is-over' if b.over }}">
+            {% if b.termine %}
+            <span class="cal-load{{ ' is-over' if b.over }}">{{ b.needed }}{% if b.available is not none %} / {{ b.available }}{% endif %} · {{ b.courses }} Kurs{{ "e" if b.courses != 1 }}{% if b.over %} · <b>reicht nicht</b>{% endif %}</span>
+            {% for t, n in b.termine %}{% set flag = top.get(t.id) %}
+            <a class="cal-item stage-{{ t.stage|stage_key }}{{ ' is-flagged' if flag and flag.level == 'Kritisch' }}" href="/planung/termin/{{ t.id }}" hx-get="/kalender/termin/{{ t.id }}" hx-target="#termin-panel-body" data-side-panel="termin-panel" title="{{ titles[t.id] }}: {{ n }} {{ lane.item.name }}"><span class="cal-time mono">{{ n }}</span> <span class="cal-name">{{ titles[t.id] }}</span><span class="visually-hidden">, {{ t.stage }}</span></a>
+            {% endfor %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted small cal-empty">Kein Material verplant in KW {{ week.number }}.</p>
+  {% endif %}
+</section>
+{%- endmacro %}

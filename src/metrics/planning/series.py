@@ -2,14 +2,15 @@
 alle folgenden", and the bulk actions "Alle bestätigen" and "Restliche absagen".
 
 - Shared fields (format, context, place, class/age, note) are on the course; each Termin has its own
-  date, times and team and can deviate. New Termine copy the times and the team of a template
-  Termin (the one open on the course page) and start in Geplant.
+  date, times, team and equipment and can deviate. New Termine copy the times, the team and the
+  equipment of a template Termin (the one open on the course page; without one, the format's
+  equipment) and start in Geplant.
 - "Termine hinzufügen": weekly or every two weeks, n times from a first date, or picked dates.
   Holidays are not skipped (decided 2026-11-13): single dates are moved or deleted by hand.
 - The Terminnummer is computed from the date order (`courses.renumber`); the charts count the
   participants of number 1, or of every Termin for a continuous format (`analytics.totals`).
 - "Dieser und alle folgenden" applies the changed date (as a shift by the same number of days),
-  times and team of a Termin to the later Termine that are still in planning (Geplant, Bestätigt);
+  times, team and equipment of a Termin to the later Termine that are still in planning (Geplant, Bestätigt);
   every changed Termin gets its own Verlauf rows.
 - Bulk actions go through the single-Termin steps of `metrics.planning.workflow`, so the rules are
   the same; Termine that cannot take the step are skipped and named.
@@ -23,11 +24,11 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from metrics import courses, hints
+from metrics import courses, equipment, hints
 from metrics.db import ABGESAGT, BESTAETIGT, GEPLANT, Appointment, Course
 from metrics.instance import clean_name
 from metrics.planning import workflow
-from metrics.planning.workflow import TEAM, TIMES, Form, FormError
+from metrics.planning.workflow import EQUIPMENT, TEAM, TIMES, Form, FormError
 
 ONCE, WEEKLY, BIWEEKLY, DATES = "einmal", "woechentlich", "zweiwoechentlich", "daten"
 RHYTHMS = {
@@ -110,6 +111,7 @@ def add(
             stage=GEPLANT,
         )
         t.duration_hours = workflow._duration(t)
+        equipment.copy_needs(session, t, template or course.format)
         workflow._record(session, "appointments", t.id, {}, workflow.appointment_snapshot(t), by)
         added.append(t)
     courses.renumber(session, course, by)
@@ -148,6 +150,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, scope: str = "")
     later = following(t) if scope == FOLLOWING and t.stage in PLANNING else []
     old_date, old_times = t.date, (t.start_time, t.end_time)
     old_lead, old_support = t.lead, {p.id for p in t.support}
+    old_needs = equipment.needs_of(t.equipment)
     workflow.save(session, t, form, by)
     if not later:
         return []
@@ -155,7 +158,9 @@ def save(session: Session, t: Appointment, form: Form, by: str, scope: str = "")
     new_times = (t.start_time, t.end_time) if (t.start_time, t.end_time) != old_times else None
     new_lead = t.lead != old_lead
     new_support = {p.id for p in t.support} != old_support
-    if not (shift or new_times or new_lead or new_support):
+    new_needs = equipment.needs_of(t.equipment)
+    new_needs = new_needs if new_needs != old_needs else None
+    if not (shift or new_times or new_lead or new_support or new_needs is not None):
         return []
     reason = f"wie {label(t)}, dieser und alle folgenden"
     changed = []
@@ -174,6 +179,8 @@ def save(session: Session, t: Appointment, form: Form, by: str, scope: str = "")
             if new_support or new_lead:
                 support = list(t.support) if new_support else list(other.support)
                 other.support = [p for p in support if p is not other.lead]
+        if new_needs is not None and EQUIPMENT in allowed:
+            equipment.set_needs(session, other, new_needs)
         try:
             workflow._required_for_stage(other)
         except FormError as error:

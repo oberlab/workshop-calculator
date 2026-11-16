@@ -14,6 +14,7 @@
   <div><dt>Klasse/Alter</dt><dd>{{ course.class_age_text or "–" }}</dd></div>
   <div><dt>Kursleitung</dt><dd>{% if t.lead %}{{ ui.avatar(t.lead.name, "sm") }} {{ t.lead.name }}{% else %}–{% endif %}</dd></div>
   <div><dt>Unterstützung</dt><dd>{{ t.support|map(attribute="name")|join(", ") or "–" }}</dd></div>
+  {% if t.equipment %}<div><dt>Material</dt><dd>{% for e in t.equipment %}{{ e.quantity }} {{ e.equipment.name }}{{ ", " if not loop.last }}{% endfor %}</dd></div>{% endif %}
   {% if t.alternatives %}<div><dt>Alternativdaten</dt><dd class="mono">{% for a in t.alternatives %}{{ a.date|day }}{{ ", " if not loop.last }}{% endfor %}</dd></div>{% endif %}
 </dl>
 {% if course.note %}<p class="cal-note">{{ course.note }}</p>{% endif %}

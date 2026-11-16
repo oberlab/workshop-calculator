@@ -6,13 +6,17 @@ of its lead and in the lane of each support person (marked as support), and Term
 in a lane of their own. The cells of a lane are the seven days, each a list of `Item`s sorted by
 time. No pixel positions: the page draws the lanes with a CSS grid (the strict CSP allows no inline
 styles). The Team page (WM-131) reuses the lanes and adds absences and workload.
+
+Equipment lanes (WM-140): `equipment_weeks(appointments, start, end, items)` gives one lane per piece
+of equipment and a `Booking` per day with what the Termine of that day need together. A kit blocks
+the whole day, so a day is over when its sum is above the number available, whatever the times.
 """
 
 import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from metrics.db import Appointment, Person
+from metrics.db import ABGESAGT, Appointment, Equipment, Person
 
 LEAD = "lead"
 SUPPORT = "support"
@@ -112,3 +116,77 @@ def _lane(week: Week, label: str, person: Person | None) -> Lane:
     lane = Lane(label, person)
     week.lanes.append(lane)
     return lane
+
+
+# --- Equipment lanes (WM-140) ----------------------------------------------------------------------
+
+
+@dataclass
+class Booking:
+    """One piece of equipment on one day: the Termine that need it and how many each."""
+
+    available: int | None
+    termine: list[tuple[Appointment, int]] = field(default_factory=list)
+
+    @property
+    def needed(self) -> int:
+        return sum(n for _, n in self.termine)
+
+    @property
+    def over(self) -> bool:
+        return self.available is not None and self.needed > self.available
+
+    @property
+    def courses(self) -> int:
+        return len({t.course_id for t, _ in self.termine})
+
+
+@dataclass
+class EquipmentLane:
+    item: Equipment
+    days: list[Booking]
+
+
+@dataclass
+class EquipmentWeek:
+    monday: dt.date
+    lanes: list[EquipmentLane] = field(default_factory=list)
+
+    @property
+    def days(self) -> list[dt.date]:
+        return [self.monday + dt.timedelta(days=i) for i in range(7)]
+
+    @property
+    def number(self) -> int:
+        return self.monday.isocalendar().week
+
+    @property
+    def weekend_free(self) -> bool:
+        return not any(lane.days[5].termine or lane.days[6].termine for lane in self.lanes)
+
+    @property
+    def booked(self) -> bool:
+        return any(b.termine for lane in self.lanes for b in lane.days)
+
+
+def equipment_weeks(
+    appointments: Iterable[Appointment], start: dt.date, end: dt.date, items: Iterable[Equipment]
+) -> list[EquipmentWeek]:
+    """The equipment lanes for the weeks from `start` (a Monday) to `end`: a lane per item of `items`
+    (in that order) plus any other item a Termin needs; cancelled Termine do not count."""
+    items = list(items)
+    result = [EquipmentWeek(start + dt.timedelta(weeks=i)) for i in range(((end - start).days // 7) + 1)]
+    shown = sorted(appointments, key=sort_key)
+    for row in (row for t in shown for row in t.equipment):
+        if row.equipment is not None and all(row.equipment.id != item.id for item in items):
+            items.append(row.equipment)
+    for week in result:
+        week.lanes = [EquipmentLane(item, [Booking(item.quantity) for _ in range(7)]) for item in items]
+    lane_of = {item.id: i for i, item in enumerate(items)}
+    for t in shown:
+        if t.date is None or t.stage == ABGESAGT or not start <= t.date <= end:
+            continue
+        week = result[(t.date - start).days // 7]
+        for row in t.equipment:
+            week.lanes[lane_of[row.equipment_id]].days[t.date.weekday()].termine.append((t, row.quantity))
+    return result

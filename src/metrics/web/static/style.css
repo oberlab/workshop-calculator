@@ -1092,3 +1092,14 @@ table.mun input[type="number"] { width: 90px; }
 .contact-entry .entry-form, .add-contact .entry-form { margin-top: 8px; }
 .add-contact > summary { display: inline-flex; list-style: none; }
 .add-contact > summary::-webkit-details-marker { display: none; }
+
+/* ---- Equipment lanes (WM-140) ----------------------------------------------------------------- */
+
+/* A row per piece of equipment, a cell per day: the sum of the day, then its Termine. The lanes
+   scroll sideways on phones instead of becoming a list, since the sum per day is the point. */
+.cal-equipment { min-width: 40rem; }
+.cal-equipment .cal-load + .cal-item { margin-top: 4px; }
+.cal-grid td.is-over { background: var(--critical-tint); }
+.cal-load { display: block; font: 600 0.78rem var(--heading); color: var(--text-muted); }
+.cal-load.is-over { color: var(--critical-ink); }
+.team-equipment { margin-top: 24px; }

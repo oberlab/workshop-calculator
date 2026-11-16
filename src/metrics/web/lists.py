@@ -1,11 +1,12 @@
 """Stammdaten: one list-and-detail page per list and the picker for forms (WM-101).
 
-`/stammdaten/<liste>` (orte, kontexte, formate, personen) shows the entries with search and a status
-filter; `?id=` opens an entry in the detail panel (details, edit form, admin decisions, Verlauf),
-`?neu=1` the form for a new proposal. The admin decisions are separate POST routes, listed as admin
-routes in `access.py`. The Personen page is admin-only and has its own routes (`web/people.py`, which
-reuses the handlers here); the generic list routes refuse it, while the people picker stays open to
-the team.
+`/stammdaten/<liste>` (orte, kontexte, formate, material, personen) shows the entries with search and
+a status filter; `?id=` opens an entry in the detail panel (details, edit form, admin decisions,
+Verlauf), `?neu=1` the form for a new proposal. The admin decisions are separate POST routes, listed
+as admin routes in `access.py`. A format's detail panel also has the equipment it needs (WM-140),
+saved by `POST /stammdaten/formate/<id>/material` under the format's own editing rule. The Personen
+page is admin-only and has its own routes (`web/people.py`, which reuses the handlers here); the
+generic list routes refuse it, while the people picker stays open to the team.
 
 The place detail also lists its contact persons (WM-141, `metrics.contacts`): add
 (`POST /stammdaten/orte/<id>/kontakte`), change (`.../kontakte/<kontakt>`) and delete on request
@@ -27,7 +28,7 @@ from urllib.parse import parse_qs, quote, urlencode
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from metrics import contacts, hints, lists
+from metrics import contacts, equipment, hints, lists
 from metrics.db import CONFIRMED, MERGED, PROPOSED, Contact, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.web import sessions
@@ -46,6 +47,7 @@ STATUS_FILTERS = {
 _FIELD = re.compile(r"[a-z][a-z0-9_]{0,39}")
 FIELD_LABELS = {
     "status": "Status",
+    "equipment": "Material",
     "merged_into_id": "Zusammengeführt in",
     "login_subject": "Anmeldung",
     "contact": "Kontaktperson",  # WM-141: the Verlauf names the event, never the values
@@ -156,6 +158,13 @@ def _list_page(
                 problems=lists.place_problems(entry, types, instance.map) if kind is lists.PLACES else [],
                 missing=lists.missing_details(kind, entry),
             )
+        needs = None
+        if detail is not None and kind is lists.FORMATS:
+            current = equipment.needs_of(entry.equipment)
+            needs = {
+                "rows": [(item, current.get(item.id)) for item in equipment.choices(session, current)],
+                "text": equipment.text(entry.equipment),
+            }
         status_counts = lists.counts_by_status(session, kind)
         proposed = lists.proposed_counts(session)
         merge_picker = None
@@ -200,6 +209,7 @@ def _list_page(
             "status_labels": lists.STATUS_LABELS,
             "gaps": gaps,
             "detail": detail,
+            "needs": needs,
             "detail_label": lists.label(detail.entry) if detail else None,
             "merged_label": lists.label(detail.merged_into) if detail and detail.merged_into else None,
             "new": params.get("neu") == "1" or new_values is not None,
@@ -382,6 +392,25 @@ def _decision(request: Request, kind: lists.Kind, entry_id: int, error: lists.Li
     return _list_page(request, kind, status_code=422, error=str(error), selected_id=entry_id)
 
 
+@router.post("/stammdaten/formate/{entry_id:int}/material", response_class=HTMLResponse)
+async def format_needs(entry_id: int, request: Request):
+    """What a format usually needs (WM-140); new Termine of the format copy it."""
+    form = await _form(request)
+    login = current_login(request)
+    errors: list[str] = []
+    try:
+        with get_sessionmaker()() as session, session.begin():
+            entry = _entry(session, lists.FORMATS, entry_id)
+            current = equipment.needs_of(entry.equipment)
+            needs = equipment.parse(session, form, current, errors)
+            if errors:
+                raise lists.ListError("; ".join(errors))
+            changed = equipment.set_format_needs(session, entry, needs, login.user, login.admin)
+    except lists.ListError as error:
+        return _decision(request, lists.FORMATS, entry_id, error)
+    return _back(lists.FORMATS, entry_id, "Material gespeichert." if changed else "Nichts geändert.")
+
+
 @router.post("/stammdaten/{kind}/{entry_id:int}/bestaetigen", response_class=HTMLResponse)
 async def confirm(kind: str, entry_id: int, request: Request):
     list_kind = _kind(kind)
@@ -409,7 +438,7 @@ async def merge(kind: str, entry_id: int, request: Request):
             _refresh_hints(session, list_kind, entry.id, target.id)
     except lists.ListError as error:
         return _decision(request, list_kind, entry_id, error)
-    what = "Termine" if list_kind is lists.PEOPLE else "Kurse"
+    what = "Termine" if list_kind in (lists.PEOPLE, lists.EQUIPMENT) else "Kurse"
     return _back(list_kind, target_id, f"Zusammengeführt; {moved} {what} übernommen.")
 
 

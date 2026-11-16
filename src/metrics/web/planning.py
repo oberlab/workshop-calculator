@@ -9,8 +9,8 @@
   weekly series in one step (`reihe_rhythmus`, `reihe_anzahl`; WM-111).
 - `GET /planung/{course_id}` (`?termin=` picks the Termin of a series; default the first open one):
   stage bar with the next action, the course form, the Termine, "Was fehlt noch", hints, calendar
-  and Verlauf. `POST` saves the form (`umfang=folgende`: date, times and team for the following
-  Termine too) and then, if `dann` names one, takes the next step (confirm, done, final);
+  and Verlauf. `POST` saves the form (`umfang=folgende`: date, times, team and equipment for the
+  following Termine too) and then, if `dann` names one, takes the next step (confirm, done, final);
   `POST .../aktion` the other actions (back, cancel, delete, billed, calendar).
 - `POST /planung/{course_id}/termine`: "Termine hinzufügen" (weekly, every two weeks, or dates).
 - `POST /planung/{course_id}/alle`: bulk actions over the course's Termine (`action`: `confirm`,
@@ -37,7 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import contacts, courses, hints, lists
+from metrics import contacts, courses, equipment, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -52,6 +52,7 @@ from metrics.db import (
     Contact,
     Context,
     Course,
+    Equipment,
     Format,
     Person,
     Place,
@@ -113,6 +114,7 @@ def _load_appointments(stmt):
         selectinload(Appointment.lead),
         selectinload(Appointment.support),
         selectinload(Appointment.alternatives),
+        selectinload(Appointment.equipment),
     )
 
 
@@ -280,6 +282,7 @@ def _get_course(session: Session, course_id: int) -> Course:
             selectinload(Course.appointments).selectinload(Appointment.origins),
             selectinload(Course.appointments).selectinload(Appointment.alternatives),
             selectinload(Course.appointments).selectinload(Appointment.calendar_responses),
+            selectinload(Course.appointments).selectinload(Appointment.equipment),
         )
     ).first()
     if course is None:
@@ -329,6 +332,28 @@ def _pickable(session: Session, t: Appointment) -> list[Person]:
     for p in ([t.lead] if t.lead else []) + list(t.support):
         people.setdefault(p.id, p)
     return sorted(people.values(), key=lambda p: p.name.casefold())
+
+
+@dataclass(frozen=True)
+class Need:
+    """One row of the Material section: an item, what this Termin needs, what the day needs."""
+
+    item: Equipment
+    quantity: int | None
+    others: int  # what the other Termine of the day need
+
+    @property
+    def short(self) -> bool:
+        total = (self.quantity or 0) + self.others
+        return bool(self.quantity) and self.item.quantity is not None and total > self.item.quantity
+
+
+def _equipment(session: Session, t: Appointment) -> list[Need]:
+    """The Material section (WM-140): every active item, plus what the Termin needs already."""
+    needs = equipment.needs_of(t.equipment)
+    items = equipment.choices(session, needs)
+    others = equipment.others_on(session, t.date, t.id) if t.date and items else {}
+    return [Need(item, needs.get(item.id), others.get(item.id, 0)) for item in items]
 
 
 STEPS = (GEPLANT, BESTAETIGT, DURCHGEFUEHRT, ABGESCHLOSSEN)
@@ -402,6 +427,7 @@ def course_context(
         "locked_course": workflow.course_locked(course) if not new else False,
         "pickers": _pickers(session, course),
         "pickable": _pickable(session, t),
+        "equipment": _equipment(session, t),
         "class_kind": workflow.class_kind(course),
         "class_kinds": workflow.CLASS_KINDS,
         "at_school": workflow.AT_SCHOOL,

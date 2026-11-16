@@ -4,9 +4,10 @@ One schema for planning, tracking and analysis. The German names of the proposal
 tables as follows: Ort = places, Kontext = contexts, Format = formats, Person = people,
 Kurs = courses, Termin = appointments, Herkunft = appointment_origins, Verlauf = history,
 Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions, Hinweis = hints,
-Kontaktperson = contacts.
+Kontaktperson = contacts, Material = equipment (with the needs of a format in format_equipment and
+of a Termin in appointment_equipment).
 
-List entries (places, contexts, formats, people) carry a status: `vorgeschlagen` while a team
+List entries (places, contexts, formats, people, equipment) carry a status: `vorgeschlagen` while a team
 member's proposal waits for an admin, `bestätigt` afterwards. An admin may instead merge an entry
 into another one (`zusammengeführt`, `merged_into_id` names the entry that replaces it; its courses
 and Termine follow) or reject a proposal (`abgelehnt`). Both rows stay; nothing is deleted.
@@ -169,6 +170,44 @@ class Format(Base):
     merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("formats.id"))
     created_at: Mapped[dt.datetime] = _created_at()
 
+    # What the format usually needs (WM-140); a new Termin copies it.
+    equipment: Mapped[list["FormatEquipment"]] = relationship(
+        cascade="all, delete-orphan", order_by="FormatEquipment.equipment_id"
+    )
+
+
+class Equipment(Base):
+    """Material: a piece of critical equipment (e.g. a kit of Calliope mini) and how many there are.
+
+    Only critical equipment is listed (PROPOSAL.md 4.5). `quantity` is the number available; None
+    while a proposal does not say it yet (then nothing can be short). Equipment never counts in a
+    chart or key figure.
+    """
+
+    __tablename__ = "equipment"
+    __table_args__ = _list_checks("equipment")
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = _status_column()
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"))
+    created_at: Mapped[dt.datetime] = _created_at()
+
+
+class FormatEquipment(Base):
+    """How much of a piece of equipment a format usually needs."""
+
+    __tablename__ = "format_equipment"
+    __table_args__ = (CheckConstraint("quantity > 0", name="ck_format_equipment_quantity"),)
+
+    format_id: Mapped[int] = mapped_column(ForeignKey("formats.id", ondelete="CASCADE"), primary_key=True)
+    equipment_id: Mapped[int] = mapped_column(ForeignKey("equipment.id"), primary_key=True, index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+
+    equipment: Mapped[Equipment] = relationship()
+
 
 class Person(Base):
     """Person: a team member, or a legacy first name without a Slack user (inactive)."""
@@ -308,6 +347,28 @@ class Appointment(Base):
     calendar_responses: Mapped[list["CalendarResponse"]] = relationship(
         cascade="all, delete-orphan", order_by="CalendarResponse.email"
     )
+    equipment: Mapped[list["AppointmentEquipment"]] = relationship(
+        cascade="all, delete-orphan", order_by="AppointmentEquipment.equipment_id"
+    )
+
+
+class AppointmentEquipment(Base):
+    """How much of a piece of equipment a Termin needs (copied from its format, changeable).
+
+    A kit blocks the whole day (decided 2026-11-13): the hint "material-knapp" adds up the needs
+    of the Termine of a day, whatever their times.
+    """
+
+    __tablename__ = "appointment_equipment"
+    __table_args__ = (CheckConstraint("quantity > 0", name="ck_appointment_equipment_quantity"),)
+
+    appointment_id: Mapped[int] = mapped_column(
+        ForeignKey("appointments.id", ondelete="CASCADE"), primary_key=True
+    )
+    equipment_id: Mapped[int] = mapped_column(ForeignKey("equipment.id"), primary_key=True, index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+
+    equipment: Mapped[Equipment] = relationship()
 
 
 class AlternativeDate(Base):

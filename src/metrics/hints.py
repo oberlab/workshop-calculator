@@ -6,11 +6,11 @@ Termin and the `Facts` of the run (today, the other Termine on the same day, the
 names) and returns the German texts of its findings (or `Finding`s naming another Termin), nothing
 when all is well. The rules and their cases are listed in `PLANUNG_REGELN.md`.
 
-Adding a rule (equipment WM-140, absences WM-142, capacity WM-131):
+Adding a rule (absences WM-142; see "material-knapp" of WM-140 and "ueber-kapazitaet" of WM-131):
 
-    @rule("material-knapp", KRITISCH, "Material doppelt verplant", stages=ACTIVE)
-    def equipment_short(t: Appointment, facts: Facts):
-        ...  # return [] or ["Calliope mini: 35 benötigt, 30 vorhanden"]
+    @rule("abwesend", KRITISCH, "Person abwesend", stages=PLANNED)
+    def person_absent(t: Appointment, facts: Facts):
+        ...  # return [] or ["Mia ist am 17.11. im Urlaub"]
 
 plus one test in `tests/test_hints.py`. If the rule needs more than the Termin and its same-day
 neighbours, add the data to `Facts` (loaded once per run in `facts_for`). Nothing else changes:
@@ -58,6 +58,7 @@ from metrics.db import (
     PROPOSED,
     AlternativeDate,
     Appointment,
+    AppointmentEquipment,
     Course,
     HintDecision,
     StoredHint,
@@ -489,6 +490,40 @@ def above_capacity(t: Appointment, facts: Facts):
     return found
 
 
+# --- Equipment (WM-140) ------------------------------------------------------------------------
+
+
+@rule("material-knapp", KRITISCH, "Material reicht am Tag nicht", stages=ACTIVE)
+def equipment_short(t: Appointment, facts: Facts):
+    """The Termine in planning on the same day need more of a piece of equipment than there is. A kit
+    blocks the whole day (decided 2026-11-13), so the times do not matter. Equipment whose number is
+    not known yet (a proposal without it) cannot be short."""
+    if not t.equipment or not _in_planning(t, facts.today):
+        return []
+    others = [
+        o
+        for o in facts.same_day.get(t.date, [])
+        if o.id != t.id and _in_planning(o, facts.today) and o.equipment
+    ]
+    found = []
+    for row in sorted(t.equipment, key=lambda r: r.equipment.name.casefold()):
+        item = row.equipment
+        if item.quantity is None:
+            continue
+        sharing = [(o, need.quantity) for o in others for need in o.equipment if need.equipment_id == item.id]
+        total = row.quantity + sum(n for _, n in sharing)
+        if total <= item.quantity:
+            continue
+        with_others = ", ".join(
+            f"„{_title(o)}“ (Termin {o.id}) {n}" for o, n in sorted(sharing, key=lambda x: x[0].id)
+        )
+        found.append(
+            f"{item.name}: {total} benötigt, {item.quantity} vorhanden"
+            + (f"; am selben Tag auch {with_others}" if with_others else "")
+        )
+    return found
+
+
 # --- Places and list entries ----------------------------------------------------------------
 
 
@@ -635,6 +670,7 @@ def _load(session: Session, where) -> list[Appointment]:
             selectinload(Appointment.origins),
             selectinload(Appointment.alternatives),
             selectinload(Appointment.calendar_responses),
+            selectinload(Appointment.equipment).selectinload(AppointmentEquipment.equipment),
         )
         .order_by(Appointment.id)
     )
@@ -751,6 +787,7 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
             session.scalars(select(AlternativeDate.appointment_id).where(AlternativeDate.date.in_(dates)))
         )
     ids |= _same_week_team(session, ids, dates)
+    ids |= _short_with(session, ids)
     appointments = _load(session, Appointment.id.in_(ids))
     _store(session, compute(session, appointments, day), ids)
     return len(ids)
@@ -781,6 +818,18 @@ def _same_week_team(session: Session, ids: set[int], dates: set[dt.date]) -> set
     return set(session.scalars(stmt))
 
 
+def _short_with(session: Session, ids: set[int]) -> set[int]:
+    """For "material-knapp": the Termine with that hint that need equipment these Termine need. A
+    Termin that moved to another day, was cancelled or needs less no longer adds up with them, and
+    their old day is not among the dates `refresh` knows."""
+    items = select(AppointmentEquipment.equipment_id).where(AppointmentEquipment.appointment_id.in_(ids))
+    sharing = select(AppointmentEquipment.appointment_id).where(AppointmentEquipment.equipment_id.in_(items))
+    stmt = select(StoredHint.appointment_id).where(
+        StoredHint.rule == "material-knapp", StoredHint.appointment_id.in_(sharing)
+    )
+    return set(session.scalars(stmt))
+
+
 def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
     """Recompute and store the hints of every Termin (the nightly job and `metrics hints`)."""
     appointments = _load(session, Appointment.id.is_not(None))
@@ -804,6 +853,9 @@ def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
 def appointments_using(session: Session, kind: lists.Kind, entry_ids: Iterable[int]) -> set[int]:
     """The Termine whose course or team uses one of these list entries (to refresh after a decision)."""
     ids = list(entry_ids)
+    if kind is lists.EQUIPMENT:
+        stmt = select(AppointmentEquipment.appointment_id).where(AppointmentEquipment.equipment_id.in_(ids))
+        return set(session.scalars(stmt))
     if kind is lists.PEOPLE:
         lead = select(Appointment.id).where(Appointment.lead_id.in_(ids))
         support = select(appointment_support.c.appointment_id).where(appointment_support.c.person_id.in_(ids))

@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import analytics, hints
+from metrics import analytics, equipment, hints
 from metrics.config import get_settings
 from metrics.db import (
     BESTAETIGT,
@@ -281,7 +281,8 @@ def reminder_text(t: Appointment) -> str:
     ]
     if course.class_age_text:
         lines.append(f"• Klasse/Alter: {escape(course.class_age_text)}")
-    # Equipment joins here once Termine have it (WM-140).
+    if t.equipment:
+        lines.append(f"• Material: {escape(equipment.text(t.equipment))}")
     if base := _base():
         lines.append(link(f"{base}/planung/{course.id}?termin={t.id}", "Termin ansehen"))
     return "\n".join(lines)
@@ -334,6 +335,7 @@ def _load(stmt):
         selectinload(Appointment.lead),
         selectinload(Appointment.support),
         selectinload(Appointment.origins),
+        selectinload(Appointment.equipment),
     )
 
 

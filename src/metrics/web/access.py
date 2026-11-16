@@ -106,6 +106,9 @@ TEAM_ROUTES = {
     "POST /stammdaten/orte/{place_id:int}/kontakte",
     "POST /stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}",
     "POST /stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}/loeschen",
+    # Formate: the equipment a format needs (WM-140); like editing the format, team members change it
+    # on proposed formats, admins on confirmed ones (checked in `metrics.equipment.set_format_needs`).
+    "POST /stammdaten/formate/{entry_id:int}/material",
 }
 
 
