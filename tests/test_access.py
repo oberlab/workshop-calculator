@@ -15,6 +15,8 @@ PARAMS = {
     "{name}": "x",
     "{kind}": "orte",
     "{entry_id:int}": "1",
+    "{place_id:int}": "1",
+    "{contact_id:int}": "1",
 }
 
 

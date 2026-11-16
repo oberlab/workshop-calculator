@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 {% import "_lists.html" as lists %}
+{% import "_contacts.html" as contacts %}
 
 {% block title %}{{ title }}{% endblock %}
 {% block crumb %}<p class="crumb"><a href="/planung">Kurse</a>{% if course.place %} / {{ course.place.name }}{% endif %}</p>{% endblock %}
@@ -186,6 +187,49 @@
     </form>
 
     {% if not new %}
+    {% set k = contact %}
+    <section class="panel" id="kontakt">
+      <h2>Kontakt</h2>
+      {% if k.chosen %}
+      {{ contacts.card(k.chosen) }}
+      {% if k.place and k.chosen.place_id != k.place.id %}<p class="help">Gehört zu einem anderen Ort.</p>{% endif %}
+      {% elif k.place %}
+      <p class="help">Noch keine Kontaktperson gewählt.</p>
+      {% endif %}
+      {% if not k.place %}
+      <p class="help">Kontaktpersonen gehören zu einem Ort: bitte zuerst oben einen Ort wählen und speichern.</p>
+      {% else %}
+      <div class="row contact-actions">
+        {% set others = k.choices|rejectattr("id", "equalto", k.chosen.id if k.chosen else none)|list %}
+        {% if others %}
+        <form method="post" action="/planung/{{ course.id }}/kontakt" class="row"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="waehlen"><input type="hidden" name="termin" value="{{ t.id }}">
+          <label class="field"><span>{{ "Andere Kontaktperson" if k.chosen else "Kontaktperson" }} von {{ k.place.name }}</span>
+            <select name="kontakt">{% for c in others %}<option value="{{ c.id }}">{{ c.name }}{% if c.role %} ({{ c.role }}){% endif %}</option>{% endfor %}</select>
+          </label>
+          {{ ui.button("Wählen", type="submit", kind="secondary", size="sm") }}
+        </form>
+        {% endif %}
+        {% if k.chosen %}
+        <form method="post" action="/planung/{{ course.id }}/kontakt" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="entfernen"><input type="hidden" name="termin" value="{{ t.id }}">
+          {{ ui.button("Vom Kurs entfernen", type="submit", kind="quiet", size="sm") }}
+        </form>
+        {% endif %}
+      </div>
+      <details class="add-termine"{% if k.entered %} open{% endif %}>
+        <summary class="btn btn-secondary btn-sm">+ Neue Kontaktperson</summary>
+        <form method="post" action="/planung/{{ course.id }}/kontakt" class="add-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="neu"><input type="hidden" name="termin" value="{{ t.id }}">
+          {{ contacts.fields(k.fields, k.entered, k.errors) }}
+          <p class="help">Wird beim Ort {{ k.place.name }} gespeichert und für diesen Kurs gewählt. Nur was für die Planung nötig ist; auf Wunsch der Person unter Stammdaten löschen.</p>
+          {{ ui.button("Anlegen und wählen", type="submit") }}
+        </form>
+      </details>
+      <p class="help"><a href="/stammdaten/orte?id={{ k.place.id }}#kontakte">Kontaktpersonen von {{ k.place.name }} verwalten</a></p>
+      {% endif %}
+    </section>
+
     <section class="panel">
       <h2>Termine {{ ui.count(termine|length) }}</h2>
       {% call ui.table(["Nr.", "Datum", "Zeit", "Team", "Phase", "TN", "Hinweis"], caption="Termine des Kurses") %}

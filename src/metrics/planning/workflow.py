@@ -20,6 +20,8 @@ Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
 - Abgeschlossen is locked except `billed`; a course's shared fields are locked as soon as one of
   its Termine is Abgeschlossen (they are counted in the charts). Changes to it are proposed as
   corrections and applied when an admin confirms them (`metrics.planning.corrections`, WM-132).
+- The Kontaktperson of a course (WM-141) is chosen apart from this form (`metrics.contacts`); a new
+  place drops a contact of the old one.
 - Only Bestätigt Termine can be cancelled (with a reason); only Geplant ones deleted, which the
   Verlauf keeps (the summary of the deleted Termin). Nothing else is ever deleted.
 
@@ -35,7 +37,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics import courses, hints, lists
+from metrics import contacts, courses, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -427,6 +429,8 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     _required_for_stage(t)
     changed = _record(session, "courses", course.id, before_course, course_snapshot(course), by)
     changed += _record(session, "appointments", t.id, before, appointment_snapshot(t), by)
+    if "place" in changed:
+        contacts.drop_if_elsewhere(session, course, by)
     courses.renumber(session, course, by)
     hints.refresh(session, [a.id for a in course.appointments])
     return changed

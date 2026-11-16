@@ -3,7 +3,8 @@
 One schema for planning, tracking and analysis. The German names of the proposal map to the
 tables as follows: Ort = places, Kontext = contexts, Format = formats, Person = people,
 Kurs = courses, Termin = appointments, Herkunft = appointment_origins, Verlauf = history,
-Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions, Hinweis = hints.
+Vorschlag = proposals, Hinweis-Entscheidung = hint_decisions, Hinweis = hints,
+Kontaktperson = contacts.
 
 List entries (places, contexts, formats, people) carry a status: `vorgeschlagen` while a team
 member's proposal waits for an admin, `bestätigt` afterwards. An admin may instead merge an entry
@@ -196,6 +197,28 @@ class Person(Base):
         return self.slack_id or self.name
 
 
+class Contact(Base):
+    """Kontaktperson at a place (WM-141), e.g. the class teacher at a school; chosen on a course.
+
+    Personal data of people outside the team, kept to what planning needs: never in exports, charts,
+    the calendar, Slack or the Verlauf text (the Verlauf records only that a contact was added,
+    changed, chosen or deleted). Deleted on request by a person (`metrics.contacts.delete`): the row
+    goes, the courses that named it keep "Kontakt gelöscht" in their Verlauf.
+    """
+
+    __tablename__ = "contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    place_id: Mapped[int] = mapped_column(ForeignKey("places.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)  # e.g. Klassenleitung, Sekretariat
+    email: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = _created_at()
+
+    place: Mapped[Place] = relationship()
+
+
 class Course(Base):
     """Kurs: what the Termine of a series share. A single date is a course with one Termin."""
 
@@ -211,11 +234,14 @@ class Course(Base):
     age_band: Mapped[str | None] = mapped_column(String(32))
     target_group: Mapped[str] = mapped_column(String(64), index=True)
     note: Mapped[str | None] = mapped_column(Text)
+    # Kontaktperson (WM-141): planning only, never counted or exported.
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[dt.datetime] = _created_at()
 
     format: Mapped[Format | None] = relationship()
     context: Mapped[Context | None] = relationship()
     place: Mapped[Place | None] = relationship()
+    contact: Mapped[Contact | None] = relationship()
     appointments: Mapped[list["Appointment"]] = relationship(back_populates="course")
 
 

@@ -100,6 +100,12 @@ TEAM_ROUTES = {
     "POST /stammdaten/{kind}/{entry_id:int}",
     "GET /stammdaten/{kind}/auswahl",
     "POST /stammdaten/{kind}/auswahl",
+    # Contact persons (WM-141): personal data of people outside the team, so never public. Any team
+    # member adds, changes, chooses or deletes (on request) a contact; `metrics.contacts`.
+    "POST /planung/{course_id:int}/kontakt",
+    "POST /stammdaten/orte/{place_id:int}/kontakte",
+    "POST /stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}",
+    "POST /stammdaten/orte/{place_id:int}/kontakte/{contact_id:int}/loeschen",
 }
 
 
