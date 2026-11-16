@@ -134,6 +134,26 @@ uv run pytest
 docker compose -f compose.test.yaml down
 ```
 
+### Demo instance
+
+For screenshots, trials and the public repository, `metrics demo-data` fills an empty database with an invented makerspace: places in the example map's municipalities, contexts (one project page that asks for home municipalities), formats with equipment needs, a team with weekly hours, fake contacts (`example.org`, 0123 numbers), and about two school years of courses and Termine in every stage, plus a few deliberate cases (a day the Calliope kits run short, a week above someone's hours, Termine waiting for participants, proposals and an open correction). Hints are computed, calendar fields stay empty. Nothing in it is real, and it reads nothing from `instance/` or old files. The same `--seed` and `--today` give the same data. The demo person "Kim Beispiel" is linked to the login of `AUTH_MODE=off`, so Mein Bereich shows their tasks.
+
+The command refuses a database that has data. `--reset` first empties a database it filled before (and only such a database), to build it again around today. Never point it at the real database: use a throwaway one, e.g. on the test server:
+
+```sh
+docker compose -f compose.test.yaml up -d --wait
+docker compose -f compose.test.yaml exec db-test psql -U test -d test -c 'CREATE DATABASE demo'
+export DATABASE_URL="postgresql+psycopg://test:test@$(docker compose -f compose.test.yaml port db-test 5432)/demo"
+export INSTANCE_DIR=instance.example
+uv run alembic upgrade head
+uv run metrics demo-data                      # --seed N, --today YYYY-MM-DD, --reset
+AUTH_MODE=off uv run uvicorn metrics.web.app:app --host 127.0.0.1 --port 8022
+# afterwards
+docker compose -f compose.test.yaml exec db-test psql -U test -d test -c 'DROP DATABASE demo WITH (FORCE)'
+```
+
+Then open <http://127.0.0.1:8022>. `AUTH_MODE=off` opens every page to everyone on that port; use it only locally.
+
 `GET /healthz` is meant for monitoring: 200 with the time of the last finished import, 503 when the database does not answer (after at most 10 seconds).
 
 The vendored chart libraries (Vega, Vega-Lite, Vega-Embed) are listed in [`src/metrics/web/static/vendor/README.md`](src/metrics/web/static/vendor/README.md).
