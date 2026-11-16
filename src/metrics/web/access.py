@@ -19,7 +19,7 @@ PUBLIC = "public"
 TEAM = "team"
 ADMIN = "admin"
 
-# Reachable without login: the front page and its data, login, health, theme and static files.
+# Reachable without login: the front page and its data, login, health, theme, icon and static files.
 PUBLIC_ROUTES = {
     "GET /",
     "GET /api/sessions-over-time",
@@ -30,6 +30,7 @@ PUBLIC_ROUTES = {
     "GET /healthz",
     "GET /theme.css",
     "GET /theme/fonts/{name}",
+    "GET /favicon.ico",
     "MOUNT /static",  # mounted apps bypass route dependencies, so only public ones may be mounted
 }
 

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -165,6 +166,16 @@ def _client(monkeypatch, csrf=True, login_db=True, **overrides):
 @pytest.fixture
 def client(monkeypatch):
     return _client(monkeypatch)
+
+
+def test_favicon_without_login(client):
+    """Browsers ask for /favicon.ico on the first load; it must not answer 404 (WM-104)."""
+    response = client.get("/favicon.ico")
+    assert response.status_code == 200 and response.headers["content-type"].startswith("image/svg+xml")
+    assert response.content.startswith(b"<svg")
+    page = client.get("/login").text
+    assert re.search(r'<link rel="icon" href="[^"]*/static/favicon.svg"', page)
+    assert client.get("/static/favicon.svg").status_code == 200
 
 
 def test_overview_has_only_time_controls(client):

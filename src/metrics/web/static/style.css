@@ -1075,6 +1075,7 @@ table.mun input[type="number"] { width: 90px; }
 .origin-free input[type="number"] { text-align: center; }
 .after-sum { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--warning-tint); font-weight: 600; }
 .after-sum.is-ok { background: var(--success-tint); color: var(--success-ink); }
+.after-sum.is-neutral { background: var(--surface-sunken); color: var(--text-muted); font-weight: 400; }
 .after-summary { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
 .after-done { width: 100%; min-height: 48px; font-size: 1.05rem; }
 .after-links { margin: 8px 0 0; text-align: center; }

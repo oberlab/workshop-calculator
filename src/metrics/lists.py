@@ -213,7 +213,7 @@ def describe(entry, types: dict[str, str]) -> str:
             parts.append("zählt als Lehrkräfte")
     elif isinstance(entry, Format):
         if entry.duration_hours is not None:
-            parts.append(f"Dauer {_number(entry.duration_hours)} h")
+            parts.append(f"Dauer {_number(entry.duration_hours)} Std.")
         if entry.continuous:
             parts.append("fortlaufend")
     elif isinstance(entry, Person):
@@ -474,7 +474,7 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("municipality", "Gemeinde"),
         Field("lat", "Breitengrad", "number"),
         Field("lon", "Längengrad", "number"),
-        Field("travel_hours", "Fahrtzeit (h)", "number", help="Zuschlag pro Person und Termin, z. B. 1"),
+        Field("travel_hours", "Fahrtzeit (Std.)", "number", help="Zuschlag pro Person und Termin, z. B. 1"),
     ),
     CONTEXTS: (
         Field("name", "Name", required=True),
@@ -487,10 +487,10 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
     FORMATS: (
         Field("name", "Kursname", required=True),
         Field("category", "Kategorie", "category", required=True),
-        Field("duration_hours", "Übliche Dauer (h)", "number", required=True),
+        Field("duration_hours", "Übliche Dauer (Std.)", "number", required=True),
         Field(
             "overhead_hours",
-            "Zuschlag Kursleitung (h)",
+            "Zuschlag Kursleitung (Std.)",
             "number",
             help="Feste Stunden pro Termin für die Kursleitung, z. B. Aufbau; leer = Standard",
         ),

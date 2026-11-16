@@ -16,8 +16,13 @@ if (afterForm) {
     if (countTotal) countTotal.textContent = total;
     if (!originSum) return;
     const origins = sum("[data-origin]");
+    // Nothing entered yet: a neutral hint, not a warning about a sum of 0 of 0.
+    const empty = total === 0 && origins === 0;
+    originSum.classList.toggle("is-neutral", empty);
     originSum.classList.toggle("is-ok", origins === total && total > 0);
-    if (origins === total && total > 0) {
+    if (empty) {
+      originSum.textContent = "Erst die Teilnehmenden eintragen, dann hier die Herkunft.";
+    } else if (origins === total && total > 0) {
       originSum.textContent = `Summe passt: ${origins} von ${total}`;
     } else if (origins <= total) {
       originSum.textContent = `Herkunft: ${origins} von ${total}, es fehlen ${total - origins}`;

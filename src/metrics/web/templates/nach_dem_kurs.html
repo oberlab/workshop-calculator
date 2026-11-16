@@ -76,7 +76,11 @@
       {% endfor %}
     </div>
     <datalist id="dl-municipality">{% for m in municipalities %}<option value="{{ m }}">{% endfor %}</datalist>
+    {% if total or origins_total %}
     <p class="after-sum" data-origin-sum aria-live="polite">Herkunft: <b class="mono">{{ origins_total }}</b> von <b class="mono">{{ total or 0 }}</b></p>
+    {% else %}
+    <p class="after-sum is-neutral" data-origin-sum aria-live="polite">Erst die Teilnehmenden eintragen, dann hier die Herkunft.</p>
+    {% endif %}
   </section>
   {% endif %}
 
