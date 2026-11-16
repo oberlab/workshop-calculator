@@ -16,6 +16,7 @@ from metrics.db import (
     DURCHGEFUEHRT,
     PROPOSED,
     Appointment,
+    AppointmentOrigin,
     HistoryEntry,
     Person,
     Place,
@@ -272,3 +273,113 @@ def test_course_fields_team_and_legacy_totals(legacy):
     assert str(t.duration_hours) in ("1.50", "1.5")
     with pytest.raises(CorrectionError, match="Ende: muss nach dem Beginn"):
         corrections.propose(db, t, form(end_time="08:00"), "zu früh", "Kim")
+
+
+def test_an_admin_may_confirm_their_own_proposal(legacy):
+    """Alex, 2026-11-16: allowed; the Verlauf still names the admin as proposer and as confirmer."""
+    db = legacy
+    t = _counted_termin(db)
+    male = t.participants_male
+    proposal = corrections.propose(db, t, form(participants_male=male + 1), "selbst gezählt", "Admin")
+    corrections.confirm(db, proposal.id, "Admin")
+    assert t.participants_male == male + 1
+    assert (proposal.proposed_by, proposal.decided_by) == ("Admin", "Admin")
+    row = next(h for h in _history(db, t) if h.field == "participants_male")
+    assert row.changed_by == "Admin" and "Korrektur von Admin" in row.reason
+
+
+def _with_origins(db) -> Appointment:
+    """A counted legacy Termin whose context asks for Herkunft, with Herkunft that adds up."""
+    t = _counted_termin(db)
+    t.course.context.asks_municipalities = True
+    n = t.participants_female + t.participants_male + (t.participants_diverse or 0)
+    n += t.participants_unspecified or 0
+    t.origins = [
+        AppointmentOrigin(municipality="Altdorf", participants=n - 2),
+        AppointmentOrigin(municipality="Bergheim", participants=2),
+    ]
+    db.commit()
+    return t
+
+
+def _stored_origins(db, t: Appointment) -> list[tuple[str, int]]:
+    rows = db.execute(
+        sa.select(AppointmentOrigin.municipality, AppointmentOrigin.participants)
+        .where(AppointmentOrigin.appointment_id == t.id)
+        .order_by(AppointmentOrigin.municipality)
+    )
+    return [tuple(row) for row in rows]
+
+
+def test_done_when_a_herkunft_correction_changes_nothing_until_confirmed(legacy, monkeypatch):
+    """Herkunft is correctable (Alex, 2026-11-16): proposed, Termin and origins stay; confirmed, the
+    origins are the new ones and the Verlauf names proposer and admin."""
+    from tests.test_lists import _admin, _team
+
+    db = legacy
+    t = _with_origins(db)
+    before = _stored_origins(db, t)
+    n = sum(count for _, count in before)
+    team = _team(monkeypatch)
+
+    # The form as the course page shows it: one row per municipality plus empty rows.
+    page = team.get(f"/planung/{t.course_id}?termin={t.id}").text
+    data = _correction_form(page, grund="Liste der Schule nachgereicht")
+    assert data["origin_name"][:2] == ["Altdorf", "Bergheim"] and data["origin_name"][2:] == ["", ""]
+    data["origin_name"] = ["Altdorf", "Bergheim", "Celle", ""]
+    data["origin_count"] = [str(n - 3), "", "3", ""]  # Bergheim removed, Celle added
+    proposed = team.post(f"/planung/{t.course_id}/korrektur", data=data, follow_redirects=False)
+    assert proposed.status_code == 303
+    proposal = db.scalars(sa.select(Proposal).where(Proposal.kind == "korrektur")).one()
+    assert proposal.proposed_values.keys() == {"origins"}
+    db.expire_all()
+    assert _stored_origins(db, t) == before
+    assert t.stage == ABGESCHLOSSEN
+
+    # Prüfen shows old and new Herkunft.
+    admin = _admin(monkeypatch)
+    queue = admin.get("/pruefen").text
+    assert f"Altdorf {n - 2}; Bergheim 2" in queue and f"Altdorf {n - 3}; Celle 3" in queue
+    done = admin.post(
+        "/pruefen/korrektur/bestaetigen", data={"vorschlag": proposal.id}, follow_redirects=False
+    )
+    assert done.status_code == 303
+
+    db.expire_all()
+    assert _stored_origins(db, t) == [("Altdorf", n - 3), ("Celle", 3)]
+    row = next(h for h in _history(db, t) if h.field == "origins")
+    assert row.changed_by == auth.OFF_USER and "Korrektur von Team" in row.reason
+    assert row.old_value == f"Altdorf {n - 2}; Bergheim 2" and row.new_value == f"Altdorf {n - 3}; Celle 3"
+
+
+def test_herkunft_corrections_add_up_and_refuse_stale_values(legacy):
+    db = legacy
+    t = _with_origins(db)
+    n = sum(o.participants for o in t.origins)
+
+    def origins(*rows):
+        return {"origin_name": [m for m, _ in rows], "origin_count": [str(c) for _, c in rows]}
+
+    with pytest.raises(CorrectionError, match=f"Herkunft: ergibt {n + 1}, eingetragen sind {n}"):
+        corrections.propose(db, t, origins(("Altdorf", n - 1), ("Bergheim", 2)), "falsch", "Kim")
+    with pytest.raises(CorrectionError, match="braucht die Gemeinden"):
+        corrections.propose(db, t, origins(("Altdorf", "")), "leer", "Kim")
+    with pytest.raises(CorrectionError, match="keine ganze Zahl"):
+        corrections.propose(db, t, origins(("Altdorf", "viele")), "Zahl", "Kim")
+    # More participants need a matching Herkunft; both in one correction are fine.
+    with pytest.raises(CorrectionError, match=f"ergibt {n}, eingetragen sind {n + 1}"):
+        corrections.propose(db, t, form(participants_male=t.participants_male + 1), "einer mehr", "Kim")
+    more = form(participants_male=t.participants_male + 1) | origins(("Altdorf", n - 2), ("Bergheim", 3))
+    first = corrections.propose(db, t, more, "einer mehr", "Kim")
+    assert first.proposed_values.keys() == {"participants_male", "participants_total", "origins"}
+    # A date correction does not trip over the Herkunft.
+    corrections.propose(db, t, form(date="2019-03-04"), "Datum", "Kim")
+
+    second = corrections.propose(db, t, origins(("Altdorf", n - 3), ("Bergheim", 3)), "andere", "Lea")
+    corrections.confirm(db, first.id, "Admin")
+    assert sorted((o.municipality, o.participants) for o in t.origins) == [
+        ("Altdorf", n - 2),
+        ("Bergheim", 3),
+    ]
+    with pytest.raises(CorrectionError, match="Seit dem Vorschlag geändert: Herkunft"):
+        corrections.confirm(db, second.id, "Admin")

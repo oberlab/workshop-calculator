@@ -298,6 +298,30 @@
             {% for name, label in participant_fields %}{{ ui.field(label, name, t[name], type="number", attrs={"min": 0}) }}{% endfor %}
             {% if c.only_total %}{{ ui.field("gesamt", "participants_total", t.participants_total, type="number", help="Erfasst ist nur die Summe; wer die Aufteilung kennt, trägt sie oben ein.", attrs={"min": 0}) }}{% endif %}
           </div>
+          {% if c.origins_on %}
+          <div class="municipalities">
+            <h3 class="field-label">Herkunft der Teilnehmenden</h3>
+            <p class="help">Eine Zahl je Gemeinde, zusammen so viele wie Teilnehmende. Eine Gemeinde entfernen: Zahl leeren.</p>
+            <div class="table-wrap"><table class="mun">
+              <thead><tr><th scope="col">Gemeinde</th><th scope="col">Teilnehmende</th></tr></thead>
+              <tbody>
+                {% for o in c.origins %}
+                <tr>
+                  <td><input name="origin_name" list="dl-municipality-korrektur" value="{{ o.municipality }}" aria-label="Gemeinde"></td>
+                  <td><input type="number" min="0" name="origin_count" value="{{ o.participants }}" aria-label="Teilnehmende aus {{ o.municipality }}"></td>
+                </tr>
+                {% endfor %}
+                {% for i in range(c.free_rows) %}
+                <tr>
+                  <td><input name="origin_name" list="dl-municipality-korrektur" placeholder="Weitere Gemeinde" aria-label="Weitere Gemeinde {{ i + 1 }}"></td>
+                  <td><input type="number" min="0" name="origin_count" aria-label="Teilnehmende aus weiterer Gemeinde {{ i + 1 }}"></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table></div>
+            <datalist id="dl-municipality-korrektur">{% for m in c.municipalities %}<option value="{{ m }}">{% endfor %}</datalist>
+          </div>
+          {% endif %}
           {{ ui.field("Grund", "grund", type="textarea", required=true, help="Warum der Termin anders war, z. B. „Liste der Lehrerin nachgereicht“.", attrs={"rows": 2, "required": true}) }}
           {{ ui.button("Korrektur vorschlagen", type="submit") }}
         </form>

@@ -7,10 +7,11 @@ one Verlauf row per field naming both people, or rejects it with a reason (`reje
 
 What can be corrected (`FIELDS`): the course's format, context, place, class/age and note (shared by
 every Termin of the course) and the Termin's date, start, end, lead, support and participants (the
-four counts, or the recorded total of a legacy Termin that has no split). A Vorschlag keeps, per
-field, the value it found and the proposed one (`{field: {"old", "new", "old_text", "new_text"}}`).
-Confirming refuses when a field has changed since the proposal, or when a chosen list entry is not
-confirmed (nothing unconfirmed enters the charts).
+four counts, or the recorded total of a legacy Termin that has no split) and Herkunft (one number
+per municipality, read as on the Termin form; Alex, 2026-11-16). A Vorschlag keeps, per field, the
+value it found and the proposed one (`{field: {"old", "new", "old_text", "new_text"}}`). Confirming
+refuses when a field has changed since the proposal, or when a chosen list entry is not confirmed
+(nothing unconfirmed enters the charts). An admin may confirm their own proposal (Alex, 2026-11-16).
 """
 
 import datetime as dt
@@ -26,6 +27,7 @@ from metrics.db import (
     CONFIRMED,
     REJECTED,
     Appointment,
+    AppointmentOrigin,
     Context,
     Format,
     Person,
@@ -44,7 +46,16 @@ COUNTS = tuple(name for name, _ in PARTICIPANT_FIELDS)
 # The fields that hold a list entry, and its model. Course fields first, as on the form.
 ENTRY_FIELDS = {"format": Format, "context": Context, "place": Place, "lead": Person}
 COURSE_FIELDS = ("format", "context", "place", "class_age_text", "note")
-TERMIN_FIELDS = ("date", "start_time", "end_time", "lead", "support", *COUNTS, "participants_total")
+TERMIN_FIELDS = (
+    "date",
+    "start_time",
+    "end_time",
+    "lead",
+    "support",
+    *COUNTS,
+    "participants_total",
+    "origins",
+)
 FIELDS = COURSE_FIELDS + TERMIN_FIELDS
 LABELS = workflow.LABELS
 
@@ -69,6 +80,8 @@ def current(t: Appointment) -> dict:
             values[name] = entry.id if entry is not None else None
         elif name == "support":
             values[name] = sorted(p.id for p in t.support)
+        elif name == "origins":
+            values[name] = sorted([o.municipality, o.participants] for o in t.origins)
         elif name == "date":
             values[name] = t.date.isoformat() if t.date else None
         elif name in ("start_time", "end_time"):
@@ -89,6 +102,8 @@ def show(session: Session, name: str, value) -> str:
     if name == "support":
         people = [session.get(Person, i) for i in value]
         return ", ".join(sorted(p.name for p in people if p is not None))
+    if name == "origins":
+        return "; ".join(f"{m} {n}" for m, n in value)
     if name == "date":
         return dt.date.fromisoformat(value).strftime("%d.%m.%Y")
     return str(value)
@@ -136,6 +151,28 @@ def _total(t: Appointment, values: dict, form: workflow.Form, errors: list) -> i
     return t.participants_total
 
 
+def _check_origins(session: Session, stored: dict, values: dict, errors: list) -> None:
+    """Herkunft adds up to the participants (rule `herkunft-summe`), and a context that asks for it
+    keeps it. Checked only when the correction touches Herkunft, participants or the context, so a
+    date correction of a Termin with old numbers that do not add up is not refused."""
+    touched = ("origins", "context", *COUNTS, "participants_total")
+    if all(values[name] == stored[name] for name in touched):
+        return
+    context = session.get(Context, values["context"]) if values["context"] is not None else None
+    if context is not None and context.asks_municipalities and stored["origins"] and not values["origins"]:
+        errors.append("Herkunft: dieser Kontext braucht die Gemeinden der Teilnehmenden")
+    if values["origins"]:
+        counts = [values[name] for name in COUNTS]
+        n = (
+            sum(c or 0 for c in counts)
+            if any(c is not None for c in counts)
+            else values["participants_total"]
+        )
+        total = sum(count for _, count in values["origins"])
+        if total != (n or 0):
+            errors.append(f"Herkunft: ergibt {total}, eingetragen sind {n or 0} Teilnehmende")
+
+
 def parse(session: Session, t: Appointment, form: workflow.Form) -> dict:
     """The values the correction form asks for (fields missing from the form keep theirs)."""
     one = lambda name: workflow.one(form, name)  # noqa: E731
@@ -176,6 +213,9 @@ def parse(session: Session, t: Appointment, form: workflow.Form) -> dict:
         if name in form:
             values[name] = workflow._count(one(name), f"TN {label}", errors)
     values["participants_total"] = _total(t, values, form, errors)
+    if "origin_name" in form:
+        values["origins"] = sorted([m, n] for m, n in workflow.parse_origins(form, errors).items())
+    _check_origins(session, stored, values, errors)
     if errors:
         raise CorrectionError(errors)
     return values
@@ -261,6 +301,12 @@ def _apply(session: Session, t: Appointment, changes: dict) -> None:
             setattr(_owner(t, name), name, session.get(ENTRY_FIELDS[name], new) if new is not None else None)
         elif name == "support":
             t.support = [p for i in new if (p := session.get(Person, i)) is not None]
+        elif name == "origins":
+            existing = {o.municipality: o for o in t.origins}
+            for m, n in new:
+                if m in existing:
+                    existing[m].participants = n
+            t.origins = [existing.get(m) or AppointmentOrigin(municipality=m, participants=n) for m, n in new]
         elif name == "date":
             t.date = dt.date.fromisoformat(new)
         elif name in ("start_time", "end_time"):
