@@ -58,7 +58,7 @@ ENTRIES: list[Entry | str] = [
             Count("courses_medium", "warning", "Kurse mit wichtigem Hinweis"),
         ),
     ),
-    Entry("Team", "/team", PLANUNG, planned="WM-131"),
+    Entry("Team", "/team", PLANUNG),
     Entry("+ Neuer Kurs", "/planung/neu", PLANUNG, action=True),
     Entry("Analyse", "/analyse", AUSWERTUNG),
     PROJECTS,

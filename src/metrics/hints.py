@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from metrics import lists
@@ -142,6 +142,9 @@ class Facts:
     calendar: bool = False  # a course calendar is configured (CALDAV_URL)
     # course ID -> (Terminnummer, Termin ID, date) of its numbered Termine that are not Abgesagt
     numbers: dict[int, list[tuple[int, int, dt.date | None]]] = field(default_factory=dict)
+    # (person ID, Monday) -> estimated working hours that week (`metrics.planning.workload`), for
+    # the people of the Termine evaluated
+    week_hours: dict[tuple[int, dt.date], Decimal] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -458,6 +461,34 @@ def alternative_date_conflicts(t: Appointment, facts: Facts):
     return found
 
 
+# --- Workload (WM-131) -------------------------------------------------------------------------
+
+
+def _hours(value: Decimal) -> str:
+    return f"{float(value):.1f}".replace(".", ",").removesuffix(",0")
+
+
+@rule("ueber-kapazitaet", WICHTIG, "Person über ihren Wochenstunden", stages=PLANNED)
+def above_capacity(t: Appointment, facts: Facts):
+    """A person of the team has more estimated hours that week than their weekly hours (Team page).
+    Only from this week on; people without weekly hours have no capacity to exceed."""
+    if t.date is None:
+        return []
+    monday = t.date - dt.timedelta(days=t.date.weekday())
+    if monday < facts.today - dt.timedelta(days=facts.today.weekday()):
+        return []
+    found = []
+    people = ([t.lead] if t.lead else []) + list(t.support)
+    for person in sorted({p.id: p for p in people}.values(), key=lambda p: p.name.casefold()):
+        hours = facts.week_hours.get((person.id, monday))
+        if person.weekly_hours and hours is not None and hours > person.weekly_hours:
+            found.append(
+                f"{person.name}: in KW {monday.isocalendar().week} {_hours(hours)} Std. geschätzt, "
+                f"Wochenstunden {_hours(person.weekly_hours)}"
+            )
+    return found
+
+
 # --- Places and list entries ----------------------------------------------------------------
 
 
@@ -644,7 +675,29 @@ def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -
         )
         for course_id, number, appointment_id, date in rows:
             numbers[course_id].append((number, appointment_id, date))
-    return Facts(day, dict(same_day), _confirmed_names(session), _calendar_on(), dict(numbers))
+    facts = Facts(day, dict(same_day), _confirmed_names(session), _calendar_on(), dict(numbers))
+    facts.week_hours = _week_hours(session, appointments)
+    return facts
+
+
+def _week_hours(session: Session, appointments: list[Appointment]) -> dict[tuple[int, dt.date], Decimal]:
+    """The estimated hours of the people of these Termine in the weeks of these Termine."""
+    from metrics.planning import workload  # it reads `duration` from this module
+
+    people = {p.id for t in appointments for p in ([t.lead] if t.lead else []) + list(t.support)}
+    mondays = {workload.monday_of(t.date) for t in appointments if t.date}
+    if not people or not mondays:
+        return {}
+    weeks = or_(*(Appointment.date.between(m, m + dt.timedelta(days=6)) for m in mondays))
+    found = _load(session, weeks & (Appointment.stage != ABGESAGT) & _involving(people))
+    return {key: cell.total for key, cell in workload.loads(found).items() if key[0] in people}
+
+
+def _involving(people: Iterable[int]):
+    """SQL: the Termin has one of these people as lead or support."""
+    people = list(people)
+    support = select(appointment_support.c.appointment_id).where(appointment_support.c.person_id.in_(people))
+    return Appointment.lead_id.in_(people) | Appointment.id.in_(support)
 
 
 def compute(session: Session, appointments: list[Appointment], day: dt.date | None = None) -> list[Found]:
@@ -697,9 +750,35 @@ def refresh(session: Session, appointment_ids: Iterable[int], day: dt.date | Non
         ids |= set(
             session.scalars(select(AlternativeDate.appointment_id).where(AlternativeDate.date.in_(dates)))
         )
+    ids |= _same_week_team(session, ids, dates)
     appointments = _load(session, Appointment.id.in_(ids))
     _store(session, compute(session, appointments, day), ids)
     return len(ids)
+
+
+def _same_week_team(session: Session, ids: set[int], dates: set[dt.date]) -> set[int]:
+    """For "ueber-kapazitaet": the Termine in planning that share a person with these Termine in
+    their weeks (the week's sum changed), and those of these people with a capacity hint (a Termin
+    that moved away may have taken the week below the weekly hours)."""
+    people = set(
+        session.scalars(
+            select(Appointment.lead_id).where(Appointment.id.in_(ids), Appointment.lead_id.is_not(None))
+        )
+    )
+    people |= set(
+        session.scalars(
+            select(appointment_support.c.person_id).where(appointment_support.c.appointment_id.in_(ids))
+        )
+    )
+    if not people:
+        return set()
+    mondays = {d - dt.timedelta(days=d.weekday()) for d in dates}
+    weeks = [Appointment.date.between(m, m + dt.timedelta(days=6)) for m in mondays]
+    flagged = select(StoredHint.appointment_id).where(StoredHint.rule == "ueber-kapazitaet")
+    stmt = select(Appointment.id).where(
+        Appointment.stage.in_(PLANNED), _involving(people), or_(Appointment.id.in_(flagged), *weeks)
+    )
+    return set(session.scalars(stmt))
 
 
 def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
@@ -713,6 +792,9 @@ def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
     for t in appointments:
         if t.date and t.stage != ABGESAGT:
             facts.same_day[t.date].append(t)
+    from metrics.planning import workload  # it reads `duration` from this module
+
+    facts.week_hours = {key: cell.total for key, cell in workload.loads(appointments).items()}
     found = [f for t in appointments for f in evaluate(t, facts)]
     session.execute(delete(StoredHint))
     _store(session, found, set())

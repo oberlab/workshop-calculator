@@ -444,6 +444,7 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("municipality", "Gemeinde"),
         Field("lat", "Breitengrad", "number"),
         Field("lon", "Längengrad", "number"),
+        Field("travel_hours", "Fahrtzeit (h)", "number", help="Zuschlag pro Person und Termin, z. B. 1"),
     ),
     CONTEXTS: (
         Field("name", "Name", required=True),
@@ -457,7 +458,12 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("name", "Kursname", required=True),
         Field("category", "Kategorie", "category", required=True),
         Field("duration_hours", "Übliche Dauer (h)", "number", required=True),
-        Field("overhead_hours", "Vor- und Nachbereitung (h)", "number"),
+        Field(
+            "overhead_hours",
+            "Vor- und Nachbereitung (h)",
+            "number",
+            help="Pro Termin für die Kursleitung; leer = Standard",
+        ),
         Field("continuous", "Fortlaufend: jeder Termin zählt seine Teilnehmenden", "bool"),
     ),
     PEOPLE: (

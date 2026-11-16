@@ -1,0 +1,52 @@
+{# Calendar lanes (WM-112), shared by the Kalender and the Team page (WM-131).
+   Import with context: the macros read view, day, today, top, titles and badge of the page. #}
+{% import "_ui.html" as ui %}
+
+{# One Termin in a lane or the day list: opens the side panel; without JavaScript the course page. #}
+{% macro item(t, role=none, long=false) -%}
+{% set flag = top.get(t.id) %}
+{% set place = t.course.place.name if t.course.place else none %}
+{% set team = ([t.lead.name] if t.lead else []) + (t.support|map(attribute="name")|list) %}
+<a class="cal-item stage-{{ t.stage|stage_key }}{{ ' is-support' if role == 'support' }}{{ ' is-flagged' if flag and flag.level == 'Kritisch' }}" href="/planung/termin/{{ t.id }}" hx-get="/kalender/termin/{{ t.id }}" hx-target="#termin-panel-body" data-side-panel="termin-panel" title="{{ titles[t.id] }}{% if t.start_time %}, {{ t.start_time.strftime('%H:%M') }}–{{ t.end_time.strftime('%H:%M') if t.end_time else '?' }}{% endif %}{% if place %}, {{ place }}{% endif %}">
+  <span class="cal-time mono">{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}{% if long %}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% endif %}{% else %}ohne Uhrzeit{% endif %}</span>
+  <span class="cal-name">{{ titles[t.id] }}</span>
+  {% if long %}<span class="cal-meta">{{ place or "ohne Ort" }} · {{ team|join(", ") if team else "kein Team" }} · {{ t.stage }}</span>{% else %}<span class="visually-hidden">, {{ t.stage }}{% if role == "support" %}, Unterstützung{% endif %}</span>{% endif %}
+  {% if flag %}{{ ui.hint_badge(badge[flag.level], "Hinweis") if long else "" }}{% if not long and flag.level == "Kritisch" %}<span class="cal-flag" aria-hidden="true">!</span><span class="visually-hidden">, kritischer Hinweis</span>{% endif %}{% endif %}
+</a>
+{%- endmacro %}
+
+{# One calendar week: the lanes as a table, and on phones a list per day. #}
+{% macro week_section(week, index) -%}
+<section class="cal-week" aria-labelledby="kw-{{ index }}">
+  <h3 class="week-title{{ ' visually-hidden' if view == 'woche' }}" id="kw-{{ index }}">KW {{ week.number }} · {{ week.monday.strftime("%d.%m.") }}–{{ week.days[-1].strftime("%d.%m.") }}</h3>
+  {% if week.lanes %}
+  <div class="cal-lanes">
+    <table class="cal-grid">
+      <caption class="visually-hidden">Termine in KW {{ week.number }} nach Person</caption>
+      <thead><tr>
+        <th scope="col" class="cal-person"><span class="visually-hidden">Person</span></th>
+        {% for d in week.days %}<th scope="col" class="{{ 'is-today' if d == today }}{{ ' is-outside' if view == 'monat' and d.month != day.month }}{{ ' is-quiet' if week.weekend_free and d.weekday() > 4 }}">{{ ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][d.weekday()] }} {{ d.day }}.</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for lane in week.lanes %}
+        <tr>
+          <th scope="row" class="cal-person">{% if lane.person %}{{ ui.avatar(lane.label, "sm") }} {% endif %}<span>{{ lane.label }}</span></th>
+          {% for items in lane.days %}{% set d = week.days[loop.index0] %}{% set away = lane.absent[loop.index0] %}
+          <td class="{{ 'is-today' if d == today }}{{ ' is-outside' if view == 'monat' and d.month != day.month }}{{ ' is-absent' if away }}">{% if away %}<span class="cal-absent">{{ away }}</span>{% endif %}{% for it in items %}{{ item(it.t, it.role) }}{% endfor %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="cal-days">
+    {% for d, ts in week.by_day() %}
+    <h4 class="cal-day{{ ' is-today' if d == today }}">{{ d|day }}{% if d == today %} · heute{% endif %}</h4>
+    <ul class="cal-day-list">{% for t in ts %}<li>{{ item(t, long=true) }}</li>{% endfor %}</ul>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted small cal-empty">Keine Termine in KW {{ week.number }}.</p>
+  {% endif %}
+</section>
+{%- endmacro %}

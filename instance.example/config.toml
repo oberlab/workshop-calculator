@@ -58,6 +58,16 @@ instructor = "Kursleiter"
 # "Musterstadt" = "Musterstadt"
 # "Beispieldorf" = ["Beispieldorf w", "Beispieldorf m"]
 
+[workload]
+# Estimated working hours of a Termin on the Team page and in Mein Bereich, per person:
+# course hours × factor + overhead per Termin (preparation, setup, follow-up).
+# A Format's "Vor- und Nachbereitung" replaces the lead's overhead; a place's "Fahrtzeit" is
+# added for everyone on the Termin. These are the proposed defaults; the team sets the real values.
+lead_factor = 1.0
+lead_overhead_hours = 1.0
+support_factor = 1.0
+support_overhead_hours = 0.5
+
 [features]
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
 # Shown only on the analysis page (team login).

@@ -4,7 +4,7 @@ The instance directory is private (never in the public repository). Everything i
 it is optional: without it the app runs with the neutral defaults in this package.
 
     instance/
-    ├── config.toml          calendar, target groups, Slack column mapping
+    ├── config.toml          calendar, target groups, Slack column mapping, workload estimate
     ├── theme/tokens.toml    colours and inks, fonts, category colours, chart palette, map gradient
     ├── theme/fonts/         font files referenced by tokens.toml
     ├── seeds/locations.csv  lookup per location: school?, school type, address, coordinates, municipality
@@ -18,6 +18,7 @@ import csv
 import re
 import tomllib
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
@@ -212,6 +213,49 @@ def load_project_list(slack: dict) -> ProjectList | None:
 
 
 @dataclass(frozen=True)
+class WorkloadRule:
+    """How the Team page estimates the working hours of a Termin (`PROPOSAL.md` 4.3, WM-131).
+
+    Per person on the Termin: course hours × factor plus a fixed overhead per Termin (preparation,
+    setup, follow-up), lead and support apart. A Format's own overhead replaces the lead's default
+    (e.g. HackDays need more preparation); a place's travel time is added for everyone on the
+    Termin. The defaults are the proposal of section 4.3; the real values are still open (11.2).
+    """
+
+    lead_factor: Decimal = Decimal("1.0")
+    lead_overhead: Decimal = Decimal("1.0")
+    support_factor: Decimal = Decimal("1.0")
+    support_overhead: Decimal = Decimal("0.5")
+
+
+WORKLOAD_KEYS = {
+    "lead_factor": "lead_factor",
+    "lead_overhead_hours": "lead_overhead",
+    "support_factor": "support_factor",
+    "support_overhead_hours": "support_overhead",
+}
+
+
+def load_workload(config: dict) -> WorkloadRule:
+    entry = config.get("workload") or {}
+    unknown = sorted(set(entry) - set(WORKLOAD_KEYS))
+    if unknown:
+        raise ValueError(f"[workload]: unknown setting(s) {', '.join(unknown)}")
+    values = {}
+    for key, name in WORKLOAD_KEYS.items():
+        if key not in entry:
+            continue
+        try:
+            value = Decimal(str(entry[key]))
+        except InvalidOperation as error:
+            raise ValueError(f"[workload] {key}: not a number") from error
+        if not value.is_finite() or not 0 <= value <= 100:
+            raise ValueError(f"[workload] {key}: must be between 0 and 100")
+        values[name] = value
+    return WorkloadRule(**values)
+
+
+@dataclass(frozen=True)
 class Instance:
     path: Path
     school_year_start_month: int
@@ -234,6 +278,7 @@ class Instance:
     # Transfer from Slack: a project's own List, and List status -> stage beyond the defaults.
     slack_project_list: ProjectList | None = None
     slack_stages: dict[str, str] = field(default_factory=dict)
+    workload: WorkloadRule = field(default_factory=WorkloadRule)
 
     def project(self, slug: str) -> Project | None:
         return next((p for p in self.projects if p.slug == slug), None)
@@ -370,6 +415,7 @@ def load_instance(instance_dir: Path) -> Instance:
         projects=load_projects(config),
         slack_project_list=load_project_list(slack),
         slack_stages={str(k): str(v) for k, v in (slack.get("stages") or {}).items()},
+        workload=load_workload(config),
     )
 
 

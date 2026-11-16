@@ -38,11 +38,11 @@
     <span class="weeks-label mono">KW {{ w.number }}</span>
     {% set label = hours(w.total) ~ ((" / " ~ hours(load.capacity)) if load.capacity else "") ~ " · " ~ w.termine ~ " Termin" ~ ("e" if w.termine != 1 else "") %}
     {{ ui.workload_bar(w.lead|float, load.capacity|float if load.capacity else none, w.support|float, label=label, scale=load.scale|float) }}
-    {% if w.without_hours %}<span class="weeks-note muted small">{{ w.without_hours }} ohne Uhrzeit</span>{% endif %}
+    {% if w.without_hours %}<span class="weeks-note muted small">{{ w.without_hours }} ohne Dauer</span>{% endif %}
   </li>
   {% endfor %}
 </ul>
-<p class="help">Nur die Kursstunden (Ende minus Beginn), Leitung kräftig, Unterstützung blass. {% if load.capacity %}Gemessen an deinen {{ hours(load.capacity) }} pro Woche; gelb ab 80 %, magenta über 100 %.{% else %}Noch ohne Kapazität: Deine Wochenstunden kommen später aus Kimai.{% endif %} Vor- und Nachbereitung und Fahrtzeit kommen mit der Team-Seite dazu.</p>
+<p class="help">Geschätzte Arbeitsstunden: Kursstunden plus Vor- und Nachbereitung und Fahrtzeit (<a href="/team#auslastung">so wird gerechnet</a>), Leitung kräftig, Unterstützung blass. {% if load.capacity %}Gemessen an deinen {{ hours(load.capacity) }} pro Woche; gelb über 80 %, magenta über 100 %.{% else %}Noch ohne Kapazität: Deine Wochenstunden kommen später aus Kimai.{% endif %}</p>
 {% endcall %}
 
 <div class="my-grid">
