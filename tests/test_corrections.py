@@ -442,36 +442,27 @@ def _decide_meanwhile(db, decide):
 
 
 def test_concurrent_decisions_wait_for_each_other(legacy):
-    """Two admins confirming corrections of the same Termin at once, or one confirm sent twice:
-    the second waits for the first and then sees its values and decision (WM-132)."""
+    """One confirm sent twice at once: the second waits for the first's locks and then sees its
+    decision, so the change is applied once (WM-132). Two different open proposals for one Termin
+    cannot race, because only one correction per Termin may be open."""
     db = legacy
     t = _counted_termin(db)
     male, total = t.participants_male, t.participants_total
     first = corrections.propose(db, t, form(participants_male=male + 1), "a", "Kim")
-    second = corrections.propose(db, t, form(participants_male=male + 2), "b", "Lea")
     db.commit()
     engine = db.get_bind()
 
-    for proposal_id, refused in ((first.id, "schon entschieden"), (second.id, "Seit dem Vorschlag geändert")):
-        with sa.orm.Session(engine) as admin:
-            corrections.confirm(admin, first.id, "Anna")  # holds its locks until the commit
-            thread, outcome = _decide_meanwhile(db, lambda s, i=proposal_id: corrections.confirm(s, i, "Ben"))
-            time.sleep(0.5)
-            assert thread.is_alive()  # waiting for Anna
-            admin.commit()
-        thread.join(10)
-        assert not thread.is_alive() and refused in outcome.get("error", "")
-        # Restore the Termin for the second round; the history keeps one applied correction.
-        db.expire_all()
-        if proposal_id == first.id:
-            assert db.get(Proposal, first.id).decided_by == "Anna"
-            changed = [h for h in _history(db, t) if h.field == "participants_male"]
-            assert [h.new_value for h in changed] == [str(male + 1)]
-            reset = db.get(Proposal, first.id)
-            reset.decision = reset.decided_by = reset.decided_at = None
-            t.participants_male, t.participants_total = male, total
-            db.commit()
+    with sa.orm.Session(engine) as admin:
+        corrections.confirm(admin, first.id, "Anna")  # holds its locks until the commit
+        thread, outcome = _decide_meanwhile(db, lambda s: corrections.confirm(s, first.id, "Ben"))
+        time.sleep(0.5)
+        assert thread.is_alive()  # waiting for Anna
+        admin.commit()
+    thread.join(10)
+    assert not thread.is_alive() and "schon entschieden" in outcome.get("error", "")
 
     db.expire_all()
+    assert db.get(Proposal, first.id).decided_by == "Anna"
+    changed = [h for h in _history(db, t) if h.field == "participants_male"]
+    assert [h.new_value for h in changed] == [str(male + 1)]
     assert (t.participants_male, t.participants_total) == (male + 1, total + 1)
-    assert db.get(Proposal, second.id).decision is None
