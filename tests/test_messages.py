@@ -13,7 +13,7 @@ from datetime import time
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, messages, scheduler
+from metrics import messages, metrics, scheduler
 from metrics.db import ABGESCHLOSSEN, SlackMessage
 from metrics.instance import Messages, load_instance
 from metrics.planning import workflow
@@ -198,8 +198,8 @@ def test_the_weekly_status_year_total_is_the_front_page_total(team, slack, monke
     w.db.commit()
 
     instance = messages.get_instance()
-    expected = analytics.totals(
-        w.db, analytics.Filters(preset="this_year"), TODAY, instance.school_year_start_month
+    expected = metrics.totals(
+        w.db, metrics.Filters(preset="this_year"), TODAY, instance.school_year_start_month
     )
     assert expected.sessions == 2 and expected.participants == 1246
     figures = messages.weekly_figures(w.db, TODAY)

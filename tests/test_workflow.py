@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, hints
+from metrics import hints, metrics
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -227,7 +227,7 @@ def test_herkunft_for_contexts_that_ask_and_must_add_up(world):
 
 def test_final_confirmation_counts_once_and_locks_all_but_billed(world):
     db = world.db
-    before = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    before = metrics.totals(db, metrics.Filters(), TODAY, 9)
     t = workflow.create(db, world.basics(), "Kim")
     workflow.confirm(db, t, None, "Kim")
     workflow.mark_done(db, t, "Kim")
@@ -249,7 +249,7 @@ def test_final_confirmation_counts_once_and_locks_all_but_billed(world):
     reasons = [h.reason for h in _history(db, t)]
     assert "Hinweise geprüft" in reasons and "final bestätigt" in reasons
     db.flush()
-    after = analytics.totals(db, analytics.Filters(), TODAY + dt.timedelta(days=30), 9)
+    after = metrics.totals(db, metrics.Filters(), TODAY + dt.timedelta(days=30), 9)
     assert (after.sessions - before.sessions, after.participants - before.participants) == (1, 11)
     # Locked: only Abgerechnet and the course's workload values (no chart reads them) change.
     assert workflow.editable(t) == {workflow.BILLED, workflow.WORKLOAD}

@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import QueryParams
 
-from metrics import analytics, auth, charts, hints, lists, logins
+from metrics import analytics, auth, charts, hints, lists, logins, metrics
 from metrics.db import ImportRun, Proposal, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import mine, workflow
@@ -61,7 +61,7 @@ def _date_param(value: str | None, name: str) -> date | None:
         raise HTTPException(400, f"Ungültiges Datum für {name}: {value}") from error
 
 
-def parse_filters(params: QueryParams, detailed: bool = True) -> analytics.Filters:
+def parse_filters(params: QueryParams, detailed: bool = True) -> metrics.Filters:
     """Filters from the query string; the overview (detailed=False) only takes bin and period."""
     bin_name = params.get("bin") or "month"
     preset = params.get("period") or "all"
@@ -69,7 +69,7 @@ def parse_filters(params: QueryParams, detailed: bool = True) -> analytics.Filte
         raise HTTPException(400, f"Unbekanntes Zeitraster: {bin_name}")
     if preset not in analytics.PRESETS:
         raise HTTPException(400, f"Unbekannter Zeitraum: {preset}")
-    return analytics.Filters(
+    return metrics.Filters(
         bin=bin_name,
         preset=preset,
         date_from=_date_param(params.get("from"), "from") if preset == "custom" else None,
@@ -95,7 +95,7 @@ def current_login(request: Request) -> auth.Login | None:
     return login
 
 
-def page_context(filters: analytics.Filters, **extra) -> dict:
+def page_context(filters: metrics.Filters, **extra) -> dict:
     return {"filters": filters, "bins": analytics.BINS, "presets": analytics.PRESETS, **extra}
 
 
@@ -158,7 +158,7 @@ def _data_as_of(session) -> str | None:
     return finished.astimezone(TIMEZONE).strftime("%d.%m.%Y, %H:%M Uhr") if finished else None
 
 
-def sessions_over_time(filters: analytics.Filters) -> JSONResponse:
+def sessions_over_time(filters: metrics.Filters) -> JSONResponse:
     """Chart and key figures for the overview and the analysis page."""
     instance = get_instance()
     with get_sessionmaker()() as session:
@@ -166,7 +166,7 @@ def sessions_over_time(filters: analytics.Filters) -> JSONResponse:
             session, filters, today(), instance.school_year_start_month
         )
         data_as_of = _data_as_of(session)
-        totals = analytics.totals(session, filters, today(), instance.school_year_start_month)
+        totals = metrics.totals(session, filters, today(), instance.school_year_start_month)
     segments = analytics.aggregate(rows, filters.bin, instance.school_year_start_month)
     dates = [row[0] for row in rows]
     caption = analytics.period_caption(min(dates), max(dates)) if dates else ""

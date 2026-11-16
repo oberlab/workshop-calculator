@@ -7,7 +7,7 @@ import re
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, courses, hints
+from metrics import courses, hints, metrics
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -78,7 +78,7 @@ def test_done_when_ten_week_jugendlab_series_moved_cancelled_and_counted(world):
     and the participant count follows the counting rule (participants of Termin number 1)."""
     db = world.db
     first = TODAY - dt.timedelta(days=70)  # all held by now, so they can be finally confirmed
-    before = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    before = metrics.totals(db, metrics.Filters(), TODAY, 9)
     t = series.create(db, _youth(world, first, reihe_rhythmus="woechentlich", reihe_anzahl=10), "Kim")
     course = t.course
     termine = _termine(course)
@@ -127,7 +127,7 @@ def test_done_when_ten_week_jugendlab_series_moved_cancelled_and_counted(world):
         )
         workflow.finalize(db, x, "Kim", checked=True, today=TODAY)
     assert {x.stage for x in counted} == {ABGESCHLOSSEN}
-    after = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    after = metrics.totals(db, metrics.Filters(), TODAY, 9)
     # Nine held Termine (Einsätze), participants only of number 1 (the second date: 6 + 5).
     assert (after.sessions - before.sessions, after.participants - before.participants) == (9, 11)
 
@@ -138,7 +138,7 @@ def test_continuous_series_counts_every_termin(world):
     db = world.db
     world.format.continuous = True
     first = TODAY - dt.timedelta(days=28)
-    before = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    before = metrics.totals(db, metrics.Filters(), TODAY, 9)
     t = series.create(db, _youth(world, first, reihe_rhythmus="woechentlich", reihe_anzahl=3), "Kim")
     termine = _termine(t.course)
     series.confirm_all(db, t.course, "Kim")
@@ -158,7 +158,7 @@ def test_continuous_series_counts_every_termin(world):
             "Kim",
         )
         workflow.finalize(db, x, "Kim", checked=True, today=TODAY)
-    after = analytics.totals(db, analytics.Filters(), TODAY, 9)
+    after = metrics.totals(db, metrics.Filters(), TODAY, 9)
     assert (after.sessions - before.sessions, after.participants - before.participants) == (3, 7 + 8 + 9)
     (earlier,) = series.add(db, t.course, [first - dt.timedelta(weeks=1)], t, "Kim")
     assert earlier.number == termine[0].number == 1

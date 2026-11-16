@@ -9,7 +9,7 @@ from html.parser import HTMLParser
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, auth
+from metrics import analytics, auth, metrics
 from metrics.db import (
     ABGESCHLOSSEN,
     CONFIRMED,
@@ -171,7 +171,7 @@ def test_done_when_a_participant_correction_changes_nothing_until_confirmed(lega
 def test_a_date_correction_moves_the_termin_in_the_chart(legacy):
     db = legacy
     t = _counted_termin(db)
-    filters = analytics.Filters()
+    filters = metrics.Filters()
 
     def by_year():
         rows, _ = analytics.count_by_date_and_category(db, filters, TODAY, 9)

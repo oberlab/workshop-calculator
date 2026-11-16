@@ -1,26 +1,32 @@
-"""Time bins, period presets and the aggregations behind the charts."""
+"""Time bins, period presets and the aggregations behind the charts.
+
+What counts (held Termine, the filters, participants, places) is defined in `metrics.metrics`.
+"""
 
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics.db import (
-    STAGE_COUNTED,
-    Appointment,
-    AppointmentOrigin,
-    Context,
-    Course,
-    Format,
-    Person,
-    Place,
-    SchoolType,
-)
+from metrics.db import Appointment, AppointmentOrigin, Person, Place, SchoolType
 from metrics.instance import Instance
+from metrics.metrics import (
+    CATEGORY,
+    CONTEXT,
+    COUNTS_PARTICIPANTS,
+    DATE,
+    PLACE,
+    TARGET_GROUP,
+    Filters,
+    add_months,
+    held,
+    school_year_start,
+    select_held,
+)
 
 MONTHS = [
     "Januar",
@@ -65,16 +71,6 @@ PRESETS = {
 NO_CATEGORY = "Ohne Kategorie"
 
 
-def _add_months(d: date, months: int) -> date:
-    index = d.year * 12 + d.month - 1 + months
-    return date(index // 12, index % 12 + 1, 1)
-
-
-def school_year_start(d: date, start_month: int) -> date:
-    year = d.year if d.month >= start_month else d.year - 1
-    return date(year, start_month, 1)
-
-
 def bin_start(d: date, bin_name: str, school_year_start_month: int) -> date:
     if bin_name == "week":
         return d - timedelta(days=d.weekday())
@@ -93,7 +89,7 @@ def bin_end(start: date, bin_name: str) -> date:
     """Exclusive end of the bin that starts at `start`."""
     if bin_name == "week":
         return start + timedelta(days=7)
-    return _add_months(start, {"month": 1, "quarter": 3, "year": 12, "school_year": 12}[bin_name])
+    return add_months(start, {"month": 1, "quarter": 3, "year": 12, "school_year": 12}[bin_name])
 
 
 def bin_label(start: date, bin_name: str) -> str:
@@ -109,46 +105,6 @@ def bin_label(start: date, bin_name: str) -> str:
     return f"{start.year}/{str(start.year + 1)[-2:]}"
 
 
-def resolve_period(
-    preset: str,
-    today: date,
-    school_year_start_month: int,
-    custom_from: date | None = None,
-    custom_to: date | None = None,
-) -> tuple[date | None, date | None]:
-    """Inclusive (from, to) for a preset; None means open."""
-    if preset == "all":
-        return None, None
-    if preset in ("this_school_year", "last_school_year"):
-        start = school_year_start(today, school_year_start_month)
-        if preset == "last_school_year":
-            start = _add_months(start, -12)
-        return start, _add_months(start, 12) - timedelta(days=1)
-    if preset == "this_year":
-        return date(today.year, 1, 1), date(today.year, 12, 31)
-    if preset == "last_year":
-        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
-    if preset == "last_12_months":
-        # The current calendar month and the 11 before it.
-        return _add_months(today.replace(day=1), -11), _add_months(today.replace(day=1), 1) - timedelta(
-            days=1
-        )
-    if preset == "custom":
-        return custom_from, custom_to
-    raise ValueError(f"Unknown period preset: {preset}")
-
-
-@dataclass
-class Filters:
-    bin: str = "month"
-    preset: str = "all"
-    date_from: date | None = None
-    date_to: date | None = None
-    categories: list[str] = field(default_factory=list)
-    contexts: list[str] = field(default_factory=list)
-    target_groups: list[str] = field(default_factory=list)
-
-
 @dataclass
 class Segment:
     start: date
@@ -156,49 +112,6 @@ class Segment:
     label: str
     category: str
     count: int
-
-
-# The columns the analysis filters and groups by, from the Termin and its course.
-DATE = Appointment.date
-CATEGORY = Format.category
-CONTEXT = Context.name
-TARGET_GROUP = Course.target_group
-PLACE = Place.name
-
-
-def joined(query):
-    """A query over Termine with their course, format, context and place."""
-    return (
-        query.select_from(Appointment)
-        .join(Course, Appointment.course_id == Course.id)
-        .outerjoin(Format, Course.format_id == Format.id)
-        .outerjoin(Context, Course.context_id == Context.id)
-        .outerjoin(Place, Course.place_id == Place.id)
-    )
-
-
-def _counted(query):
-    """Termine the charts count: finally confirmed (Abgeschlossen) and dated."""
-    return joined(query).where(Appointment.stage == STAGE_COUNTED, DATE.is_not(None))
-
-
-def _held_sessions(query, filters: Filters, today: date, school_year_start_month: int):
-    """Restrict a query to held Termine matching all filters; returns it with the resolved period."""
-    start, end = resolve_period(
-        filters.preset, today, school_year_start_month, filters.date_from, filters.date_to
-    )
-    query = _counted(query)
-    if start:
-        query = query.where(DATE >= start)
-    if end:
-        query = query.where(DATE <= end)
-    if filters.categories:
-        query = query.where(CATEGORY.in_(filters.categories))
-    if filters.contexts:
-        query = query.where(CONTEXT.in_(filters.contexts))
-    if filters.target_groups:
-        query = query.where(TARGET_GROUP.in_(filters.target_groups))
-    return query, (start, end)
 
 
 @dataclass
@@ -212,7 +125,7 @@ def filter_options(session: Session) -> FilterOptions:
     """Categories, contexts and target groups that occur in held Termine."""
 
     def distinct(column):
-        return {v for (v,) in session.execute(_counted(select(column).distinct())) if v}
+        return {v for (v,) in session.execute(held(select(column).distinct())) if v}
 
     return FilterOptions(
         categories=distinct(CATEGORY),
@@ -223,7 +136,7 @@ def filter_options(session: Session) -> FilterOptions:
 
 def count_by_date_and_category(session: Session, filters: Filters, today: date, school_year_start_month: int):
     """Held Termine grouped by date and category, with all filters applied."""
-    query, period = _held_sessions(
+    query, period = select_held(
         select(DATE, CATEGORY, func.count()).group_by(DATE, CATEGORY),
         filters,
         today,
@@ -242,7 +155,7 @@ class PersonCount:
 
 def count_by_lead(session: Session, filters: Filters, today: date, school_year_start_month: int):
     """Held Termine per lead, with all filters applied."""
-    query, _ = _held_sessions(
+    query, _ = select_held(
         select(Person.slack_id, Person.name, Person.image.is_not(None), func.count()).group_by(Person.id),
         filters,
         today,
@@ -266,7 +179,7 @@ class PlaceCount(NamedTuple):
 
 def count_by_place(session: Session, filters: Filters, today: date, school_year_start_month: int):
     """Held Termine per place and category, with the place's details; all filters applied."""
-    query, _ = _held_sessions(
+    query, _ = select_held(
         select(
             PLACE, Place.is_school, Place.school_type, Place.municipality, CATEGORY, func.count()
         ).group_by(Place.id, CATEGORY),
@@ -334,43 +247,6 @@ def by_municipality(rows: Iterable[PlaceCount | OriginCount], instance: Instance
     return MunicipalityCounts(inside=inside, outside=outside, unassigned=unassigned)
 
 
-@dataclass
-class Totals:
-    sessions: int
-    participants: int
-    locations: int
-
-
-# Participants a held Termin adds to the total: Terminnummer 1 counts, so children in multi-session
-# courses count once (rule of the R analysis); Termine without a number count nothing. A Termin made
-# in the app for a continuous format (WM-114) counts at every number. Imported rows keep their
-# recorded rule (they record number 1 on every Termin of a continuous format).
-COUNTS_PARTICIPANTS = or_(
-    Appointment.number == 1,
-    and_(Appointment.source == "app", Format.continuous.is_(True), Appointment.number.is_not(None)),
-)
-counted_participants = case((COUNTS_PARTICIPANTS, Appointment.participants_total), else_=0)
-
-
-def totals(session: Session, filters: Filters, today: date, school_year_start_month: int) -> Totals:
-    """Key figures for the selection.
-
-    Participants follow `COUNTS_PARTICIPANTS`. Places are distinct places.
-    """
-    query, _ = _held_sessions(
-        select(
-            func.count(),
-            func.coalesce(func.sum(counted_participants), 0),
-            func.count(func.distinct(Place.id)),
-        ),
-        filters,
-        today,
-        school_year_start_month,
-    )
-    sessions, participants, locations = session.execute(query).one()
-    return Totals(sessions=sessions, participants=int(participants), locations=locations)
-
-
 def aggregate(rows, bin_name: str, school_year_start_month: int) -> list[Segment]:
     """Sum (date, category, count) rows into calendar bins."""
     counts: dict[tuple[date, str], int] = defaultdict(int)
@@ -400,12 +276,12 @@ def count_participants_by_origin(
 ) -> list[OriginCount]:
     """Participants per home municipality (Herkunft) on held Termine, with all filters applied.
 
-    Termine and participants count as in the key figures (`totals`): held Termine only, and only the
-    Termine whose participants count (`COUNTS_PARTICIPANTS`). Participants of such a Termin that
+    Termine and participants count as in the key figures (`metrics.metrics`): held Termine only, and
+    only the Termine whose participants count (`COUNTS_PARTICIPANTS`). Participants of such a Termin that
     its Herkunft does not cover (no Herkunft recorded, or fewer than the total) come back as one
     row with municipality None; they are not assigned to any municipality.
     """
-    by_origin, _ = _held_sessions(
+    by_origin, _ = select_held(
         select(AppointmentOrigin.municipality, func.sum(AppointmentOrigin.participants)).group_by(
             AppointmentOrigin.municipality
         ),
@@ -427,7 +303,7 @@ def count_participants_by_origin(
     missing = func.greatest(
         func.coalesce(Appointment.participants_total, 0) - func.coalesce(recorded.c.participants, 0), 0
     )
-    without_origin, _ = _held_sessions(
+    without_origin, _ = select_held(
         select(func.coalesce(func.sum(missing), 0)), filters, today, school_year_start_month
     )
     without_origin = without_origin.outerjoin(recorded, recorded.c.appointment_id == Appointment.id).where(

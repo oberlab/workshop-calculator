@@ -6,7 +6,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from metrics import analytics
+from metrics import analytics, metrics
 from metrics.db import ABGESCHLOSSEN, Appointment, Context, Course, Person, Place, SchoolType
 from metrics.ingest import store
 from metrics.ingest.legacy import read_harmonised
@@ -77,7 +77,7 @@ def test_baseline_becomes_courses_with_one_termin_each(db, instance, baseline):
     assert leads["Kim"] == "U0000000001"
     assert leads["U001"] == "U001"  # not a Slack ID: a legacy name, kept as recorded
 
-    totals = analytics.totals(db, analytics.Filters(), date(2026, 1, 1), 8)
+    totals = metrics.totals(db, metrics.Filters(), date(2026, 1, 1), 8)
     first = [r for r in baseline if r.session_number == 1]
     assert totals.sessions == 9
     assert totals.participants == sum(r.participants_total for r in first)
@@ -176,8 +176,8 @@ def test_analysis_counts_only_final_termine(db, instance, baseline):
     termin = db.scalars(sa.select(Appointment).order_by(Appointment.date)).first()
     termin.stage = "Durchgeführt"  # held but not finally confirmed
     db.flush()
-    filters = analytics.Filters()
-    assert analytics.totals(db, filters, date(2026, 1, 1), 8).sessions == 8
+    filters = metrics.Filters()
+    assert metrics.totals(db, filters, date(2026, 1, 1), 8).sessions == 8
 
     options = analytics.filter_options(db)
     assert options.categories == {"Code", "Engineering", "Science"}

@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, charts
+from metrics import analytics, charts, metrics
 from metrics.db import (
     ABGESCHLOSSEN,
     CONFIRMED,
@@ -65,7 +65,7 @@ def termine(db):
     return db
 
 
-PROJECT = analytics.Filters(
+PROJECT = metrics.Filters(
     preset="custom", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31), contexts=["Projekt A"]
 )
 
@@ -98,19 +98,19 @@ def test_origin_sums_match_sql(termine, instance):
     assert counts.outside == 3  # Fernstadt is not on the example map
     assert counts.unassigned == 2 + 9  # the part of "c" without Herkunft, and all of "d"
     # Together they are exactly the participants key figure for the same selection.
-    total = analytics.totals(termine, PROJECT, TODAY, 9).participants
+    total = metrics.totals(termine, PROJECT, TODAY, 9).participants
     assert sum(counts.inside.values()) + counts.outside + counts.unassigned == total
 
 
 def test_origins_follow_the_time_controls(termine):
-    everything = analytics.Filters(contexts=["Projekt A"])
+    everything = metrics.Filters(contexts=["Projekt A"])
     rows = {
         r.municipality: r.count for r in analytics.count_participants_by_origin(termine, everything, TODAY, 9)
     }
     assert rows["Neudorf"] == 5 + 3  # "g" from 2024 counts without a period
     assert (
         analytics.count_participants_by_origin(
-            termine, analytics.Filters(preset="custom", date_from=date(2030, 1, 1)), TODAY, 9
+            termine, metrics.Filters(preset="custom", date_from=date(2030, 1, 1)), TODAY, 9
         )
         == []
     )

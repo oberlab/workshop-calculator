@@ -149,7 +149,7 @@ class Format(Base):
     Legacy entries without a course name use the unnamed format of their category, so the
     category is never lost; name and category together are unique (NULL counts as a value).
     `continuous` (fortlaufend, e.g. JugendLab): every app Termin of its courses counts its
-    participants, not only Terminnummer 1 (WM-114, `analytics.counted_participants`).
+    participants, not only Terminnummer 1 (WM-114, `metrics.metrics.COUNTS_PARTICIPANTS`).
     """
 
     __tablename__ = "formats"

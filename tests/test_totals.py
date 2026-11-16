@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from metrics import analytics
+from metrics import metrics
 from metrics.db import ABGESCHLOSSEN, GEPLANT, Appointment, Course, Format, Place
 
 
@@ -39,15 +39,15 @@ def termine(db):
 
 
 def test_totals(termine):
-    result = analytics.totals(termine, analytics.Filters(), date(2026, 1, 1), 8)
-    assert result == analytics.Totals(sessions=6, participants=46, locations=3)
+    result = metrics.totals(termine, metrics.Filters(), date(2026, 1, 1), 8)
+    assert result == metrics.Totals(sessions=6, participants=46, locations=3)
 
 
 def test_totals_follow_filters(termine):
-    filters = analytics.Filters(
+    filters = metrics.Filters(
         preset="custom", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31), categories=["Code"]
     )
-    assert analytics.totals(termine, filters, date(2026, 1, 1), 8) == analytics.Totals(5, 37, 2)
+    assert metrics.totals(termine, filters, date(2026, 1, 1), 8) == metrics.Totals(5, 37, 2)
 
 
 def test_continuous_format_counts_every_app_termin_and_legacy_rows_keep_their_rule(db):
@@ -80,5 +80,5 @@ def test_continuous_format_counts_every_app_termin_and_legacy_rows_keep_their_ru
         ]
     )
     db.flush()
-    result = analytics.totals(db, analytics.Filters(), date(2026, 1, 1), 8)
+    result = metrics.totals(db, metrics.Filters(), date(2026, 1, 1), 8)
     assert (result.sessions, result.participants) == (7, 10 + 7 + 4 + 6)

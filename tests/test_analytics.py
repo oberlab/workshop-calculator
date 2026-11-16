@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 
 from metrics import analytics as a
+from metrics import metrics as m
 
 AUG = 8
 
@@ -49,18 +50,18 @@ def test_bin_end_and_labels():
     ],
 )
 def test_resolve_period(preset, expected):
-    assert a.resolve_period(preset, date(2026, 10, 30), AUG) == expected
+    assert m.resolve_period(preset, date(2026, 10, 30), AUG) == expected
 
 
 def test_resolve_period_before_school_year_start():
-    assert a.resolve_period("this_school_year", date(2026, 7, 31), AUG) == (
+    assert m.resolve_period("this_school_year", date(2026, 7, 31), AUG) == (
         date(2025, 8, 1),
         date(2026, 7, 31),
     )
 
 
 def test_resolve_period_custom():
-    assert a.resolve_period("custom", date(2026, 10, 30), AUG, date(2025, 1, 1), None) == (
+    assert m.resolve_period("custom", date(2026, 10, 30), AUG, date(2025, 1, 1), None) == (
         date(2025, 1, 1),
         None,
     )

@@ -6,7 +6,7 @@ import re
 import pytest
 import sqlalchemy as sa
 
-from metrics import analytics, auth, courses, lists
+from metrics import analytics, auth, courses, lists, metrics
 from metrics.db import (
     ABGESCHLOSSEN,
     CONFIRMED,
@@ -430,7 +430,7 @@ def test_done_when_a_proposed_place_is_used_merged_and_counted(seeded, monkeypat
     termin = seeded.get(Appointment, termin.id)
     courses.finally_confirm(seeded, termin, "Team")
     seeded.commit()
-    rows = analytics.count_by_place(seeded, analytics.Filters(), TODAY, 8)
+    rows = analytics.count_by_place(seeded, metrics.Filters(), TODAY, 8)
     assert [(r.place, r.count) for r in rows] == [("Makerspace", 1)]
     data = admin.get("/api/analyse/sessions-over-time").json()["meta"]
     assert (data["count"], data["totals"]["participants"], data["totals"]["locations"]) == (1, 9, 1)
