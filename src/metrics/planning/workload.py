@@ -2,14 +2,18 @@
 
 Estimated working hours of a Termin, per person on it (`estimate`):
 
-    lead:    course hours × lead factor    + overhead (the Format's own, else the default)  + travel
-    support: course hours × support factor + support overhead                               + travel
+    lead:    course hours × lead factor + preparation (factor × course hours) + fixed hours + travel
+    support: course hours × support factor                                    + fixed hours + travel
 
 Course hours are Ende minus Beginn, else the recorded duration, else the Format's usual duration;
-a Termin with none of them counts its overhead only (and is counted as "ohne Dauer"). The factors
-and default overheads come from `[workload]` in the instance config (`instance.WorkloadRule`),
-the Format's overhead from Stammdaten "Formate", the travel time from the place ("Orte"). Every
-stage but Abgesagt counts: a held Termin of this week was still work.
+a Termin with none of them counts its fixed hours and travel only (and is counted as "ohne Dauer").
+Each value comes from the first of (`values`, Alex 2026-11-16):
+
+- the course's own value (course page, "Arbeitszeit"; every value can be set),
+- the Format's fixed hours (lead) or the place's travel time ("Orte"),
+- the default in `[workload]` of the instance config (`instance.WorkloadRule`; no travel).
+
+Every stage but Abgesagt counts: a held Termin of this week was still work.
 
 `loads` adds the estimates up per person and calendar week (lead and support apart); `table` is
 the Team page's table and Mein Bereich's bars, `capacity` the Person's weekly hours (from Kimai
@@ -53,6 +57,11 @@ def number(value: Decimal | float | int) -> str:
     return f"{float(value):.1f}".replace(".", ",").removesuffix(",0")
 
 
+def exact(value: Decimal | float | int) -> str:
+    """A value of the rule as entered, with a decimal comma: 0,25 or 1."""
+    return f"{Decimal(value).normalize():f}".replace(".", ",")
+
+
 def course_hours(t: Appointment) -> Decimal | None:
     """Ende minus Beginn, else the recorded duration, else the Format's usual duration."""
     hours = hints.duration(t)
@@ -61,34 +70,103 @@ def course_hours(t: Appointment) -> Decimal | None:
     return Decimal(hours) if hours is not None else None
 
 
+STANDARD, OWN, FORMAT, PLACE = "Standard", "Kurs", "Format", "Ort"
+
+
+@dataclass(frozen=True)
+class Value:
+    """One value of the rule for a course, with where it came from."""
+
+    amount: Decimal
+    source: str  # OWN, FORMAT, PLACE or STANDARD
+    name: str | None = None  # the Format's or place's name
+
+    @property
+    def origin(self) -> str:
+        """Where the value came from, in German: "Kurs", "Format „HackDays“", "Standard"."""
+        return f"{self.source} „{self.name}“" if self.name else self.source
+
+
+def _first(*candidates: tuple[Decimal | None, str, str | None]) -> Value:
+    for amount, source, name in candidates:
+        if amount is not None:
+            return Value(Decimal(amount), source, name)
+    raise ValueError("no value")  # the last candidate is always a default
+
+
+@dataclass(frozen=True)
+class Values:
+    """The rule's values for the Termine of one course."""
+
+    lead_factor: Value
+    preparation_factor: Value
+    lead_overhead: Value
+    support_factor: Value
+    support_overhead: Value
+    travel: Value
+
+
+# German terms of the values, as the course page and the Team page show them.
+TERMS = {
+    "lead_factor": "Faktor Kursleitung",
+    "preparation_factor": "Vorbereitung",
+    "lead_overhead": "Zuschlag Kursleitung",
+    "support_factor": "Faktor Unterstützung",
+    "support_overhead": "Zuschlag Unterstützung",
+    "travel": "Fahrtzeit",
+}
+
+
+def values(course: Course | None, workload: WorkloadRule | None = None, own_values: bool = True) -> Values:
+    """The rule for this course: its own value, else the Format's or place's, else the default.
+    Without `own_values`: what the course inherits (the course page shows it for empty fields)."""
+    w = workload or rule()
+    fmt = course.format if course is not None else None
+    place = course.place if course is not None else None
+
+    def own(name: str) -> tuple[Decimal | None, str, None]:
+        return (getattr(course, name) if course is not None and own_values else None, OWN, None)
+
+    return Values(
+        lead_factor=_first(own("lead_factor"), (w.lead_factor, STANDARD, None)),
+        preparation_factor=_first(own("preparation_factor"), (w.preparation_factor, STANDARD, None)),
+        lead_overhead=_first(
+            own("lead_overhead_hours"),
+            (fmt.overhead_hours if fmt else None, FORMAT, fmt.name if fmt else None),
+            (w.lead_overhead, STANDARD, None),
+        ),
+        support_factor=_first(own("support_factor"), (w.support_factor, STANDARD, None)),
+        support_overhead=_first(own("support_overhead_hours"), (w.support_overhead, STANDARD, None)),
+        travel=_first(
+            own("travel_hours"),
+            (place.travel_hours if place else None, PLACE, place.name if place else None),
+            (Decimal(0), STANDARD, None),
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class Estimate:
     """The estimated working hours of one person on one Termin, with its parts."""
 
     course: Decimal | None  # course hours, None if unknown
     factor: Decimal
+    preparation: Decimal  # factor of the course hours (lead only)
     overhead: Decimal
     travel: Decimal
 
     @property
     def total(self) -> Decimal:
-        return (self.course or Decimal(0)) * self.factor + self.overhead + self.travel
+        return (self.course or Decimal(0)) * (self.factor + self.preparation) + self.overhead + self.travel
 
 
 def estimate(t: Appointment, role: str, workload: WorkloadRule | None = None) -> Estimate:
-    workload = workload or rule()
-    fmt = t.course.format if t.course is not None else None
-    place = t.course.place if t.course is not None else None
+    v = values(t.course, workload)
     if role == LEAD:
-        factor = workload.lead_factor
-        own = fmt.overhead_hours if fmt is not None else None
-        overhead = Decimal(own) if own is not None else workload.lead_overhead
+        parts = (v.lead_factor, v.preparation_factor, v.lead_overhead)
     else:
-        factor, overhead = workload.support_factor, workload.support_overhead
-    travel = (
-        Decimal(place.travel_hours) if place is not None and place.travel_hours is not None else Decimal(0)
-    )
-    return Estimate(course_hours(t), factor, overhead, travel)
+        parts = (v.support_factor, Value(Decimal(0), STANDARD), v.support_overhead)
+    return Estimate(course_hours(t), *(p.amount for p in parts), v.travel.amount)
 
 
 def team_of(t: Appointment) -> list[tuple[Person, str]]:
@@ -237,16 +315,41 @@ def table(
     return rows
 
 
+def _times(factor: Decimal) -> str:
+    return "Kurszeit" if factor == 1 else f"{exact(factor)} × Kurszeit"
+
+
 def formula(workload: WorkloadRule | None = None) -> list[str]:
     """The rule in German words, for the page."""
     w = workload or rule()
     return [
-        f"Kursleitung: Kursstunden × {number(w.lead_factor)} + {number(w.lead_overhead)} Std. Vor- und "
-        "Nachbereitung (oder der Wert des Formats)",
-        f"Unterstützung: Kursstunden × {number(w.support_factor)} + {number(w.support_overhead)} Std.",
-        "Dazu für alle die Fahrtzeit des Orts, falls eingetragen.",
-        "Kursstunden: Ende minus Beginn, sonst die eingetragene Dauer, sonst die übliche Dauer des Formats.",
+        f"Kursleitung: {_times(w.lead_factor)} + Vorbereitung ({exact(w.preparation_factor)} × Kurszeit) "
+        f"+ {exact(w.lead_overhead)} Std. Zuschlag + Fahrtzeit",
+        f"Unterstützung: {_times(w.support_factor)} + {exact(w.support_overhead)} Std. Zuschlag + Fahrtzeit",
+        "Kurszeit: Ende minus Beginn, sonst die eingetragene Dauer, sonst die übliche Dauer des Formats.",
+        "Fahrtzeit: die des Orts, falls eingetragen.",
+        "Ein Kurs kann jeden dieser Werte selbst festlegen (Kursseite, „Arbeitszeit“). Sonst gilt der "
+        "Zuschlag des Formats (Kursleitung) bzw. die Fahrtzeit des Orts, sonst der Standard.",
     ]
+
+
+def show(name: str, value: Value) -> str:
+    """One value with its unit: "1 × Kurszeit" (factors), "2 Std."."""
+    unit = " × Kurszeit" if name.endswith("factor") else " Std."
+    return f"{exact(value.amount)}{unit}"
+
+
+def own_values(appointments: Iterable[Appointment]) -> list[tuple[Course, list[str]]]:
+    """The courses of these Termine that set values of the rule themselves, with those values."""
+    found: dict[int, tuple[Course, list[str]]] = {}
+    for t in counted(appointments):
+        if t.course is None or t.course_id in found:
+            continue
+        v = values(t.course)
+        own = [f"{TERMS[n]} {show(n, x)}" for n, x in vars(v).items() if x.source == OWN]
+        if own:
+            found[t.course_id] = (t.course, own)
+    return list(found.values())
 
 
 @dataclass

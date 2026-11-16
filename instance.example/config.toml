@@ -60,10 +60,12 @@ instructor = "Kursleiter"
 
 [workload]
 # Estimated working hours of a Termin on the Team page and in Mein Bereich, per person:
-# course hours × factor + overhead per Termin (preparation, setup, follow-up).
-# A Format's "Vor- und Nachbereitung" replaces the lead's overhead; a place's "Fahrtzeit" is
-# added for everyone on the Termin. These are the proposed defaults; the team sets the real values.
+#   lead:    course hours × lead_factor + preparation_factor × course hours + lead_overhead_hours + travel
+#   support: course hours × support_factor + support_overhead_hours + travel
+# A Format's own fixed hours replace lead_overhead_hours; a place's "Fahrtzeit" is the travel time
+# for everyone on the Termin. A course can override each value (course page, "Arbeitszeit"). These are the defaults decided on 2026-11-16.
 lead_factor = 1.0
+preparation_factor = 0.5
 lead_overhead_hours = 1.0
 support_factor = 1.0
 support_overhead_hours = 0.5

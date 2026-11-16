@@ -57,7 +57,11 @@
   <details class="formula">
     <summary>So wird gerechnet</summary>
     <ul>{% for line in formula %}<li>{{ line }}</li>{% endfor %}</ul>
-    <p class="help">Die Vor- und Nachbereitung eines Formats steht bei den Formaten, die Fahrtzeit bei den Orten; die Standardwerte in der Instanz-Konfiguration.</p>
+    <p class="help">Der Zuschlag eines Formats steht bei den Formaten, die Fahrtzeit bei den Orten, die Standardwerte in der Instanz-Konfiguration.</p>
+    {% if own_values %}
+    <h3 class="field-label">Kurse mit eigenen Werten in diesen Wochen</h3>
+    <ul class="own-values">{% for course, name, own in own_values %}<li data-course="{{ course.id }}"><a href="/planung/{{ course.id }}#arbeitszeit">{{ name }}</a>: {{ own|join(", ") }} (Kurs)</li>{% endfor %}</ul>
+    {% endif %}
   </details>
   {% endcall %}
 

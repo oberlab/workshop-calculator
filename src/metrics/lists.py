@@ -490,9 +490,9 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("duration_hours", "Übliche Dauer (h)", "number", required=True),
         Field(
             "overhead_hours",
-            "Vor- und Nachbereitung (h)",
+            "Zuschlag Kursleitung (h)",
             "number",
-            help="Pro Termin für die Kursleitung; leer = Standard",
+            help="Feste Stunden pro Termin für die Kursleitung, z. B. Aufbau; leer = Standard",
         ),
         Field("continuous", "Fortlaufend: jeder Termin zählt seine Teilnehmenden", "bool"),
     ),

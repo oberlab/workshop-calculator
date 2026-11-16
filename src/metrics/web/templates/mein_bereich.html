@@ -42,7 +42,7 @@
   </li>
   {% endfor %}
 </ul>
-<p class="help">Geschätzte Arbeitsstunden: Kursstunden plus Vor- und Nachbereitung und Fahrtzeit (<a href="/team#auslastung">so wird gerechnet</a>), Leitung kräftig, Unterstützung blass. {% if load.capacity %}Gemessen an deinen {{ hours(load.capacity) }} pro Woche; gelb über 80 %, magenta über 100 %.{% else %}Noch ohne Kapazität: Deine Wochenstunden kommen später aus Kimai.{% endif %}</p>
+<p class="help">Geschätzte Arbeitsstunden: Kurszeit plus Vorbereitung, Zuschlag und Fahrtzeit (<a href="/team#auslastung">so wird gerechnet</a>), Leitung kräftig, Unterstützung blass. {% if load.capacity %}Gemessen an deinen {{ hours(load.capacity) }} pro Woche; gelb über 80 %, magenta über 100 %.{% else %}Noch ohne Kapazität: Deine Wochenstunden kommen später aus Kimai.{% endif %}</p>
 {% endcall %}
 
 <div class="my-grid">
