@@ -8,12 +8,14 @@ default) and all of them off while SLACK_BOT_TOKEN is not set:
   link to the phone form. Sent 1, 2, 3 and 7 days after the Termin (local dates), at most one DM per
   Termin and day, and no more once the form is filled in or the Termin is Abgeschlossen. Afterwards
   Mein Bereich and the hints keep showing the task.
-- The day before (`reminder`, daily at 16:00): a DM to each person of the team (lead and support) of
+- The day before (`reminder`, daily at 15:00): a DM to each person of the team (lead and support) of
   every Bestätigt Termin of tomorrow: time, place, team. Moving the Termin to another day gives a new
   reminder for the new day.
-- Weekly status (`weekly_status`, Friday from 12:00, caught up on Saturday or Sunday): to the team
-  channel (`channel`): next week's Termine (Geplant and Bestätigt), open Kritisch and Wichtig hints,
-  proposals and corrections waiting for an admin.
+- Weekly status (`weekly_status`, Monday at 09:00, caught up on a later day of the same week if
+  Monday's run was missed): to the team channel (`channel`): the held Termine and participants of
+  this calendar year, counted exactly like the key figures on the front page (`analytics.totals`,
+  period "this_year"), and the Termine of this week from today to Sunday (Bestätigt, Geplant
+  marked). One message per week (key `weekly_status:{monday}`).
 
 At most once: every message gets a key (occasion, Termin, date, person) and a row in
 `slack_messages` is written before the request goes out. A row that is `sent`, still `sending` or
@@ -37,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import hints, lists
+from metrics import analytics, hints
 from metrics.config import get_settings
 from metrics.db import (
     BESTAETIGT,
@@ -50,7 +52,7 @@ from metrics.db import (
     get_sessionmaker,
 )
 from metrics.instance import get_instance
-from metrics.planning import after, corrections
+from metrics.planning import after
 from metrics.planning.workload import monday_of
 from metrics.scheduler import LOCAL
 
@@ -63,8 +65,8 @@ AFTER_COURSE, REMINDER, WEEKLY_STATUS = "after_course", "reminder", "weekly_stat
 AFTER_DAYS = (1, 2, 3, 7)
 # Stages that get messages about a Termin: from Bestätigt on, never Geplant or Abgesagt.
 REMINDED = (BESTAETIGT, DURCHGEFUEHRT)
-# The weekly status goes out on Friday; Saturday and Sunday catch up if Friday's run was missed.
-WEEKLY_DAYS = (4, 5, 6)
+# The weekly status goes out on Monday; a later day of the same week catches up if Monday's run was
+# missed (one message per week, so it never goes out twice).
 WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 SENDING, SENT, FAILED, UNCLEAR = "sending", "sent", "failed", "unclear"
@@ -285,33 +287,39 @@ def reminder_text(t: Appointment) -> str:
     return "\n".join(lines)
 
 
+def number(value: int) -> str:
+    """1.234 like the front page (German thousands separator)."""
+    return f"{value:,}".replace(",", ".")
+
+
 @dataclass(frozen=True)
 class WeeklyFigures:
-    termine: list[Appointment]
-    critical: int
-    important: int
-    proposals: int  # list entries waiting for an admin
-    corrections: int
+    year: int
+    totals: analytics.Totals  # held Termine of the calendar year, as on the front page
+    termine: list[Appointment]  # the rest of this week, Geplant and Bestätigt
 
 
 def weekly_text(monday: dt.date, figures: WeeklyFigures) -> str:
     sunday = monday + dt.timedelta(days=6)
-    lines = [f"*Wochenstatus für {monday:%d.%m.}–{sunday:%d.%m.%Y}*", ""]
+    totals = figures.totals
+    lines = [
+        f"*Wochenstatus für {monday:%d.%m.}–{sunday:%d.%m.%Y}*",
+        "",
+        f"*{figures.year} bisher:* {number(totals.sessions)} Einsätze, "
+        f"{number(totals.participants)} Teilnehmende",
+        "",
+    ]
     if figures.termine:
-        lines.append(f"*Termine nächste Woche ({len(figures.termine)})*")
+        lines.append(f"*Termine diese Woche ({len(figures.termine)})*")
         for t in figures.termine:
             when = f"{day_label(t.date)} {t.start_time:%H:%M}" if t.start_time else day_label(t.date)
             parts = [when, f"*{title(t)}*", place_label(t), escape(t.lead.name) if t.lead else "ohne Leitung"]
             stage = " _(geplant)_" if t.stage == GEPLANT else ""
             lines.append("• " + " · ".join(parts) + stage)
     else:
-        lines.append("Nächste Woche sind keine Termine eingetragen.")
-    lines += ["", "*Zu prüfen*"]
-    lines.append(f"• Offene Hinweise: {figures.critical} Kritisch, {figures.important} Wichtig")
-    lines.append(f"• Vorschläge für Listen, die auf eine Entscheidung warten: {figures.proposals}")
-    lines.append(f"• Korrekturen, die auf eine Entscheidung warten: {figures.corrections}")
+        lines.append("Diese Woche stehen keine Termine mehr an.")
     if base := _base():
-        lines += ["", f"{link(base + '/kalender', 'Kalender')} · {link(base + '/pruefen', 'Prüfen')}"]
+        lines += ["", link(base + "/kalender", "Kalender")]
     return "\n".join(lines)
 
 
@@ -369,26 +377,26 @@ def reminders_due(session: Session, today: dt.date) -> list[tuple[Appointment, P
     return due
 
 
-def weekly_figures(session: Session, monday: dt.date) -> WeeklyFigures:
+def weekly_figures(session: Session, today: dt.date) -> WeeklyFigures:
+    """The year's totals as the front page shows them on `today`, and this week's Termine from
+    `today` to Sunday."""
+    instance = get_instance()
+    year_total = analytics.totals(
+        session, analytics.Filters(preset="this_year"), today, instance.school_year_start_month
+    )
+    sunday = monday_of(today) + dt.timedelta(days=6)
     termine = list(
         session.scalars(
             _load(select(Appointment))
             .where(
                 Appointment.stage.in_((GEPLANT, BESTAETIGT)),
-                Appointment.date >= monday,
-                Appointment.date < monday + dt.timedelta(days=7),
+                Appointment.date >= today,
+                Appointment.date <= sunday,
             )
             .order_by(Appointment.date, Appointment.start_time.nulls_last(), Appointment.id)
         )
     )
-    counts = hints.sidebar_counts(session)
-    return WeeklyFigures(
-        termine=termine,
-        critical=counts["hints_high"],
-        important=counts["hints_medium"],
-        proposals=sum(lists.proposed_counts(session).values()),
-        corrections=len(corrections.open_for(session, None)),
-    )
+    return WeeklyFigures(year=today.year, totals=year_total, termine=termine)
 
 
 # --- The jobs -----------------------------------------------------------------------------------
@@ -470,11 +478,10 @@ def send_weekly_status(now: dt.datetime) -> str:
     if not channel:
         return "no team channel configured ([messages] channel)"
     today = now.astimezone(LOCAL).date()
-    if today.weekday() not in WEEKLY_DAYS:
-        return "not the day for the weekly status"
-    monday = monday_of(today) + dt.timedelta(days=7)
+    monday = monday_of(today)
+    # Monday's run, or the first run of the week after it was missed; the key keeps it to one.
     with get_sessionmaker()() as session:
-        text = weekly_text(monday, weekly_figures(session, monday))
+        text = weekly_text(monday, weekly_figures(session, today))
     outcome = Outcome()
     deliver(
         client,

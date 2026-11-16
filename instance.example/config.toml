@@ -74,8 +74,9 @@ support_overhead_hours = 0.5
 # once (recorded in the database), only for Termine from Bestätigt on.
 # after_course: DM to the Kursleitung 1, 2, 3 and 7 days after a Termin (09:00) while participants
 #   or Herkunft are missing, with the link to the phone form.
-# reminder: DM to everyone on the team the day before a Termin (16:00): time, place, team.
-# weekly_status: Friday 12:00 to `channel`: next week's Termine, open hints, waiting proposals.
+# reminder: DM to everyone on the team the day before a Termin (15:00): time, place, team.
+# weekly_status: Monday 09:00 to `channel` (caught up later that week if missed): this year's
+#   Einsätze and Teilnehmende as on the front page, and this week's Termine.
 after_course = false
 reminder = false
 weekly_status = false

@@ -1,7 +1,8 @@
 """Slack reminders and status messages (WM-130). PostgreSQL, demo data and a fake Slack client only.
 
 Done when: a test Termin produces each message once and none twice after a restart. The first test
-runs the scheduler hour by hour around a Termin, restarts it and runs everything again.
+runs the scheduler hour by hour through the week of a Termin (weekly status on Monday 09:00,
+reminder the day before at 15:00, DM the day after at 09:00), restarts it and runs everything again.
 """
 
 import dataclasses
@@ -12,8 +13,8 @@ from datetime import time
 import pytest
 import sqlalchemy as sa
 
-from metrics import messages, scheduler
-from metrics.db import SlackMessage
+from metrics import analytics, messages, scheduler
+from metrics.db import ABGESCHLOSSEN, SlackMessage
 from metrics.instance import Messages, load_instance
 from metrics.planning import workflow
 from metrics.planning.workload import monday_of
@@ -24,10 +25,11 @@ from tests.test_mine import _termin, world  # noqa: F401 (fixture)
 BASE = "https://zahlen.example.org"
 CHANNEL = "C0TEAM0001"
 TODAY = dt.date.today()
-# A Thursday at least a week ahead: the day after is a Friday, the day of the weekly status.
+# A Thursday at least a week ahead; its week's Monday brings the weekly status.
 THURSDAY = TODAY + dt.timedelta(days=(3 - TODAY.weekday()) % 7 + 7)
 WEDNESDAY, FRIDAY = THURSDAY - dt.timedelta(days=1), THURSDAY + dt.timedelta(days=1)
-NEXT_MONDAY = monday_of(FRIDAY) + dt.timedelta(days=7)
+MONDAY = monday_of(THURSDAY)
+NEXT_MONDAY = MONDAY + dt.timedelta(days=7)
 SLACK_JOBS = ("slack-after-course", "slack-weekly-status", "slack-reminders")
 JOBS = tuple(j for j in scheduler.JOBS if j.name in ("stage-moves", "hints", *SLACK_JOBS))
 
@@ -104,16 +106,26 @@ def tick_hourly(loop: Scheduler, clock: Clock, until: dt.datetime) -> None:
 def test_a_termin_gets_each_message_once_and_none_twice_after_a_restart(team, slack):
     w = team
     t = confirmed(w, THURSDAY, w.kim, [w.lea])
-    planned = _termin(w, THURSDAY, w.sam)  # Geplant: no reminder, no DM
+    planned = _termin(w, THURSDAY, w.sam, start_time="14:00", end_time="16:00")  # Geplant: no DM
     cancelled = confirmed(w, THURSDAY, w.sam)
     workflow.cancel(w.db, cancelled, "Schule hat abgesagt", "Test")
     nxt = _termin(w, NEXT_MONDAY + dt.timedelta(days=1), w.lea)  # next week, still Geplant
     w.db.commit()
 
-    clock = Clock(at(WEDNESDAY, 8))
+    clock = Clock(at(MONDAY, 9))  # the first run of every job: nothing else is due yet
     tick_hourly(Scheduler(jobs=JOBS, clock=clock), clock, at(FRIDAY, 17))
 
-    # The day before: everyone on the team, nobody else.
+    # Monday: the weekly status to the team channel, with this year's figures and this week's Termine.
+    [weekly] = slack.to(CHANNEL)
+    assert weekly.startswith(f"*Wochenstatus für {MONDAY:%d.%m.}–")
+    assert f"*{MONDAY.year} bisher:* " in weekly and " Einsätze, " in weekly
+    assert f"Do {THURSDAY:%d.%m.} 09:00 · *Löten* · Grundschule Musterstadt · Kim\n" in weekly + "\n"
+    assert f"Do {THURSDAY:%d.%m.} 14:00 · *Löten* · Grundschule Musterstadt · Sam _(geplant)_" in weekly
+    assert "Termine diese Woche (2)" in weekly  # not the cancelled one, not next week's
+    assert "Hinweise" not in weekly and "Vorschläge" not in weekly
+    assert f"<{BASE}/kalender|Kalender>" in weekly
+
+    # The day before at 15:00: everyone on the team, nobody else.
     [kim_reminder] = [m for m in slack.to("U0KIM00001") if m.startswith("Morgen")]
     [lea_reminder] = slack.to("U0LEA00001")
     assert kim_reminder == lea_reminder
@@ -127,20 +139,14 @@ def test_a_termin_gets_each_message_once_and_none_twice_after_a_restart(team, sl
     assert after_dm.startswith("Hallo! Wie lief *Löten* gestern")
     assert "die Teilnehmenden" in after_dm
     assert f"<{BASE}/mein-bereich/nach-dem-kurs/{t.id}|Jetzt eintragen>" in after_dm
-
-    # Friday: the weekly status to the team channel, with next week's Termin.
-    [weekly] = slack.to(CHANNEL)
-    assert weekly.startswith(f"*Wochenstatus für {NEXT_MONDAY:%d.%m.}")
-    assert f"Di {nxt.date:%d.%m.} 09:00 · *Löten* · Grundschule Musterstadt · Lea _(geplant)_" in weekly
-    assert "Offene Hinweise:" in weekly and f"<{BASE}/pruefen|Prüfen>" in weekly
     assert len(slack.posts) == 4
 
     sent = rows(w.db)
-    assert [(r.kind, r.status) for r in sent] == [
-        ("reminder", "sent"),
-        ("reminder", "sent"),
-        ("after_course", "sent"),
-        ("weekly_status", "sent"),
+    assert [(r.kind, r.status, r.sent_at.astimezone(LOCAL).strftime("%a %H")) for r in sent] == [
+        ("weekly_status", "sent", "Mon 09"),
+        ("reminder", "sent", "Wed 15"),
+        ("reminder", "sent", "Wed 15"),
+        ("after_course", "sent", "Fri 09"),
     ]
     assert {r.appointment_id for r in sent} == {t.id, None}
     assert planned.id not in {r.appointment_id for r in sent}
@@ -154,7 +160,7 @@ def test_a_termin_gets_each_message_once_and_none_twice_after_a_restart(team, sl
     loop = Scheduler(jobs=JOBS, clock=clock)
     tick_hourly(loop, clock, at(FRIDAY + dt.timedelta(days=1), 8, 30))
     # ... and every job run again at the moments the messages went out (as if job_runs were lost).
-    for when in (at(WEDNESDAY, 16), at(FRIDAY, 9), at(FRIDAY, 12), at(FRIDAY, 16)):
+    for when in (at(MONDAY, 9), at(WEDNESDAY, 15), at(FRIDAY, 9), at(FRIDAY, 15)):
         for job in JOBS:
             if job.name in SLACK_JOBS:
                 assert not job.run(when).startswith(("1 ", "2 "))
@@ -171,10 +177,54 @@ def test_a_termin_gets_each_message_once_and_none_twice_after_a_restart(team, sl
     t.participants_female, t.participants_male = 10, 12
     t.participants_diverse, t.participants_unspecified, t.participants_total = 0, 0, 22
     w.db.commit()
-    tick_hourly(loop, clock, at(FRIDAY + dt.timedelta(days=8), 10))
+    tick_hourly(loop, clock, at(NEXT_MONDAY + dt.timedelta(days=3), 10))
     assert len(slack.to("U0KIM00001")) == 3
-    # The following Friday brings the next weekly status, once.
+    # The following Monday brings the next weekly status, once, with next week's Termin.
     assert len(slack.to(CHANNEL)) == 2 and len(slack.posts) == 6
+    nxt_line = f"Di {nxt.date:%d.%m.} 09:00 · *Löten* · Grundschule Musterstadt · Lea _(geplant)_"
+    assert nxt_line in slack.to(CHANNEL)[1]
+
+
+def test_the_weekly_status_year_total_is_the_front_page_total(team, slack, monkeypatch):
+    w = team
+    held = [
+        _termin(w, dt.date(TODAY.year, 1, 1), w.kim),  # this year: counted
+        _termin(w, dt.date(TODAY.year, 1, 1), w.lea),
+        _termin(w, dt.date(TODAY.year - 1, 12, 31), w.sam),  # last year: not counted
+    ]
+    for t, total in zip(held, (12, 1234, 30), strict=True):
+        t.stage, t.participants_total = ABGESCHLOSSEN, total
+    _termin(w, dt.date(TODAY.year, 1, 1), w.sam)  # Geplant: not counted
+    w.db.commit()
+
+    instance = messages.get_instance()
+    expected = analytics.totals(
+        w.db, analytics.Filters(preset="this_year"), TODAY, instance.school_year_start_month
+    )
+    assert expected.sessions == 2 and expected.participants == 1246
+    figures = messages.weekly_figures(w.db, TODAY)
+    assert figures.totals == expected and figures.year == TODAY.year
+
+    messages.send_weekly_status(dt.datetime.combine(TODAY, time(9, 0), tzinfo=LOCAL))
+    [weekly] = slack.to(CHANNEL)
+    assert f"*{TODAY.year} bisher:* 2 Einsätze, 1.246 Teilnehmende" in weekly
+
+
+def test_a_missed_monday_is_caught_up_once_later_that_week(team, slack):
+    w = team
+    _termin(w, MONDAY, w.kim)  # already past on Tuesday: not listed any more
+    confirmed(w, THURSDAY, w.lea)
+    w.db.commit()
+    tuesday = MONDAY + dt.timedelta(days=1)
+    assert messages.send_weekly_status(at(tuesday, 9)) == "1 weekly status sent, 0 already sent"
+    [weekly] = slack.to(CHANNEL)
+    assert weekly.startswith(f"*Wochenstatus für {MONDAY:%d.%m.}–")
+    assert "Termine diese Woche (1)" in weekly and f"Do {THURSDAY:%d.%m.}" in weekly
+    for day in range(2, 7):
+        assert messages.send_weekly_status(at(MONDAY + dt.timedelta(days=day), 9)).startswith("0 weekly")
+    assert messages.send_weekly_status(at(NEXT_MONDAY, 9)) == "1 weekly status sent, 0 already sent"
+    assert [r.key for r in rows(w.db)] == [f"weekly_status:{MONDAY}", f"weekly_status:{NEXT_MONDAY}"]
+    assert "keine Termine mehr" in slack.to(CHANNEL)[1]
 
 
 def test_the_after_course_rhythm_is_days_one_two_three_and_seven(team, slack):
@@ -197,7 +247,7 @@ def test_no_token_means_no_messages(team, monkeypatch, caplog):
     switched_on(monkeypatch)
     caplog.set_level(logging.INFO)
     for run in (messages.send_after_course, messages.send_reminders, messages.send_weekly_status):
-        assert run(at(WEDNESDAY, 16)) == "messaging off: SLACK_BOT_TOKEN not set"
+        assert run(at(WEDNESDAY, 15)) == "messaging off: SLACK_BOT_TOKEN not set"
     assert "Slack messaging is off" in caplog.text
     assert rows(team.db) == []
 
@@ -206,12 +256,10 @@ def test_each_message_type_has_its_own_switch(team, slack, monkeypatch):
     confirmed(team, THURSDAY, team.kim)
     team.db.commit()
     switched_on(monkeypatch, reminder=False, weekly_status=False)
-    assert messages.send_reminders(at(WEDNESDAY, 16)) == "switched off ([messages] reminder)"
-    assert messages.send_weekly_status(at(FRIDAY, 12)) == "switched off ([messages] weekly_status)"
+    assert messages.send_reminders(at(WEDNESDAY, 15)) == "switched off ([messages] reminder)"
+    assert messages.send_weekly_status(at(MONDAY, 9)) == "switched off ([messages] weekly_status)"
     switched_on(monkeypatch, channel=None)
-    assert messages.send_weekly_status(at(FRIDAY, 12)) == "no team channel configured ([messages] channel)"
-    switched_on(monkeypatch)
-    assert messages.send_weekly_status(at(THURSDAY, 12)) == "not the day for the weekly status"
+    assert messages.send_weekly_status(at(MONDAY, 9)) == "no team channel configured ([messages] channel)"
     assert slack.posts == []
     # The example instance ships with everything off.
     assert load_instance(EXAMPLE_INSTANCE).messages == Messages()
@@ -223,7 +271,7 @@ def test_people_without_slack_id_or_inactive_get_nothing(team, slack):
     w.sam.active = False
     confirmed(w, THURSDAY, w.kim, [w.lea, w.sam])
     w.db.commit()
-    assert messages.send_reminders(at(WEDNESDAY, 16)) == "1 reminders sent, 0 already sent"
+    assert messages.send_reminders(at(WEDNESDAY, 15)) == "1 reminders sent, 0 already sent"
     assert [c for c, _ in slack.posts] == ["U0KIM00001"]
 
 
@@ -231,11 +279,11 @@ def test_a_moved_termin_gets_a_new_reminder(team, slack):
     w = team
     t = confirmed(w, THURSDAY, w.kim)
     w.db.commit()
-    messages.send_reminders(at(WEDNESDAY, 16))
+    messages.send_reminders(at(WEDNESDAY, 15))
     t.date = FRIDAY
     w.db.commit()
+    messages.send_reminders(at(THURSDAY, 15))
     messages.send_reminders(at(THURSDAY, 16))
-    messages.send_reminders(at(THURSDAY, 17))
     assert len(slack.posts) == 2
 
 
@@ -246,14 +294,14 @@ def test_a_slack_error_is_retried_but_an_unclear_send_never(team, slack):
     job = next(j for j in scheduler.JOBS if j.name == "slack-reminders")
 
     slack.errors = [messages.SlackError("ratelimited"), TimeoutError("timed out")]
-    assert scheduler.run_job(job, at(WEDNESDAY, 16)) is False  # recorded as failed, retried in an hour
+    assert scheduler.run_job(job, at(WEDNESDAY, 15)) is False  # recorded as failed, retried in an hour
     assert sorted((r.status, r.error) for r in rows(w.db)) == [
         ("failed", "ratelimited"),
         ("unclear", "TimeoutError"),
     ]
     assert slack.posts == []
 
-    assert scheduler.run_job(job, at(WEDNESDAY, 17)) is True
+    assert scheduler.run_job(job, at(WEDNESDAY, 16)) is True
     assert len(slack.posts) == 1  # only the failed one; the unclear one may have arrived
     assert sorted((r.status, r.attempts) for r in rows(w.db)) == [("sent", 2), ("unclear", 1)]
 
@@ -264,7 +312,7 @@ def test_a_message_left_sending_by_a_crash_is_not_sent_again(team, slack):
     w.db.commit()
     key = f"reminder:{t.id}:{THURSDAY.isoformat()}:{w.kim.id}"
     assert messages.claim(key, "reminder", "U0KIM00001", t.id, w.kim.id) is not None  # then the crash
-    assert messages.send_reminders(at(WEDNESDAY, 16)) == "0 reminders sent, 1 already sent"
+    assert messages.send_reminders(at(WEDNESDAY, 15)) == "0 reminders sent, 1 already sent"
     assert slack.posts == []
 
 
@@ -288,7 +336,7 @@ def test_logs_name_no_people(team, slack, caplog):
     confirmed(team, THURSDAY, team.kim, [team.lea])
     team.db.commit()
     caplog.set_level(logging.DEBUG, logger="metrics")
-    scheduler.run_job(next(j for j in scheduler.JOBS if j.name == "slack-reminders"), at(WEDNESDAY, 16))
+    scheduler.run_job(next(j for j in scheduler.JOBS if j.name == "slack-reminders"), at(WEDNESDAY, 15))
     assert "2 reminders sent" in caplog.text
     for secret in ("Kim", "Lea", "U0KIM00001", "U0LEA00001", "Löten"):
         assert secret not in caplog.text
