@@ -1,11 +1,12 @@
 """ "Prüfen" (admins, WM-113): one queue for proposed list entries, proposed corrections and hints.
 
 `GET /pruefen` shows three sections: list entries waiting for a decision (taken on their Stammdaten
-page), proposed corrections (WM-132 adds them; until then the section is empty) and the stored
-hints with filters `stufe`, `regel`, `kontext`, `von`, `bis` and `status` (offen, akzeptiert, alle).
-`POST /pruefen/akzeptieren` accepts a warning with a reason (`termin`, `regel`, `schluessel` for the
-finding, `grund`); blocking
-hints cannot be accepted. Both are admin routes in `access.py`.
+page), proposed corrections of abgeschlossen Termine (WM-132: `POST /pruefen/korrektur/bestaetigen`
+applies one, `POST /pruefen/korrektur/ablehnen` rejects it with a reason; form field `vorschlag`)
+and the stored hints with filters `stufe`, `regel`, `kontext`, `von`, `bis` and `status` (offen,
+akzeptiert, alle). `POST /pruefen/akzeptieren` accepts a warning with a reason (`termin`, `regel`,
+`schluessel` for the finding, `grund`); blocking hints cannot be accepted. All are admin routes in
+`access.py`.
 """
 
 import datetime as dt
@@ -31,7 +32,7 @@ from metrics.db import (
     Proposal,
     get_sessionmaker,
 )
-from metrics.planning import caldav
+from metrics.planning import caldav, corrections
 from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 
 router = APIRouter()
@@ -118,13 +119,6 @@ def _queue_page(request: Request, *, error: str | None = None, status_code: int 
     f = _filter(params)
     with get_sessionmaker()() as session:
         rows, total = hints.queue(session, f, LIMIT)
-        corrections = list(
-            session.scalars(
-                select(Proposal)
-                .where(Proposal.kind == "korrektur", Proposal.decision.is_(None))
-                .order_by(Proposal.proposed_at, Proposal.id)
-            )
-        )
         contexts = list(
             session.scalars(select(Context).where(Context.status.in_(ACTIVE_STATUSES)).order_by(Context.name))
         )
@@ -135,7 +129,7 @@ def _queue_page(request: Request, *, error: str | None = None, status_code: int 
             "ignored": [o for o in orphans if o.ignored_by is not None],
             "calendar_on": caldav.get_calendar() is not None,
             "waiting": _waiting(session),
-            "corrections": corrections,
+            "corrections": corrections.waiting(session),
             "rows": rows,
             "total": total,
             "limit": LIMIT,
@@ -184,6 +178,37 @@ async def accept(request: Request):
         return _queue_page(request, error=str(error), status_code=422)
     query = f"{back}&" if back else ""
     return RedirectResponse(f"/pruefen?{query}hinweis={quote('Akzeptiert.')}", status_code=303)
+
+
+# --- Corrections of abgeschlossen Termine (WM-132) -------------------------------------------------
+
+
+async def _decide_correction(request: Request, confirm: bool):
+    form = {k: v[-1] for k, v in parse_qs((await request.body()).decode(errors="replace")).items()}
+    proposal_id = form.get("vorschlag") or ""
+    by = current_login(request).user
+    try:
+        if not proposal_id.isdigit():
+            raise corrections.CorrectionError("Unbekannte Korrektur.")
+        with get_sessionmaker()() as session, session.begin():
+            if confirm:
+                corrections.confirm(session, int(proposal_id), by, form.get("grund"))
+            else:
+                corrections.reject(session, int(proposal_id), by, form.get("grund") or "")
+    except corrections.CorrectionError as error:
+        return _queue_page(request, error="; ".join(error.messages), status_code=422)
+    done = "Korrektur übernommen." if confirm else "Korrektur abgelehnt."
+    return RedirectResponse(f"/pruefen?hinweis={quote(done)}#korrekturen", status_code=303)
+
+
+@router.post("/pruefen/korrektur/bestaetigen", response_class=HTMLResponse)
+async def confirm_correction(request: Request):
+    return await _decide_correction(request, confirm=True)
+
+
+@router.post("/pruefen/korrektur/ablehnen", response_class=HTMLResponse)
+async def reject_correction(request: Request):
+    return await _decide_correction(request, confirm=False)
 
 
 # --- Calendar events without a Termin (moved from the prototype's review page, WM-110) -----------

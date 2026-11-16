@@ -258,6 +258,52 @@
       {% endif %}
       {% endif %}
     </section>
+
+    {% if correction.on %}
+    {% set c = correction %}
+    <section class="panel" id="korrektur">
+      <h2>Korrektur vorschlagen</h2>
+      <p class="help">Der Termin zählt in den Kennzahlen und ist gesperrt. Eine Korrektur gilt erst, wenn ein Admin sie unter „Prüfen“ bestätigt; bis dahin ändert sich nichts.</p>
+      <details class="add-termine">
+        <summary class="btn btn-secondary btn-sm">Korrektur vorschlagen …</summary>
+        <form method="post" action="/planung/{{ course.id }}/korrektur" class="add-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="termin" value="{{ t.id }}">
+          <h3 class="field-label">Kurs{% if c.shared %} <span class="section-note">gilt für alle Termine des Kurses</span>{% endif %}</h3>
+          <div class="fields">
+            {% for name, label, entries, selected in c.entries %}
+            <label class="field"><span>{{ label }}</span>
+              <select name="{{ name }}"><option value="">–</option>{% for id, text in entries %}<option value="{{ id }}"{% if id == selected %} selected{% endif %}>{{ text }}</option>{% endfor %}</select>
+            </label>
+            {% endfor %}
+            {{ ui.field("Klasse/Alter", "class_age_text", course.class_age_text, help="z. B. Kl. 3, Kl. 3 / 8 Jahre, 10 Jahre, 25 - 34 Jahre, Lehrkräfte") }}
+          </div>
+          {{ ui.field("Notiz", "note", course.note, type="textarea", attrs={"rows": 2}) }}
+          <h3 class="field-label">Termin</h3>
+          <div class="fields">
+            {{ ui.field("Datum", "date", t.date.isoformat() if t.date else none, type="date", required=true, attrs={"required": true}) }}
+            {{ ui.field("Beginn", "start_time", t.start_time.strftime("%H:%M") if t.start_time else none, type="time") }}
+            {{ ui.field("Ende", "end_time", t.end_time.strftime("%H:%M") if t.end_time else none, type="time") }}
+            <label class="field"><span>Kursleitung</span>
+              <select name="lead"><option value="">–</option>{% for p in c.people %}<option value="{{ p.id }}"{% if t.lead_id == p.id %} selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+            </label>
+          </div>
+          <fieldset class="kinds">
+            <legend class="field-label">Unterstützung</legend>
+            <input type="hidden" name="team" value="1">
+            {% set support_ids = t.support|map(attribute="id")|list %}
+            {% for p in c.people %}<label class="check"><input type="checkbox" name="support" value="{{ p.id }}"{% if p.id in support_ids %} checked{% endif %}> {{ p.name }}</label>{% endfor %}
+          </fieldset>
+          <h3 class="field-label">Teilnehmende</h3>
+          <div class="fields">
+            {% for name, label in participant_fields %}{{ ui.field(label, name, t[name], type="number", attrs={"min": 0}) }}{% endfor %}
+            {% if c.only_total %}{{ ui.field("gesamt", "participants_total", t.participants_total, type="number", help="Erfasst ist nur die Summe; wer die Aufteilung kennt, trägt sie oben ein.", attrs={"min": 0}) }}{% endif %}
+          </div>
+          {{ ui.field("Grund", "grund", type="textarea", required=true, help="Warum der Termin anders war, z. B. „Liste der Lehrerin nachgereicht“.", attrs={"rows": 2, "required": true}) }}
+          {{ ui.button("Korrektur vorschlagen", type="submit") }}
+        </form>
+      </details>
+    </section>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -332,7 +378,14 @@
         </form>
         {% endif %}
       {% elif t.stage == "Abgeschlossen" %}
-        <p class="help">Zählt in den Kennzahlen. Gesperrt bis auf „Abgerechnet“.</p>
+        <p class="help">Zählt in den Kennzahlen. Gesperrt bis auf „Abgerechnet“; andere Änderungen als <a href="#korrektur">Korrektur vorschlagen</a>.</p>
+        {% for p, rows in correction.open %}
+        <div class="queue-body">
+          <p class="queue-title"><span class="status-tag status-proposed">Korrektur</span> wartet auf einen Admin</p>
+          <p class="queue-meta"><span>von {{ p.proposed_by }} am {{ p.proposed_at.astimezone(timezone).strftime("%d.%m.%Y") }}</span><span>„{{ p.reason }}“</span></p>
+          <ul class="problems">{% for label, old, new in rows %}<li>{{ label }}: <del>{{ old or "leer" }}</del> → {{ new or "leer" }}</li>{% endfor %}</ul>
+        </div>
+        {% endfor %}
         <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="billed"><input type="hidden" name="termin" value="{{ t.id }}">
           <label class="check"><input type="checkbox" name="billed" value="1"{% if t.billed %} checked{% endif %}> Abgerechnet</label>

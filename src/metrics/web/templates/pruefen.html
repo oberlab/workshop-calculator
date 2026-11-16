@@ -32,13 +32,27 @@
 
 {% call ui.panel("Vorgeschlagene Korrekturen", corrections|length, id="korrekturen") %}
   {% if corrections %}
+  <p class="help">Änderungen an abgeschlossenen Terminen gelten erst nach dem Bestätigen; dann ändern sie die Kennzahlen. Der Verlauf nennt beide Personen.</p>
   <ul class="queue">
-    {% for c in corrections %}
+    {% for c in corrections %}{% set t = c.appointment %}
     <li>
       <span class="status-tag status-proposed">Korrektur</span>
       <div class="queue-body">
-        <p class="queue-title">{{ "Termin" if c.target_table == "appointments" else c.target_table }} {{ c.target_id }}: {% for key, value in c.proposed_values.items() %}{{ key }} = {{ value }}{{ ", " if not loop.last }}{% endfor %}</p>
-        <p class="queue-meta"><span>von {{ c.proposed_by }} am {{ when(c.proposed_at) }}</span>{% if c.reason %}<span>„{{ c.reason }}“</span>{% endif %}</p>
+        <p class="queue-title"><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{{ c.title }}</a>, {{ t.date.strftime("%d.%m.%Y") if t.date else "ohne Datum" }}{% if t.course.place %}, {{ t.course.place.name }}{% endif %}</p>
+        <p class="queue-meta"><span>von {{ c.proposal.proposed_by }} am {{ when(c.proposal.proposed_at) }}</span><span>Termin {{ t.id }}{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span><span>„{{ c.proposal.reason }}“</span></p>
+        {% call ui.table(["Angabe", "bisher", "neu"], caption="Vorgeschlagene Änderungen") %}
+        {% for label, old, new in c.changes %}<tr><th scope="row">{{ label }}</th><td><del>{{ old or "leer" }}</del></td><td>{{ new or "leer" }}</td></tr>{% endfor %}
+        {% endcall %}
+        <div class="row">
+          <form method="post" action="/pruefen/korrektur/bestaetigen" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="vorschlag" value="{{ c.proposal.id }}">{{ ui.button("Bestätigen und übernehmen", type="submit", size="sm") }}</form>
+        </div>
+        <details class="queue-accept">
+          <summary>Ablehnen …</summary>
+          <form method="post" action="/pruefen/korrektur/ablehnen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="vorschlag" value="{{ c.proposal.id }}">
+            {{ ui.field("Grund", "grund", type="textarea", required=true, help="Der Termin bleibt, wie er ist; der Grund steht im Verlauf.", attrs={"rows": 2, "required": true}) }}
+            <div class="row">{{ ui.button("Ablehnen", type="submit", kind="secondary", size="sm") }}</div>
+          </form>
+        </details>
       </div>
     </li>
     {% endfor %}

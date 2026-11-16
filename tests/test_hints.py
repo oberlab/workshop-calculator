@@ -26,7 +26,6 @@ from metrics.db import (
     HintDecision,
     Person,
     Place,
-    Proposal,
     StoredHint,
 )
 from metrics.ingest import store
@@ -646,23 +645,6 @@ def test_pruefen_page_lists_proposals_corrections_and_hints(seeded, monkeypatch)
     assert "nie bestätigt" not in admin.get("/pruefen").text
     shown = admin.get("/pruefen?status=akzeptiert").text
     assert "nie bestätigt" in shown and "kommt in WM-110" in shown
-
-
-def test_pruefen_shows_corrections_once_wm132_adds_them(seeded, monkeypatch):
-    from tests.test_lists import _admin
-
-    seeded.add(
-        Proposal(
-            kind="korrektur",
-            target_table="appointments",
-            target_id=1,
-            proposed_values={"participants_female": 7},
-            reason="Liste nachgezählt",
-            proposed_by="Kim",
-        )
-    )
-    seeded.commit()
-    assert "Liste nachgezählt" in _admin(monkeypatch).get("/pruefen").text
 
 
 with open(__file__, encoding="utf-8") as _source:
