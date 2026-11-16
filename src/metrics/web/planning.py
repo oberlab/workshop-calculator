@@ -846,6 +846,12 @@ def correction_context(session: Session, t: Appointment) -> dict:
         "people": _pickable(session, t),
         "only_total": corrections.only_total(t),
         "shared": len(course.appointments) > 1,
+        # Herkunft: shown when the context asks for it or the Termin has some; two empty rows for a
+        # further municipality, so the form works without JS.
+        "origins_on": workflow.asks_municipalities(t) or bool(t.origins),
+        "origins": sorted(t.origins, key=lambda o: o.municipality),
+        "free_rows": 2,
+        "municipalities": _municipalities(session),
     }
 
 

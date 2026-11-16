@@ -333,6 +333,18 @@ def _duration(t: Appointment) -> Decimal | None:
     return t.duration_hours if t.source in hints.WITHOUT_TIMES else None
 
 
+def parse_origins(form: Form, errors: list) -> dict[str, int]:
+    """Herkunft from the form: one number per municipality (rows without a name or number dropped,
+    a municipality named twice added up)."""
+    origins: dict[str, int] = {}
+    for name, value in zip(form.get("origin_name", []), form.get("origin_count", []), strict=False):
+        name = clean_name(name)
+        n = _count(clean_name(value), f"Herkunft {name}", errors)
+        if name and n:
+            origins[name] = origins.get(name, 0) + n
+    return origins
+
+
 def _apply_appointment(session: Session, t: Appointment, form: Form, allowed: set, errors: list) -> None:
     if TIMES in allowed:
         t.date = parse_date(one(form, "date"), "Datum", errors)
@@ -361,12 +373,7 @@ def _apply_appointment(session: Session, t: Appointment, form: Form, allowed: se
                 setattr(t, name, _count(one(form, name), f"TN {label}", errors))
         t.participants_total = participants_total(t)
         if "origin_name" in form:
-            origins: dict[str, int] = {}
-            for name, value in zip(form.get("origin_name", []), form.get("origin_count", []), strict=False):
-                name = clean_name(name)
-                n = _count(clean_name(value), f"Herkunft {name}", errors)
-                if name and n:
-                    origins[name] = origins.get(name, 0) + n
+            origins = parse_origins(form, errors)
             existing = {o.municipality: o for o in t.origins}
             for m, n in origins.items():
                 if m in existing:
