@@ -139,3 +139,16 @@
   <span class="workload-label">{{ label or (total|string ~ " / " ~ capacity|string) }}</span>
 </span>
 {%- endmacro %}
+
+{# KPI tile: one key figure in a <dl class="totals"> row, the label under the number. key names the
+   figure static/app.js fills in (data-kpi), id the value's id; note is the figure's definition
+   (tooltip); sup marks a footnote; change leaves room for the comparison with the period before. #}
+{% macro kpi_tile(label, key=none, id=none, note=none, sup=none, change=false) -%}
+<div class="kpi"{% if key %} data-kpi="{{ key }}"{% endif %}{% if note %} title="{{ note }}"{% endif %}>
+  <dt>{{ label }}{% if sup %}<sup>{{ sup }}</sup>{% endif %}</dt>
+  <dd class="kpi-value"{% if id %} id="{{ id }}"{% endif %}>–</dd>
+  {%- if change %}
+  <dd class="kpi-change"></dd>
+  {%- endif %}
+</div>
+{%- endmacro %}

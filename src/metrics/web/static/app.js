@@ -103,6 +103,7 @@ async function render() {
   const id = ++requestId;
   renderRanking(query);
   renderFigures(query, id);
+  renderKpis(query, id);
   const response = await fetch(`${form.dataset.api}?${query}`);
   if (id !== requestId) return; // a newer request is on its way
   if (response.status === 401) {
@@ -124,7 +125,8 @@ async function render() {
     ["total-participants", info.totals.participants],
     ["total-locations", info.totals.locations],
   ]) {
-    document.getElementById(id).textContent = value.toLocaleString("de-DE");
+    const target = document.getElementById(id); // only on the overview; the analysis page has KPI tiles
+    if (target) target.textContent = value.toLocaleString("de-DE");
   }
 
   const parts = [];
@@ -152,6 +154,43 @@ async function renderFigure(section, query, id) {
 
 function renderFigures(query, id) {
   for (const section of document.querySelectorAll("section[data-figure]")) renderFigure(section, query, id);
+}
+
+// KPI tiles (analysis and project pages): each [data-kpi="<key>"] tile gets its value and the
+// comparison with the period before from the section's data-api endpoint.
+const kpis = document.getElementById("kpis");
+
+function kpiNumber(value) {
+  return Math.round(value).toLocaleString("de-DE"); // hours are shown as whole hours
+}
+
+function kpiChange(figure) {
+  if (figure.previous === null) return "";
+  const sign = figure.change > 0 ? "+" : figure.change < 0 ? "−" : "±";
+  let text = `vorher ${kpiNumber(figure.previous)} · ${sign}${kpiNumber(Math.abs(figure.change))}`;
+  if (figure.previous > 0) {
+    const percent = Math.round((100 * Math.abs(figure.change)) / figure.previous);
+    text += ` (${sign}${percent.toLocaleString("de-DE")} %)`;
+  }
+  return text;
+}
+
+async function renderKpis(query, id) {
+  if (!kpis) return;
+  const response = await fetch(`${kpis.dataset.api}?${query}`);
+  if (id !== requestId || !response.ok) return;
+  const { figures, previous, running_until: runningUntil } = await response.json();
+  for (const tile of kpis.querySelectorAll("[data-kpi]")) {
+    const figure = figures[tile.dataset.kpi];
+    tile.querySelector(".kpi-value").textContent = kpiNumber(figure.value);
+    tile.querySelector(".kpi-change").textContent = kpiChange(figure);
+  }
+  let text = "Kein Vergleich: Der gesamte Zeitraum oder ein offener eigener Zeitraum hat keinen Zeitraum davor.";
+  if (previous) {
+    text = `Vergleich mit dem Zeitraum davor: ${previous.label}.`;
+    if (runningUntil) text += ` Der gewählte Zeitraum läuft noch bis ${formatDate(runningUntil)}, der Vergleich ist vollständig.`;
+  }
+  kpis.querySelector("[data-kpi-period]").textContent = text;
 }
 
 const rankingList = document.getElementById("ranking-list");

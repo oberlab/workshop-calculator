@@ -1,4 +1,5 @@
 {# Shared by the overview and the analysis page: time controls, chart, key figures. #}
+{% import "_ui.html" as ui %}
 {% macro time_controls(filters, bins, presets, reset_label) %}
 <fieldset class="filter-row">
   <legend class="visually-hidden">Zeitraum und Zeitraster</legend>
@@ -26,19 +27,53 @@
 </fieldset>
 {% endmacro %}
 
-{% macro chart_and_totals(panel=true) %}
+{# totals: the three key figures below the chart (the overview); the analysis page shows the KPI
+   tiles above its views instead (`kpi_tiles`). #}
+{% macro chart_and_totals(panel=true, totals=true) %}
 {% if panel %}<section class="panel">{% endif %}
 <div id="chart" class="chart" aria-live="polite"></div>
 <p id="empty" class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
 
+{% if totals %}
 <dl class="totals" aria-live="polite">
-  <div><dt>Einsätze</dt><dd id="total-sessions">–</dd></div>
-  <div><dt>Teilnehmende<sup>*</sup></dt><dd id="total-participants">–</dd></div>
-  <div><dt>Orte</dt><dd id="total-locations">–</dd></div>
+  {{ ui.kpi_tile("Einsätze", id="total-sessions") }}
+  {{ ui.kpi_tile("Teilnehmende", id="total-participants", sup="*") }}
+  {{ ui.kpi_tile("Orte", id="total-locations") }}
 </dl>
 <p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Bei fortlaufenden Formaten (z.&nbsp;B. JuLab, Repair Café) zählt jeder Termin. Einträge ohne Terminnummer zählen nicht mit.</p>
+{% endif %}
 <p id="meta" class="meta"></p>
 {% if panel %}</section>{% endif %}
+{% endmacro %}
+
+{# KPI tiles of the analysis and project pages (WM-150): the key figures of the selection with the
+   comparison to the period before, filled by static/app.js from /api/analyse/key-figures. The
+   definitions are the ones of `metrics.metrics`; each tile carries its own as a tooltip, and all of
+   them are listed below the tiles. #}
+{% set KPIS = [
+  ("sessions", "Einsätze", "Durchgeführte Termine: final bestätigt (Abgeschlossen) und mit Datum."),
+  ("participants", "Teilnehmende", "Gezählt beim Termin mit Terminnummer 1, damit Kinder in mehrteiligen Kursen nicht mehrfach zählen; bei fortlaufenden Formaten (z. B. JuLab, Repair Café) bei jedem Termin. Termine ohne Terminnummer zählen nicht."),
+  ("places", "Orte", "Verschiedene Orte mit mindestens einem Einsatz."),
+  ("hours", "Stunden", "Kursstunden: Summe der Dauer (Ende minus Beginn) aller Einsätze, gerundet. Nicht die geschätzte Arbeitszeit des Teams; Termine ohne Dauer zählen nicht."),
+  ("schools", "Schulen erreicht", "Verschiedene Orte, die als Schule eingetragen sind, mit mindestens einem Einsatz."),
+] %}
+{% macro kpi_tiles() %}
+<section class="panel" id="kpis" data-api="/api/analyse/key-figures" aria-labelledby="kpis-title">
+  <h2 id="kpis-title" class="visually-hidden">Kennzahlen</h2>
+  <dl class="totals kpis" aria-live="polite">
+    {% for key, label, note in KPIS %}{{ ui.kpi_tile(label, key=key, note=note, change=true) }}
+    {% endfor %}
+  </dl>
+  <p class="meta" data-kpi-period></p>
+  <details class="kpi-notes">
+    <summary>So wird gezählt</summary>
+    <dl>
+      {% for key, label, note in KPIS %}<dt>{{ label }}</dt><dd>{{ note }}</dd>
+      {% endfor %}
+      <dt>Vergleich</dt><dd>Mit dem gleich langen Zeitraum direkt davor: bei Schul- und Kalenderjahren das Jahr davor, bei „Letzte 12 Monate“ die 12 Monate davor. Für den gesamten Zeitraum gibt es keinen Vergleich. Es gelten dieselben Filter.</dd>
+    </dl>
+  </details>
+</section>
 {% endmacro %}
 
 {% macro chart_scripts() %}
