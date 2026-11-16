@@ -236,6 +236,11 @@ def propose(session: Session, t: Appointment, form: workflow.Form, reason: str, 
         raise CorrectionError(
             "Korrekturen gibt es nur für abgeschlossene Termine; die anderen werden direkt geändert."
         )
+    if open_for(session, [t.id]):
+        raise CorrectionError(
+            "Für diesen Termin wartet schon eine Korrektur auf einen Admin. "
+            "Eine weitere geht, sobald sie unter „Prüfen“ entschieden ist."
+        )
     reason = clean_name(reason)
     if not reason:
         raise CorrectionError("Bitte einen Grund für die Korrektur angeben.")

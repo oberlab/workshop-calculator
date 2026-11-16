@@ -204,6 +204,35 @@ def test_proposals_need_an_abgeschlossen_termin_a_reason_and_a_change(legacy):
     assert db.scalar(sa.select(sa.func.count()).select_from(Proposal)) == 0
 
 
+def test_one_open_correction_per_termin(legacy, monkeypatch):
+    """A second proposal waits until the first is decided; the course page shows the open one
+    instead of the form."""
+    from tests.test_lists import _team
+
+    db = legacy
+    t = _counted_termin(db)
+    male = t.participants_male
+    page = _team(monkeypatch).get(f"/planung/{t.course_id}?termin={t.id}").text
+    assert f'action="/planung/{t.course_id}/korrektur"' in page and "wartet auf einen Admin" not in page
+    first = corrections.propose(db, t, form(participants_male=male + 1), "vergessen", "Kim")
+    with pytest.raises(CorrectionError, match="wartet schon eine Korrektur"):
+        corrections.propose(db, t, form(participants_male=male + 2), "noch einer", "Lea")
+    db.commit()
+
+    team = _team(monkeypatch)
+    page = team.get(f"/planung/{t.course_id}?termin={t.id}").text
+    assert "wartet auf einen Admin" in page and f'action="/planung/{t.course_id}/korrektur"' not in page
+    data = {"termin": str(t.id), "participants_male": str(male + 2), "grund": "noch einer"}
+    refused = team.post(f"/planung/{t.course_id}/korrektur", data=data)
+    assert "wartet schon eine Korrektur" in refused.text
+    assert corrections.open_for(db, [t.id]) == [first]
+
+    corrections.reject(db, first.id, "Admin", "doch nicht")
+    db.commit()
+    page = team.get(f"/planung/{t.course_id}?termin={t.id}").text
+    assert f'action="/planung/{t.course_id}/korrektur"' in page
+
+
 def test_reject_needs_a_reason_and_changes_nothing(legacy):
     db = legacy
     t = _counted_termin(db)
@@ -221,12 +250,14 @@ def test_reject_needs_a_reason_and_changes_nothing(legacy):
 def test_confirm_refuses_stale_values_and_unconfirmed_entries(legacy):
     db = legacy
     t = _counted_termin(db)
-    first = corrections.propose(db, t, form(participants_male=t.participants_male + 1), "a", "Kim")
-    second = corrections.propose(db, t, form(participants_male=t.participants_male + 2), "b", "Lea")
-    corrections.confirm(db, first.id, "Admin")
+    male = t.participants_male
+    first = corrections.propose(db, t, form(participants_male=male + 1), "a", "Kim")
+    t.participants_male = male + 2  # changed some other way since the proposal
+    db.flush()
     with pytest.raises(CorrectionError, match="Seit dem Vorschlag geändert: TN männlich"):
-        corrections.confirm(db, second.id, "Admin")
-    assert second.decision is None
+        corrections.confirm(db, first.id, "Admin")
+    assert first.decision is None
+    corrections.reject(db, first.id, "Admin", "überholt")
 
     # A place that is only proposed would bring an unconfirmed entry into the charts.
     place = Place(name="Turnhalle Nord", status=PROPOSED, is_school=False, address="")
@@ -372,14 +403,18 @@ def test_herkunft_corrections_add_up_and_refuse_stale_values(legacy):
     more = form(participants_male=t.participants_male + 1) | origins(("Altdorf", n - 2), ("Bergheim", 3))
     first = corrections.propose(db, t, more, "einer mehr", "Kim")
     assert first.proposed_values.keys() == {"participants_male", "participants_total", "origins"}
-    # A date correction does not trip over the Herkunft.
-    corrections.propose(db, t, form(date="2019-03-04"), "Datum", "Kim")
-
-    second = corrections.propose(db, t, origins(("Altdorf", n - 3), ("Bergheim", 3)), "andere", "Lea")
     corrections.confirm(db, first.id, "Admin")
     assert sorted((o.municipality, o.participants) for o in t.origins) == [
         ("Altdorf", n - 2),
         ("Bergheim", 3),
     ]
+    # A date correction does not trip over the Herkunft.
+    date = corrections.propose(db, t, form(date="2019-03-04"), "Datum", "Kim")
+    corrections.reject(db, date.id, "Admin", "doch nicht")
+
+    second = corrections.propose(db, t, origins(("Altdorf", n - 3), ("Bergheim", 4)), "andere", "Lea")
+    t.origins[0].participants -= 1  # changed some other way since the proposal
+    t.origins[1].participants += 1
+    db.flush()
     with pytest.raises(CorrectionError, match="Seit dem Vorschlag geändert: Herkunft"):
         corrections.confirm(db, second.id, "Admin")

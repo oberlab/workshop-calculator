@@ -353,6 +353,9 @@
     {% set c = correction %}
     <section class="panel" id="korrektur">
       <h2>Korrektur vorschlagen</h2>
+      {% if c.open %}
+      <p class="help">Eine Korrektur dieses Termins wartet auf einen Admin (siehe „Phase“). Eine weitere geht, sobald sie unter „Prüfen“ entschieden ist.</p>
+      {% else %}
       <p class="help">Der Termin zählt in den Kennzahlen und ist gesperrt. Eine Korrektur gilt erst, wenn ein Admin sie unter „Prüfen“ bestätigt; bis dahin ändert sich nichts.</p>
       <details class="add-termine">
         <summary class="btn btn-secondary btn-sm">Korrektur vorschlagen …</summary>
@@ -416,6 +419,7 @@
           {{ ui.button("Korrektur vorschlagen", type="submit") }}
         </form>
       </details>
+      {% endif %}
     </section>
     {% endif %}
     {% endif %}
