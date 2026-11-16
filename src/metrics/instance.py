@@ -238,16 +238,22 @@ def load_project_list(slack: dict) -> ProjectList | None:
 class WorkloadRule:
     """How the Team page estimates the working hours of a Termin (`PROPOSAL.md` 4.3, WM-131).
 
-    Per person on the Termin: course hours × factor plus a fixed overhead per Termin (preparation,
-    setup, follow-up), lead and support apart. A Format's own overhead replaces the lead's default
-    (e.g. HackDays need more preparation); a place's travel time is added for everyone on the
-    Termin. The defaults are the proposal of section 4.3; the real values are still open (11.2).
+    Per person on the Termin, lead and support apart:
+
+        lead:    course hours × lead factor + preparation (factor × course hours) + fixed hours + travel
+        support: course hours × support factor                                    + fixed hours + travel
+
+    These are the defaults (Alex, 2026-11-16: preparation 0.5 × the course hours, +1 h for the lead,
+    +0.5 h for support). A course may override each value; a Format's own fixed
+    hours replace the lead's default, a place's travel time is added for everyone on the Termin
+    (`metrics.planning.workload`).
     """
 
     lead_factor: Decimal = Decimal("1.0")
     lead_overhead: Decimal = Decimal("1.0")
     support_factor: Decimal = Decimal("1.0")
     support_overhead: Decimal = Decimal("0.5")
+    preparation_factor: Decimal = Decimal("0.5")
 
 
 WORKLOAD_KEYS = {
@@ -255,6 +261,7 @@ WORKLOAD_KEYS = {
     "lead_overhead_hours": "lead_overhead",
     "support_factor": "support_factor",
     "support_overhead_hours": "support_overhead",
+    "preparation_factor": "preparation_factor",
 }
 
 

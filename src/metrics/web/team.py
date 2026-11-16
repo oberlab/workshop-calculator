@@ -81,6 +81,7 @@ def team(request: Request):
                 # What a full bar is for people without weekly hours: the busiest week shown.
                 "scale": max([float(c.total) for r in rows for c in r.cells] + [1.0]),
                 "formula": workload.formula(),
+                "own_values": [(c, workflow.title_of_course(c), v) for c, v in workload.own_values(shown)],
                 "free": workload.who_is_free(session, free_day, free_start, free_end),
                 "top": {i: hs[0] for i, hs in found.items()},
                 "badge": hints.BADGE,

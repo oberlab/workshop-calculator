@@ -251,8 +251,8 @@ def test_final_confirmation_counts_once_and_locks_all_but_billed(world):
     db.flush()
     after = analytics.totals(db, analytics.Filters(), TODAY + dt.timedelta(days=30), 9)
     assert (after.sessions - before.sessions, after.participants - before.participants) == (1, 11)
-    # Locked: only Abgerechnet changes; the course's shared fields too.
-    assert workflow.editable(t) == {workflow.BILLED}
+    # Locked: only Abgerechnet and the course's workload values (no chart reads them) change.
+    assert workflow.editable(t) == {workflow.BILLED, workflow.WORKLOAD}
     with pytest.raises(FormError):
         workflow.confirm(db, t, None, "Kim")
     workflow.save(db, t, world.basics(place_id=world.makerspace.id, billed="1"), "Kim")

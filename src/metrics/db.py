@@ -236,6 +236,14 @@ class Course(Base):
     note: Mapped[str | None] = mapped_column(Text)
     # Kontaktperson (WM-141): planning only, never counted or exported.
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+    # Workload estimate (WM-131): optional values of the rule for this course's Termine; empty
+    # means inherited (Format or place, then `[workload]`), see `metrics.planning.workload`.
+    lead_factor: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    preparation_factor: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    lead_overhead_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    support_factor: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    support_overhead_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    travel_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     created_at: Mapped[dt.datetime] = _created_at()
 
     format: Mapped[Format | None] = relationship()

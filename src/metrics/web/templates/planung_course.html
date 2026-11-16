@@ -22,6 +22,22 @@
 
 {% macro req() %}<span class="req" title="Pflicht ab „Bestätigt“" aria-hidden="true"> *</span>{% endmacro %}
 
+{# The course's own values of the workload estimate (WM-131); empty fields inherit. #}
+{% macro workload_panel(on) %}
+<section class="panel" id="arbeitszeit">
+  <h2>Arbeitszeit <span class="section-note">nur für die Auslastung im Team, ändert keine Kennzahl</span></h2>
+  {% if workload.estimate %}<p class="help">Geschätzt für diesen Termin: {% for role, h in workload.estimate.items() %}{{ role }} {{ h }} Std.{{ ", " if not loop.last }}{% endfor %} pro Person (<a href="/team#auslastung">so wird gerechnet</a>).</p>{% endif %}
+  <details class="add-termine"{% if workload.own or errors %} open{% endif %}>
+    <summary class="btn btn-secondary btn-sm">Eigene Werte für diesen Kurs</summary>
+    <div class="fields">
+      {% for f in workload.fields %}{{ ui.field(f.label, f.name, f.own, help=("eigener Wert; leer: " if f.own else "leer: ") ~ f.inherited, attrs={"inputmode": "decimal", "placeholder": f.placeholder, "disabled": none if on else true}) }}{% endfor %}
+    </div>
+    <p class="help">Gilt für alle Termine des Kurses. Leer übernimmt den Wert des Formats bzw. Orts, sonst den Standard.</p>
+    {{ caller() if caller }}
+  </details>
+</section>
+{% endmacro %}
+
 {% block content %}
 {% if errors %}{{ ui.alert(errors, "error") }}{% endif %}
 {% set course_on = "course" in editable %}
@@ -179,12 +195,22 @@
       {% endif %}
 
       {% if form_on %}
+      {{ workload_panel(true) }}
+
       <div class="form-actions">
         {{ ui.button("Kurs anlegen" if new else "Speichern", type="submit") }}
         {% if not new %}<a class="reset" href="/planung/{{ course.id }}?termin={{ t.id }}">Änderungen verwerfen</a>{% endif %}
       </div>
       {% endif %}
     </form>
+
+    {% if not form_on and "workload" in editable %}
+    <form method="post" action="/planung/{{ course.id }}/aktion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="workload"><input type="hidden" name="termin" value="{{ t.id }}">
+      {% call workload_panel(true) %}{{ ui.button("Speichern", type="submit", kind="secondary", size="sm") }}{% endcall %}
+    </form>
+    {% elif not form_on and not new %}{{ workload_panel(false) }}
+    {% endif %}
 
     {% if not new %}
     {% set k = contact %}

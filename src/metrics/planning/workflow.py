@@ -17,8 +17,9 @@ Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
   looks at them before Durchgeführt. Abrechnung from Durchgeführt on.
 - "Final bestätigen" (`finalize`) goes through `courses.finally_confirm` (confirmed list entries,
   no blocking hint); open warnings must be ticked as checked, which the Verlauf records.
-- Abgeschlossen is locked except `billed`; a course's shared fields are locked as soon as one of
-  its Termine is Abgeschlossen (they are counted in the charts). Changes to it are proposed as
+- Abgeschlossen is locked except `billed` and the course's workload values (`WORKLOAD`: they
+  change no chart, only the Team page's estimate); a course's other shared fields are locked as
+  soon as one of its Termine is Abgeschlossen (they are counted in the charts). Changes to it are proposed as
   corrections and applied when an admin confirms them (`metrics.planning.corrections`, WM-132).
 - The Kontaktperson of a course (WM-141) is chosen apart from this form (`metrics.contacts`); a new
   place drops a contact of the old one.
@@ -80,13 +81,25 @@ ALTERNATIVES = "alternatives"
 TEAM = "team"
 HELD = "held"  # participants, Herkunft
 BILLED = "billed"
+WORKLOAD = "workload"  # the course's own values of the workload estimate (WM-131), never locked
 EDITABLE = {
-    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM, HELD},
-    BESTAETIGT: {COURSE, TIMES, TEAM, HELD},
-    DURCHGEFUEHRT: {COURSE, TIMES, TEAM, HELD, BILLED},
-    ABGESCHLOSSEN: {BILLED},
+    GEPLANT: {COURSE, TIMES, ALTERNATIVES, TEAM, HELD, WORKLOAD},
+    BESTAETIGT: {COURSE, TIMES, TEAM, HELD, WORKLOAD},
+    DURCHGEFUEHRT: {COURSE, TIMES, TEAM, HELD, BILLED, WORKLOAD},
+    ABGESCHLOSSEN: {BILLED, WORKLOAD},
     ABGESAGT: set(),
 }
+
+# The course's own values of the workload estimate (`metrics.planning.workload.values`): column,
+# German label, and the value of `workload.Values` it overrides. Empty means inherited.
+WORKLOAD_FIELDS = (
+    ("lead_factor", "Kursleitung (× Kurszeit)", "lead_factor"),
+    ("preparation_factor", "Vorbereitung (× Kurszeit)", "preparation_factor"),
+    ("lead_overhead_hours", "Zuschlag Kursleitung (Std.)", "lead_overhead"),
+    ("support_factor", "Unterstützung (× Kurszeit)", "support_factor"),
+    ("support_overhead_hours", "Zuschlag Unterstützung (Std.)", "support_overhead"),
+    ("travel_hours", "Fahrtzeit (Std.)", "travel"),
+)
 
 # German names of the fields in the Verlauf.
 LABELS = {
@@ -115,6 +128,7 @@ LABELS = {
     "cancel_reason": "Absagegrund",
     "calendar_uid": "Kalender",
     "status": "Status",
+    **{name: f"Arbeitszeit: {label}" for name, label, _ in WORKLOAD_FIELDS},
 }
 PARTICIPANT_FIELDS = (
     ("participants_female", "weiblich"),
@@ -203,6 +217,7 @@ def course_snapshot(course: Course) -> dict[str, str]:
         "class_age_text": _show(course.class_age_text),
         "note": _show(course.note),
         "target_group": _show(course.target_group),
+        **{name: _show(getattr(course, name)) for name, _, _ in WORKLOAD_FIELDS},
     }
 
 
@@ -292,6 +307,30 @@ def _pick(session: Session, model, value: str, label: str, errors: list, current
         errors.append(f"{label}: nicht (mehr) auswählbar")
         return current
     return entry
+
+
+def _hours(value: str, label: str, errors: list) -> Decimal | None:
+    """A number of hours or a factor, with a decimal comma or point; empty is None."""
+    if not value:
+        return None
+    try:
+        number = Decimal(value.replace(",", "."))
+    except ArithmeticError:
+        number = None
+    if number is None or not number.is_finite():
+        errors.append(f"{label}: keine Zahl")
+        return None
+    if not 0 <= number <= 100:
+        errors.append(f"{label}: zwischen 0 und 100")
+        return None
+    return round(number, 2)
+
+
+def _apply_workload(course: Course, form: Form, errors: list) -> None:
+    """The course's own workload values; a field the form does not send stays as it is."""
+    for name, label, _ in WORKLOAD_FIELDS:
+        if name in form:
+            setattr(course, name, _hours(one(form, name), label, errors))
 
 
 def _class_age(form: Form, errors: list) -> str | None:
@@ -401,6 +440,7 @@ def create(session: Session, form: Form, by: str) -> Appointment:
     errors: list[str] = []
     course = courses.create_course(session, by=by)
     _apply_course(session, course, form, errors)
+    _apply_workload(course, form, errors)
     t = courses.add_appointment(session, course, by=by, date=None, stage=GEPLANT)
     _apply_appointment(session, t, form, EDITABLE[GEPLANT], errors)
     if errors:
@@ -423,6 +463,8 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     errors: list[str] = []
     if COURSE in allowed:
         _apply_course(session, course, form, errors)
+    if WORKLOAD in allowed:
+        _apply_workload(course, form, errors)
     _apply_appointment(session, t, form, allowed, errors)
     if errors:
         raise FormError(errors)

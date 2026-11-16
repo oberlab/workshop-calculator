@@ -138,22 +138,23 @@ def test_sidebar_counter_matches_zu_erledigen(plan, monkeypatch):
 
 
 def test_workload_counts_estimated_hours_of_lead_and_support(plan, monkeypatch):
-    """Course hours plus the default overhead (WM-131): lead 2.25 + 1, support 2 + 0.5."""
+    """Course hours plus the default rule (WM-131): lead 2.25 + 0.5 × 2.25 preparation + 1, support
+    2 + 0.5."""
     w, _ = plan
     load = mine.workload(w.db, w.kim, TODAY)
     mondays = [monday_of(TODAY) + dt.timedelta(weeks=i) for i in range(4)]
     assert [week.monday for week in load.weeks] == mondays
     next_week = load.weeks[1]
-    assert (next_week.lead, next_week.support, next_week.termine) == (Decimal("3.25"), Decimal("2.5"), 2)
-    assert load.capacity is None and load.scale == Decimal("5.75")
+    assert (next_week.lead, next_week.support, next_week.termine) == (Decimal("4.375"), Decimal("2.5"), 2)
+    assert load.capacity is None and load.scale == Decimal("6.875")
     html = _as(monkeypatch, "Kim", "kc-kim").get("/mein-bereich").text
-    assert f"KW {NEXT_MONDAY.isocalendar().week}" in html and "5,8 Std. · 2 Termine" in html
+    assert f"KW {NEXT_MONDAY.isocalendar().week}" in html and "6,9 Std. · 2 Termine" in html
     assert "Noch ohne Kapazität" in html
 
-    w.kim.weekly_hours = Decimal(7)  # 5.75 of 7 hours: above 80 %
+    w.kim.weekly_hours = Decimal(7)  # 6.875 of 7 hours: above 80 %
     w.db.commit()
     html = _as(monkeypatch, "Kim", "kc-kim").get("/mein-bereich").text
-    assert "5,8 Std. / 7 Std." in html and "workload is-warning" in html
+    assert "6,9 Std. / 7 Std." in html and "workload is-warning" in html
     w.kim.weekly_hours = Decimal(5)  # above 100 %
     w.db.commit()
     assert "workload is-over" in _as(monkeypatch, "Kim", "kc-kim").get("/mein-bereich").text

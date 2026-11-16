@@ -60,7 +60,8 @@ from metrics.db import (
     get_sessionmaker,
 )
 from metrics.instance import get_instance
-from metrics.planning import caldav, corrections, series, workflow
+from metrics.planning import caldav, corrections, series, workflow, workload
+from metrics.planning.lanes import LEAD, SUPPORT
 from metrics.planning.workflow import FormError
 from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 from metrics.web.lists import picker_context
@@ -410,6 +411,7 @@ def course_context(
             p.id: p.is_school for p in session.scalars(select(Place).where(Place.is_school.is_not(None)))
         },
         "participant_fields": workflow.PARTICIPANT_FIELDS,
+        "workload": workload_context(course, t, new),
         "asks_municipalities": workflow.asks_municipalities(t),
         "municipalities": _municipalities(session),
         "hints_by_termin": stored,
@@ -440,6 +442,41 @@ def contact_context(session: Session, course: Course, values=None, errors=None) 
         "entered": values or {},
         "errors": errors or {},
     }
+
+
+@dataclass
+class WorkloadField:
+    """One of the course's own workload values on the course page."""
+
+    name: str
+    label: str
+    own: str  # the course's value as entered, "" if inherited
+    inherited: str  # what applies when empty, e.g. "1 Std. (Format „HackDays“)"
+    placeholder: str  # the inherited number alone
+
+
+def workload_context(course: Course, t: Appointment, new: bool) -> dict:
+    """The "Arbeitszeit" panel: the course's own values, what it inherits, and this Termin's estimate."""
+    inherited = workload.values(course, own_values=False)
+    fields = []
+    for name, label, key in workflow.WORKLOAD_FIELDS:
+        value, own = getattr(inherited, key), getattr(course, name)
+        fields.append(
+            WorkloadField(
+                name,
+                label,
+                workload.exact(own) if own is not None else "",
+                f"{workload.show(key, value)} ({value.origin})",
+                workload.exact(value.amount),
+            )
+        )
+    estimate = {}
+    if not new and t.stage != ABGESAGT:
+        estimate = {
+            "Kursleitung": workload.number(workload.estimate(t, LEAD).total),
+            "Unterstützung": workload.number(workload.estimate(t, SUPPORT).total),
+        }
+    return {"fields": fields, "own": any(f.own for f in fields), "estimate": estimate}
 
 
 def _course_page(request, session, course, t, *, new=False, errors=None, status_code=200, extra=None):
@@ -473,6 +510,7 @@ async def create_course(request: Request):
             course, t = _new_objects()
             with session.no_autoflush:
                 workflow._apply_course(session, course, form, [])
+                workflow._apply_workload(course, form, [])
                 workflow._apply_appointment(session, t, form, workflow.EDITABLE[GEPLANT], [])
                 response = _course_page(
                     request,
@@ -522,6 +560,8 @@ def _refused(request, session, course_id: int, termin_id: int | None, error: For
         if form is not None and (allowed := workflow.editable(t)):
             if workflow.COURSE in allowed:
                 workflow._apply_course(session, course, form, [])
+            if workflow.WORKLOAD in allowed:
+                workflow._apply_workload(course, form, [])
             workflow._apply_appointment(session, t, form, allowed, [])
         response = _course_page(request, session, course, t, errors=error.messages, status_code=400)
     session.rollback()
@@ -601,6 +641,9 @@ async def course_action(course_id: int, request: Request):
                 message = _enter_calendar(request, session, t, by)
             elif action == "billed":
                 workflow.set_billed(session, t, "billed" in form, by)
+                message = "Gespeichert."
+            elif action == "workload":  # the "Arbeitszeit" panel of an Abgeschlossen Termin
+                workflow.save(session, t, form, by, only={workflow.WORKLOAD})
                 message = "Gespeichert."
             else:
                 raise HTTPException(400, "Unbekannte Aktion")
