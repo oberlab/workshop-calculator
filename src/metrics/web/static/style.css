@@ -455,7 +455,7 @@ legend { padding: 0; }
   white-space: nowrap;
 }
 .table td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:last-child > * { border-bottom: 0; }
 .table tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .table a { font-weight: 600; }
 
@@ -733,6 +733,9 @@ a.card:hover { background: var(--accent-tint); }
 .course-form, .course-side { display: grid; gap: 16px; min-width: 0; }
 .course-side { position: sticky; top: 16px; overflow-wrap: anywhere; }
 .course-form .fields { margin: 12px 0; }
+/* Fields whose labels wrap differently keep their inputs on one line (label, input, help, error). */
+.fields-aligned > .field { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 4px; align-content: start; }
+.fields-aligned > .field > span:first-child { align-self: end; }
 .course-form .panel > .field { margin-top: 12px; }
 .section-note { font-family: var(--body); font-size: 0.75rem; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
 .alternatives { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 8px; }
@@ -851,6 +854,8 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .entry-values dt { color: var(--text-muted); }
 .entry-values dd { margin: 0; }
 .decisions { display: grid; gap: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.format-needs { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.format-needs > h3, .format-needs > p { margin: 0; }
 .decisions form { display: grid; gap: 8px; }
 .verlauf { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
 @media (max-width: 1100px) { .list-detail.has-detail { grid-template-columns: minmax(0, 1fr); } }
@@ -949,12 +954,12 @@ table.mun input[type="number"] { width: 90px; }
 .weeks { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
 .weeks li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
 .weeks-label { font-weight: 600; font-size: 0.9rem; }
-.weeks .workload-label { min-width: 10.5rem; }
+.weeks .workload-label { min-width: 15.5rem; }
 @media (max-width: 640px) {
   .weeks li { grid-template-columns: 4rem minmax(0, 1fr); }
   .weeks-note { grid-column: 2; }
   .weeks .workload { flex-wrap: wrap; }
-  .weeks .workload-label { white-space: normal; }
+  .weeks .workload-label { min-width: 0; white-space: normal; }
 }
 
 /* Calendar: a table per week with one row (lane) per person and one column per day; fixed layout,
@@ -1114,7 +1119,7 @@ table.mun input[type="number"] { width: 90px; }
 
 /* A row per piece of equipment, a cell per day: the sum of the day, then its Termine. The lanes
    scroll sideways on phones instead of becoming a list, since the sum per day is the point. */
-.cal-equipment { min-width: 40rem; }
+.cal-equipment { min-width: 52rem; }
 .cal-equipment .cal-load + .cal-item { margin-top: 4px; }
 .cal-grid td.is-over { background: var(--critical-tint); }
 .cal-load { display: block; font: 600 0.78rem var(--heading); color: var(--text-muted); }

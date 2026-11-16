@@ -57,7 +57,7 @@
    above the number available. Reads today, top, titles and badge of the page. #}
 {% macro equipment_section(week, index) -%}
 <section class="cal-week" aria-labelledby="material-kw-{{ index }}">
-  <h3 class="week-title" id="material-kw-{{ index }}">Material in KW {{ week.number }} · {{ week.monday.strftime("%d.%m.") }}–{{ week.days[-1].strftime("%d.%m.") }}</h3>
+  <h3 class="week-title{{ ' visually-hidden' if view == 'woche' }}" id="material-kw-{{ index }}">Material in KW {{ week.number }} · {{ week.monday.strftime("%d.%m.") }}–{{ week.days[-1].strftime("%d.%m.") }}</h3>
   {% if week.booked %}
   <div class="table-wrap">
     <table class="cal-grid cal-equipment">
