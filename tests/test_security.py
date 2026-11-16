@@ -68,6 +68,28 @@ def test_security_headers_everywhere(monkeypatch):
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "same-origin"
         assert "camera=()" in headers["permissions-policy"]
+        assert headers["cross-origin-resource-policy"] == "same-origin"
+        assert headers["cross-origin-embedder-policy"] == "require-corp"
+
+
+def test_hsts_only_over_https(monkeypatch):
+    assert "strict-transport-security" not in _client(monkeypatch).get("/login").headers
+    direct = _client(monkeypatch).get("https://testserver/static/style.css")  # TLS at the app itself
+    behind_proxy = _client(monkeypatch, public_url="https://zahlen.example.org").get("/login")
+    for response in (direct, behind_proxy):
+        assert response.headers["strict-transport-security"] == "max-age=31536000"
+
+
+def test_pages_are_not_stored_but_static_files_are_cacheable(db, monkeypatch):
+    client = _client(monkeypatch)
+    for path in ("/", "/login", "/analyse", "/gibt-es-nicht", "/healthz"):
+        assert client.get(path, follow_redirects=False).headers["cache-control"] == "no-store", path
+    client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
+    for path in ("/mein-bereich", "/planung", "/api/analyse/key-figures"):
+        response = client.get(path, follow_redirects=False)
+        assert (response.status_code, response.headers["cache-control"]) == (200, "no-store"), path
+    for path in ("/static/style.css", "/theme.css"):
+        assert "cache-control" not in client.get(path).headers, path
 
 
 def test_no_inline_scripts_or_handlers():
@@ -113,7 +135,9 @@ def test_public_data_is_cached_and_rate_limited(monkeypatch):
     monkeypatch.setattr(public, "sessions_over_time", fake)
     client = _client(monkeypatch)
     first = client.get("/api/sessions-over-time?bin=year")
-    assert json.loads(first.text) == {"bin": "year"} and "max-age=300" in first.headers["cache-control"]
+    assert (
+        json.loads(first.text) == {"bin": "year"} and first.headers["cache-control"] == "public, max-age=300"
+    )
     client.get("/api/sessions-over-time?bin=year&category=Code")  # ignored filter, same answer
     client.get("/api/sessions-over-time?bin=quarter")
     assert calls == ["year", "quarter"]
@@ -176,3 +200,4 @@ def test_every_post_form_in_the_templates_has_the_token():
         for form in re.finditer(r"<form\b[^>]*>(.*?)</form>", html, re.S | re.I):
             if re.search(r'method="post"', form.group(0)[:300], re.I):
                 assert 'name="csrf_token" value="{{ csrf_token }}"' in form.group(1), template.name
+

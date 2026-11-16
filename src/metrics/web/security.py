@@ -43,7 +43,17 @@ SECURITY_HEADERS = [
     (b"x-frame-options", b"DENY"),
     (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
     (b"cross-origin-opener-policy", b"same-origin"),
+    # Everything the pages load comes from this site, so other sites may neither embed nor read it.
+    (b"cross-origin-embedder-policy", b"require-corp"),
+    (b"cross-origin-resource-policy", b"same-origin"),
 ]
+# Pages and data hold team data: no browser or proxy keeps a copy unless the route says otherwise
+# (the public data endpoint, instructor pictures). Static files and the theme stay cacheable.
+NO_STORE = (b"cache-control", b"no-store")
+CACHEABLE_PATHS = ("/static/", "/theme.css", "/theme/")
+# Sent whenever the app is served over https: Caddy does not add HSTS by itself. One year, this host
+# only (no includeSubDomains: other services of the organisation may share the domain).
+HSTS = (b"strict-transport-security", b"max-age=31536000")
 
 
 def is_secure(request: Request) -> bool:
@@ -106,7 +116,9 @@ async def check_csrf(request: Request) -> None:
 
 
 class SecurityHeaders:
-    """ASGI middleware adding the security headers to every response, static files included."""
+    """ASGI middleware adding the security headers to every response, static files included,
+    `Cache-Control: no-store` to every response outside the static files and the theme, and HSTS
+    when served over https."""
 
     def __init__(self, app):
         self.app = app
@@ -116,10 +128,16 @@ class SecurityHeaders:
             await self.app(scope, receive, send)
             return
 
+        defaults = list(SECURITY_HEADERS)
+        if not scope["path"].startswith(CACHEABLE_PATHS):
+            defaults.append(NO_STORE)
+        if scope.get("scheme") == "https" or (auth.get_settings().public_url or "").startswith("https://"):
+            defaults.append(HSTS)
+
         async def send_with_headers(message):
             if message["type"] == "http.response.start":
                 names = {name.lower() for name, _ in message.get("headers", [])}
-                extra = [(n, v) for n, v in SECURITY_HEADERS if n not in names]
+                extra = [(n, v) for n, v in defaults if n not in names]
                 message = {**message, "headers": [*message.get("headers", []), *extra]}
             await send(message)
 
