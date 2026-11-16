@@ -223,3 +223,26 @@ def test_database_pool_outlasts_the_route_threads(monkeypatch):
             return anyio.to_thread.current_default_thread_limiter().total_tokens
 
     assert anyio.run(tokens_after_start) == db.WEB_THREADS
+
+
+def test_values_the_database_refuses_are_a_bad_request(db, monkeypatch):
+    """Numbers out of range and NUL bytes in filters answered 500 in the ZAP active scan (WM-153)."""
+    client = _client(monkeypatch)
+    client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
+    too_big = "9" * 40
+    for path in (
+        f"/planung?kontext={too_big}",
+        f"/planung?ort={too_big}",
+        f"/kalender?person={too_big}",
+        "/planung?kategorie=%00",
+    ):
+        response = client.get(path)
+        assert (response.status_code, response.json()) == (400, {"detail": "Ungültige Eingabe"}), path
+        assert response.headers["cache-control"] == "no-store"
+
+
+def test_filter_errors_do_not_echo_the_input(monkeypatch):
+    client = _client(monkeypatch)
+    for query in ("bin=analyse", "period=analyse", "period=custom&from=analyse"):
+        response = client.get(f"/?{query}")
+        assert response.status_code == 400 and "analyse" not in response.text, query
