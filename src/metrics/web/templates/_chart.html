@@ -29,9 +29,10 @@
 
 {# totals: the three key figures below the chart (the overview); the analysis page shows the KPI
    tiles above its views instead (`kpi_tiles`). #}
-{% macro chart_and_totals(panel=true, totals=true) %}
+{# click: what a click on a bar sets in the filters (static/app.js), e.g. "period category". #}
+{% macro chart_and_totals(panel=true, totals=true, click=none) %}
 {% if panel %}<section class="panel">{% endif %}
-<div id="chart" class="chart" aria-live="polite"></div>
+<div id="chart" class="chart" aria-live="polite"{% if click %} data-click="{{ click }}"{% endif %}></div>
 <p id="empty" class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
 
 {% if totals %}

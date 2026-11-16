@@ -5,7 +5,8 @@ and project pages and the Slack weekly status (`metrics.messages`) all count thr
 so a figure means the same everywhere.
 
 - **Einsatz:** a held Termin, i.e. finally confirmed (stage Abgeschlossen) and dated (`held`).
-  The filters (period, category, context, target group) restrict the held Termine (`select_held`).
+  The filters (period, category, context, target group, the place's municipality) restrict the held
+  Termine (`select_held`).
 - **Teilnehmende:** the participants of the held Termine on which they count (`COUNTS_PARTICIPANTS`):
   Terminnummer 1, so a child in a course of several dates counts once; for a Termin made in the app
   for a continuous format every Termin. Termine without a number count nothing.
@@ -19,16 +20,30 @@ The comparison period (`previous_period`) of a KPI tile has the same length and 
 the selected period starts: the previous school or calendar year for those presets, the 12 months
 before for "Letzte 12 Monate", the same number of days before for a custom range. "Gesamter
 Zeitraum" and an open custom range have none.
+
+Planning insights (WM-151, team only) count other Termine, defined at the end of this module:
+planned Termine (dated, not Abgesagt) for the team's hours and the equipment usage, cancelled ones
+with their reason, the lead time of Termine created in the app, and Termine not billed yet.
 """
 
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Integer, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from metrics.db import STAGE_COUNTED, Appointment, Context, Course, Format, Place
+from metrics.db import (
+    ABGESAGT,
+    ABGESCHLOSSEN,
+    DURCHGEFUEHRT,
+    STAGE_COUNTED,
+    Appointment,
+    Context,
+    Course,
+    Format,
+    Place,
+)
 
 # ---- Periods ----------------------------------------------------------------------------------
 
@@ -106,6 +121,7 @@ class Filters:
     categories: list[str] = field(default_factory=list)
     contexts: list[str] = field(default_factory=list)
     target_groups: list[str] = field(default_factory=list)
+    municipalities: list[str] = field(default_factory=list)  # of the place (WM-151: a click on the map)
 
 
 # The columns the analysis filters and groups by, from the Termin and its course.
@@ -114,6 +130,7 @@ CATEGORY = Format.category
 CONTEXT = Context.name
 TARGET_GROUP = Course.target_group
 PLACE = Place.name
+MUNICIPALITY = Place.municipality
 
 
 def joined(query):
@@ -134,10 +151,14 @@ def held(query):
 
 def select_held(query, filters: Filters, today: date, school_year_start_month: int):
     """Restrict a query to held Termine matching all filters; returns it with the resolved period."""
+    return _filtered(held(query), filters, today, school_year_start_month)
+
+
+def _filtered(query, filters: Filters, today: date, school_year_start_month: int):
+    """Apply the period and the list filters to a query over Termine (`joined`)."""
     start, end = resolve_period(
         filters.preset, today, school_year_start_month, filters.date_from, filters.date_to
     )
-    query = held(query)
     if start:
         query = query.where(DATE >= start)
     if end:
@@ -148,6 +169,8 @@ def select_held(query, filters: Filters, today: date, school_year_start_month: i
         query = query.where(CONTEXT.in_(filters.contexts))
     if filters.target_groups:
         query = query.where(TARGET_GROUP.in_(filters.target_groups))
+    if filters.municipalities:
+        query = query.where(MUNICIPALITY.in_(filters.municipalities))
     return query, (start, end)
 
 
@@ -225,3 +248,56 @@ def compare(session: Session, filters: Filters, today: date, school_year_start_m
         earlier = replace(filters, preset="custom", date_from=before[0], date_to=before[1])
         previous = key_figures(session, earlier, today, school_year_start_month)
     return Comparison(period, figures, before, previous)
+
+
+# ---- Planning insights (WM-151) ---------------------------------------------------------------
+# Team-only figures about the planning (`metrics.planning.insights`, page "Planungszahlen"). They
+# take the same filters; the period applies to the Termin's date.
+
+
+def planned(query):
+    """Termine that are work for the team: dated and not Abgesagt, whatever their stage. The same
+    rule as the workload (`metrics.planning.workload.counted`) and the equipment day totals."""
+    return joined(query).where(Appointment.stage != ABGESAGT, DATE.is_not(None))
+
+
+def select_planned(query, filters: Filters, today: date, school_year_start_month: int):
+    return _filtered(planned(query), filters, today, school_year_start_month)
+
+
+def select_cancelled(query, filters: Filters, today: date, school_year_start_month: int):
+    """Abgesagte Termine with a date, matching all filters."""
+    query = joined(query).where(Appointment.stage == ABGESAGT, DATE.is_not(None))
+    return _filtered(query, filters, today, school_year_start_month)
+
+
+# The reason of a cancellation as entered; blank counts as none (NULL).
+CANCEL_REASON = func.nullif(func.trim(Appointment.cancel_reason), "")
+
+# Lead time: whole days from the day a Termin was created (Berlin time) to its date. Only Termine
+# created in the app have a meaningful creation time: imported and transferred rows carry the time
+# of the import. Negative: entered after the date.
+CREATED_IN_APP = Appointment.source == "app"
+LEAD_DAYS = cast(DATE - func.date(func.timezone("Europe/Berlin", Appointment.created_at)), Integer)
+
+
+def select_lead_time(query, filters: Filters, today: date, school_year_start_month: int):
+    """Planned Termine (`planned`) created in the app, matching all filters."""
+    query, period = select_planned(query, filters, today, school_year_start_month)
+    return query.where(CREATED_IN_APP), period
+
+
+# Open billing: Termine that took place (Durchgeführt or Abgeschlossen, dated) and are not marked as
+# billed. Billing is recorded only for Termine made in the app or transferred from the Slack List;
+# the legacy rows and the baseline never recorded it, so they do not count as open.
+BILLING_RECORDED = Appointment.source.in_(("app", "slack"))
+
+
+def select_unbilled(query, filters: Filters, today: date, school_year_start_month: int):
+    query = joined(query).where(
+        Appointment.stage.in_((DURCHGEFUEHRT, ABGESCHLOSSEN)),
+        DATE.is_not(None),
+        BILLING_RECORDED,
+        Appointment.billed.is_(False),
+    )
+    return _filtered(query, filters, today, school_year_start_month)

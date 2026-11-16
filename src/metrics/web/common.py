@@ -77,6 +77,7 @@ def parse_filters(params: QueryParams, detailed: bool = True) -> metrics.Filters
         categories=params.getlist("category") if detailed else [],
         contexts=params.getlist("context") if detailed else [],
         target_groups=params.getlist("target_group") if detailed else [],
+        municipalities=params.getlist("municipality") if detailed else [],
     )
 
 

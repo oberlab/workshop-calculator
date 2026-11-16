@@ -688,6 +688,15 @@ a.card:hover { background: var(--accent-tint); }
 .figure .chart { margin-top: 12px; }
 .map-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr); gap: 24px; align-items: center; }
 .totals.map-side { grid-template-columns: 1fr; margin: 0; }
+/* Standard views and Planungszahlen (WM-151). */
+.figure + .figure { margin-top: 28px; }
+.map-side .meta-list { list-style: none; margin: 12px 0 0; padding: 0; font-size: 0.9rem; color: var(--text-muted); display: grid; gap: 2px; }
+.chart[data-click] .mark-rect path, .chart[data-click] .mark-shape path, .chart[data-click] .mark-symbol path { cursor: pointer; }
+/* Labels on a clickable map let the click through to the municipality below. */
+.chart[data-click] .mark-text { pointer-events: none; }
+.insights-grid { margin-top: 20px; }
+.hours-table td, .hours-table th { white-space: nowrap; }
+.table-total th, .table-total td { border-top: 2px solid var(--line); font-weight: 600; }
 
 @media (max-width: 1100px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }

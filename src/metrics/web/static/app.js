@@ -1,6 +1,8 @@
 // Sessions-over-time chart (overview and analysis page): keeps the form, the URL and the chart in sync.
 // The form's data-api attribute names the endpoint; the analysis endpoint needs the team login.
 // data-fixed holds filters a page always sends (a project's contexts) without showing them in the URL.
+// data-reload (Planungszahlen) reloads the page when a filter changes; its period always stays in the URL.
+// A chart with data-click filters the page when a bar or region is clicked (WM-151).
 
 const FORMAT_LOCALE = { decimal: ",", thousands: ".", grouping: [3], currency: ["", " €"] };
 const TIME_FORMAT_LOCALE = {
@@ -59,7 +61,77 @@ async function embed(target, spec) {
     return;
   }
   pending.delete(target);
-  await vegaEmbed(target, spec, EMBED_OPTIONS);
+  // Maps give their width/height ratio: as high as the width needs, so a phone has no empty space.
+  const ratio = spec.usermeta?.aspectRatio;
+  if (ratio && target.clientWidth) {
+    spec.height = Math.round(Math.min(spec.height, Math.max(200, target.clientWidth / ratio)));
+  }
+  const result = await vegaEmbed(target, spec, EMBED_OPTIONS);
+  if (target.dataset.click) result.view.addEventListener("click", (event, item) => clicked(target, item));
+}
+
+// ---- Click to filter (WM-151) ----
+// data-click lists what a click sets: "period" (the bar's start and end as a custom period) and
+// "<filter>=<field>" or just "<filter>" (the checkbox of that filter with the datum's value; only that
+// one stays checked). Values without a checkbox (e.g. "Ohne Kontext") change nothing.
+
+function dayBefore(iso) {
+  const day = new Date(`${iso}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
+function field(datum, path) {
+  return path.split(".").reduce((value, key) => (value == null ? undefined : value[key]), datum);
+}
+
+function clicked(target, item) {
+  const datum = item?.datum;
+  if (!datum) return;
+  let changed = false;
+  for (const token of target.dataset.click.split(" ").filter(Boolean)) {
+    if (token === "period") {
+      if (!datum.start || !datum.end) continue;
+      form.period.value = "custom";
+      form.from.value = datum.start;
+      form.to.value = dayBefore(datum.end);
+      changed = true;
+      continue;
+    }
+    const [name, path] = token.includes("=") ? token.split("=") : [token, token];
+    const value = field(datum, path);
+    const boxes = [...form.querySelectorAll(`input[type="checkbox"][name="${name}"]`)];
+    const box = boxes.find((input) => input.value === value);
+    if (!box) continue;
+    for (const other of boxes) other.checked = other === box;
+    box.closest("details")?.setAttribute("open", "");
+    changed = true;
+  }
+  if (!changed) return;
+  if (form.dataset.reload) {
+    reload();
+    return;
+  }
+  // A new history entry, so the browser's back button returns to the selection before.
+  const query = currentParams().toString();
+  history.pushState(null, "", (query ? `?${query}` : location.pathname) + location.hash);
+  render();
+}
+
+// Back and forward after a click: the form follows the address.
+function applyParams(params) {
+  form.bin.value = params.get("bin") || "month";
+  form.period.value = params.get("period") || form.dataset.defaultPeriod || "all";
+  form.from.value = params.get("from") || "";
+  form.to.value = params.get("to") || "";
+  for (const box of form.querySelectorAll('input[type="checkbox"]')) {
+    box.checked = params.getAll(box.name).includes(box.value);
+  }
+}
+
+function reload() {
+  const query = currentParams().toString();
+  location.assign((query ? `?${query}` : location.pathname) + location.hash);
 }
 
 function drawPending(view) {
@@ -77,7 +149,7 @@ function currentParams() {
     if (value === "") continue;
     if ((name === "from" || name === "to") && form.period.value !== "custom") continue;
     if (name === "bin" && value === "month") continue;
-    if (name === "period" && value === "all") continue;
+    if (name === "period" && value === "all" && !form.dataset.defaultPeriod) continue;
     params.append(name, value);
   }
   return params;
@@ -104,6 +176,7 @@ async function render() {
   renderRanking(query);
   renderFigures(query, id);
   renderKpis(query, id);
+  if (!form.dataset.api) return; // no main chart (Planungszahlen)
   const response = await fetch(`${form.dataset.api}?${query}`);
   if (id !== requestId) return; // a newer request is on its way
   if (response.status === 401) {
@@ -149,6 +222,16 @@ async function renderFigure(section, query, id) {
   if (hasData) await embed(target, spec);
   for (const el of section.querySelectorAll("[data-meta]")) {
     el.textContent = Number(meta[el.dataset.meta] ?? 0).toLocaleString("de-DE");
+  }
+  // [data-meta-list="<key>"]: a list of {name, count} from the meta, e.g. places without coordinates.
+  for (const el of section.querySelectorAll("[data-meta-list]")) {
+    el.replaceChildren(
+      ...(meta[el.dataset.metaList] || []).map((row) => {
+        const li = document.createElement("li");
+        li.textContent = `${row.name}: ${row.count.toLocaleString("de-DE")}`;
+        return li;
+      }),
+    );
   }
 }
 
@@ -263,6 +346,18 @@ for (const tab of tabs) {
 const initialTab = tabs.find((tab) => location.hash && tab.id === `tab-${location.hash.slice(1)}`);
 if (initialTab) selectTab(initialTab);
 
-form.addEventListener("change", render);
-form.addEventListener("submit", (event) => { event.preventDefault(); render(); });
+const update = form.dataset.reload ? reload : render;
+form.addEventListener("change", update);
+form.addEventListener("submit", (event) => { event.preventDefault(); update(); });
+window.addEventListener("popstate", () => {
+  applyParams(new URLSearchParams(location.search));
+  render();
+});
+if (form.dataset.reload) {
+  // Back to a reloading page: the browser may bring back the form as it was left, not as the URL says.
+  applyParams(new URLSearchParams(location.search));
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) applyParams(new URLSearchParams(location.search));
+  });
+}
 document.fonts.ready.then(render);

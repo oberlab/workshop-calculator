@@ -28,17 +28,19 @@
     {{ checklist("Kurskategorie", "category", options.categories, filters.categories) }}
     {{ checklist("Zielgruppe", "target_group", options.target_groups, filters.target_groups) }}
     {{ checklist("Kontext / Projekt", "context", options.contexts, filters.contexts) }}
+    {% if options.municipalities %}{{ checklist("Gemeinde des Orts", "municipality", options.municipalities, filters.municipalities) }}{% endif %}
   </div>
-  <p class="help">Keine Auswahl in einer Liste bedeutet: alle.</p>
+  <p class="help">Keine Auswahl in einer Liste bedeutet: alle. Ein Klick auf einen Balken oder eine Gemeinde filtert die Seite; „Zurück“ im Browser nimmt das zurück.</p>
   {% endif %}
 </form>
 
 {{ kpi_tiles() }}
 
-{% set tabs = [("zeitverlauf", "Zeitverlauf")]
+{% set tabs = [("zeitverlauf", "Zeitverlauf"), ("kumuliert", "Kumuliert")]
    + ([("kursleitungen", "Kursleitungen")] if instructor_ranking else [])
-   + [("schularten", "Schularten")]
+   + [("schularten", "Schularten"), ("schulen", "Schulen"), ("kontexte", "Kontexte & Formate"), ("alter", "Klasse / Alter")]
    + ([("gemeinden", "Gemeinden")] if map else [])
+   + [("orte", "Orte")]
    + ([("herkunft", "Herkunft")] if origins_map else []) %}
 <div class="panel panel-flush">
   <div class="tabs" role="tablist" aria-label="Ansichten">
@@ -49,7 +51,14 @@
 
   <section class="tab-panel" role="tabpanel" tabindex="0" id="view-zeitverlauf" aria-labelledby="tab-zeitverlauf">
     <h2 class="view-title">Einsätze über die Zeit</h2>
-    {{ chart_and_totals(panel=false, totals=false) }}
+    {{ chart_and_totals(panel=false, totals=false, click="period category") }}
+  </section>
+
+  <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-kumuliert" aria-labelledby="tab-kumuliert" data-figure="/api/analyse/cumulative" hidden>
+    <h2 class="view-title">Einsätze kumuliert</h2>
+    <p class="help">Alle Einsätze bis zu jedem Tag zusammengezählt; der letzte Wert ist die Kennzahl Einsätze. {{ same_filters }}</p>
+    <div class="chart"></div>
+    <p class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
   </section>
 
   {% if instructor_ranking %}
@@ -63,8 +72,36 @@
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-schularten" aria-labelledby="tab-schularten" data-figure="/api/analyse/schools" hidden>
     <h2 class="view-title">Einsätze an Schulen nach Schulart</h2>
     <p class="help">Nur Einsätze an Orten, die als Schule eingetragen sind. {{ same_filters }}</p>
-    <div class="chart"></div>
+    <div class="chart" data-click="category"></div>
     <p class="empty" hidden>Keine Einsätze an Schulen für diese Auswahl.</p>
+  </section>
+
+  <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-schulen" aria-labelledby="tab-schulen" data-figure="/api/analyse/by/schule" hidden>
+    <h2 class="view-title">Einsätze je Schule</h2>
+    <p class="help">Nur Orte, die als Schule eingetragen sind. {{ same_filters }}</p>
+    <div class="chart" data-click="category"></div>
+    <p class="empty" hidden>Keine Einsätze an Schulen für diese Auswahl.</p>
+  </section>
+
+  <div class="tab-panel" role="tabpanel" tabindex="0" id="view-kontexte" aria-labelledby="tab-kontexte" hidden>
+    <section class="figure" data-figure="/api/analyse/by/kontext">
+      <h2 class="view-title">Einsätze je Kontext</h2>
+      <p class="help">{{ same_filters }}</p>
+      <div class="chart" data-click="{{ 'category' if project else 'context=group category' }}"></div>
+      <p class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
+    </section>
+    <section class="figure" data-figure="/api/analyse/by/format">
+      <h2 class="view-title">Einsätze je Format</h2>
+      <div class="chart" data-click="category"></div>
+      <p class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
+    </section>
+  </div>
+
+  <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-alter" aria-labelledby="tab-alter" data-figure="/api/analyse/by/alter" hidden>
+    <h2 class="view-title">Einsätze nach Klassenstufe und Alter</h2>
+    <p class="help">Wie beim Kurs eingetragen: Klassenstufe, sonst Durchschnittsalter, sonst Altersgruppe; Lehrkräftefortbildungen für sich. {{ same_filters }}</p>
+    <div class="chart" data-click="category"></div>
+    <p class="empty" hidden>Keine Einsätze für diese Auswahl.</p>
   </section>
 
   {% if map %}
@@ -72,7 +109,7 @@
     <h2 class="view-title">Einsätze nach Gemeinde: {{ map.title }}</h2>
     <p class="help">{{ same_filters }}</p>
     <div class="map-layout">
-      <div class="chart"></div>
+      <div class="chart"{% if not project %} data-click="municipality=properties.name"{% endif %}></div>
       <dl class="totals map-side" aria-live="polite">
         <div><dt>{{ map.outside_label }}</dt><dd data-meta="outside">–</dd></div>
         <div><dt>Ohne Gemeinde (z.&nbsp;B. Online)</dt><dd data-meta="unassigned">–</dd></div>
@@ -80,6 +117,20 @@
     </div>
   </section>
   {% endif %}
+
+  <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-orte" aria-labelledby="tab-orte" data-figure="/api/analyse/places" hidden>
+    <h2 class="view-title">Einsätze nach Ort</h2>
+    <p class="help">Ein Kreis je Ort mit Koordinaten, je größer, desto mehr Einsätze. {{ same_filters }}</p>
+    <div class="map-layout">
+      <div class="chart"{% if not project and map %} data-click="municipality=municipality"{% endif %}></div>
+      <div class="map-side">
+        <dl class="totals map-side" aria-live="polite">
+          <div><dt>Einsätze an Orten ohne Koordinaten</dt><dd data-meta="unlocated">–</dd></div>
+        </dl>
+        <ul class="meta-list" data-meta-list="unlocated_places"></ul>
+      </div>
+    </div>
+  </section>
 
   {% if origins_map %}
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-herkunft" aria-labelledby="tab-herkunft" data-figure="/api/analyse/origins" hidden>

@@ -21,10 +21,13 @@ router = APIRouter()
 
 def _options(session) -> dict:
     options = analytics.filter_options(session)
+    instance = get_instance()
     return {
-        "categories": charts.category_order(get_instance().theme, options.categories),
+        "categories": charts.category_order(instance.theme, options.categories),
         "contexts": options.contexts,
         "target_groups": [g for g in TARGET_GROUPS if g in options.target_groups],
+        # The municipalities on the map: a click on one filters by it (WM-151).
+        "municipalities": [m.name for m in instance.map.municipalities] if instance.map else [],
     }
 
 
@@ -181,6 +184,73 @@ def participants_by_origin(request: Request) -> JSONResponse:
                 "inside": sum(counts.inside.values()),
                 "outside": counts.outside,
                 "unassigned": counts.unassigned,
+            },
+        }
+    )
+
+
+# Standard views (WM-151): what each breakdown groups by and how its axis is named.
+BREAKDOWNS = {
+    "kontext": (analytics.by_context, "Kontext"),
+    "format": (analytics.by_format, "Format"),
+    "schule": (analytics.by_school, "Schule"),
+    "alter": (analytics.by_age, "Klasse / Alter"),
+}
+
+
+@router.get("/api/analyse/by/{dimension}")
+def sessions_by(dimension: str, request: Request) -> JSONResponse:
+    """Sessions per context, format, school or class/age, stacked by category (all filters)."""
+    if dimension not in BREAKDOWNS:
+        raise HTTPException(404)
+    count, title = BREAKDOWNS[dimension]
+    filters = parse_filters(request.query_params)
+    instance = get_instance()
+    with get_sessionmaker()() as session:
+        rows, order = count(session, filters, today(), instance.school_year_start_month)
+    return JSONResponse(
+        {
+            "spec": charts.sessions_by_group(rows, order, instance.theme, title),
+            "meta": {"count": sum(n for _, _, n in rows), "groups": len(order)},
+        }
+    )
+
+
+@router.get("/api/analyse/cumulative")
+def sessions_cumulative(request: Request) -> JSONResponse:
+    """Held Termine added up over time (all filters); the last point is the key figure Einsätze."""
+    filters = parse_filters(request.query_params)
+    instance = get_instance()
+    with get_sessionmaker()() as session:
+        rows, _ = analytics.count_by_date_and_category(
+            session, filters, today(), instance.school_year_start_month
+        )
+    points = analytics.cumulative(rows)
+    caption = analytics.period_caption(points[0][0], points[-1][0]) if points else ""
+    return JSONResponse(
+        {
+            "spec": charts.cumulative_sessions(points, instance.theme, caption),
+            "meta": {"count": points[-1][1] if points else 0},
+        }
+    )
+
+
+@router.get("/api/analyse/places")
+def sessions_by_place(request: Request) -> JSONResponse:
+    """Point map: one circle per place with coordinates; the places without them listed (all filters)."""
+    filters = parse_filters(request.query_params)
+    instance = get_instance()
+    with get_sessionmaker()() as session:
+        points = analytics.count_by_place_point(session, filters, today(), instance.school_year_start_month)
+    unlocated = [p for p in points if p.lat is None or p.lon is None]
+    return JSONResponse(
+        {
+            "spec": charts.place_points(instance.map, points, instance.theme),
+            "meta": {
+                "count": sum(p.count for p in points),
+                "located": sum(p.count for p in points if p not in unlocated),
+                "unlocated": sum(p.count for p in unlocated),
+                "unlocated_places": [{"name": p.place or "Ohne Ort", "count": p.count} for p in unlocated],
             },
         }
     )

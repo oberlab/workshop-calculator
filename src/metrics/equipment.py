@@ -7,8 +7,8 @@ needs are still exactly those of the old format take the new format's needs (`fo
 
 A kit blocks the whole day (decided 2026-11-13): `day_totals` adds up the needs of the Termine of a
 day that are not cancelled, whatever their times; the hint "material-knapp" (`metrics.hints`) and the
-equipment lanes of the calendar (`metrics.planning.lanes`) read it. Equipment never counts in a chart
-or key figure.
+equipment lanes of the calendar (`metrics.planning.lanes`) read it, and so does the usage table of
+the team's Planungszahlen (WM-151). Equipment never counts in a public chart or key figure.
 """
 
 import datetime as dt

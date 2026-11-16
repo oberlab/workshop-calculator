@@ -12,13 +12,15 @@ from typing import NamedTuple
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics.db import Appointment, AppointmentOrigin, Person, Place, SchoolType
+from metrics.db import Appointment, AppointmentOrigin, Course, Format, Person, Place, SchoolType
+from metrics.ingest.records import TEACHERS
 from metrics.instance import Instance
 from metrics.metrics import (
     CATEGORY,
     CONTEXT,
     COUNTS_PARTICIPANTS,
     DATE,
+    MUNICIPALITY,
     PLACE,
     TARGET_GROUP,
     Filters,
@@ -312,3 +314,126 @@ def count_participants_by_origin(
     rows = [OriginCount(municipality, int(count)) for municipality, count in session.execute(by_origin)]
     unassigned = int(session.execute(without_origin).scalar_one())
     return [*rows, OriginCount(None, unassigned)] if unassigned else rows
+
+
+# ---- Standard views (WM-151) -------------------------------------------------------------------
+
+NO_CONTEXT = "Ohne Kontext"
+NO_FORMAT = "Ohne Format"
+NO_AGE = "Ohne Angabe"
+
+
+def _by_group(session: Session, group, filters: Filters, today: date, school_year_start_month: int, *where):
+    """Held Termine per (group value, category), with all filters applied."""
+    query, _ = select_held(
+        select(group, CATEGORY, func.count()).group_by(group, CATEGORY),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    return session.execute(query.where(*where)).all()
+
+
+def _stacked_rows(rows, missing: str) -> tuple[list[tuple[str, str, int]], list[str]]:
+    """(group, category, count) rows and the groups by total, largest first (then by name)."""
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for group, category, count in rows:
+        counts[(group or missing, category or NO_CATEGORY)] += count
+    totals: dict[str, int] = defaultdict(int)
+    for (group, _), count in counts.items():
+        totals[group] += count
+    order = sorted(totals, key=lambda g: (-totals[g], g.casefold()))
+    return [(g, c, n) for (g, c), n in counts.items()], order
+
+
+def by_context(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per context and category; contexts by total."""
+    return _stacked_rows(_by_group(session, CONTEXT, filters, today, school_year_start_month), NO_CONTEXT)
+
+
+def by_format(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per format (the course name) and category; formats by total."""
+    return _stacked_rows(_by_group(session, Format.name, filters, today, school_year_start_month), NO_FORMAT)
+
+
+def by_school(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per school (places marked as a school) and category; schools by total."""
+    rows = _by_group(session, PLACE, filters, today, school_year_start_month, Place.is_school.is_(True))
+    return _stacked_rows(rows, "")  # a place always has a name
+
+
+def age_label(
+    class_level: int | None, age: int | None, age_band: str | None, target_group: str | None
+) -> str:
+    """How a course's class or age is grouped: Lehrkräfte, "5. Klasse", "12 Jahre", the age band."""
+    if target_group == TEACHERS:
+        return TEACHERS
+    if class_level is not None:
+        return f"{class_level}. Klasse"
+    if age is not None:
+        return f"{age} Jahre"
+    return age_band or NO_AGE
+
+
+def _age_key(label: str) -> tuple:
+    """Classes, then ages, then age bands, then teachers, then "Ohne Angabe"."""
+    number = label.split(".")[0].split(" ")[0]
+    if label.endswith(". Klasse"):
+        return (0, int(number), label)
+    if label.endswith(" Jahre") and number.isdigit():
+        return (1, int(number), label)
+    if label == TEACHERS:
+        return (3, 0, label)
+    if label == NO_AGE:
+        return (4, 0, label)
+    return (2, 0, label)
+
+
+def by_age(session: Session, filters: Filters, today: date, school_year_start_month: int):
+    """Held Termine per class level or age of the course (`age_label`) and category."""
+    group = (Course.class_level, Course.age, Course.age_band, TARGET_GROUP)
+    query, _ = select_held(
+        select(*group, CATEGORY, func.count()).group_by(*group, CATEGORY),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for class_level, age, age_band, target_group, category, count in session.execute(query):
+        counts[(age_label(class_level, age, age_band, target_group), category or NO_CATEGORY)] += count
+    order = sorted({label for label, _ in counts}, key=_age_key)
+    return [(g, c, n) for (g, c), n in counts.items()], order
+
+
+def cumulative(rows) -> list[tuple[date, int]]:
+    """(date, held Termine up to and including that date) from (date, category, count) rows."""
+    per_day: dict[date, int] = defaultdict(int)
+    for day, _, count in rows:
+        per_day[day] += count
+    total, result = 0, []
+    for day in sorted(per_day):
+        total += per_day[day]
+        result.append((day, total))
+    return result
+
+
+class PlacePoint(NamedTuple):
+    place: str | None  # None: Termine without a place
+    lat: float | None
+    lon: float | None
+    municipality: str | None
+    count: int
+
+
+def count_by_place_point(
+    session: Session, filters: Filters, today: date, school_year_start_month: int
+) -> list[PlacePoint]:
+    """Held Termine per place with its coordinates, all filters applied; most Termine first."""
+    query, _ = select_held(
+        select(PLACE, Place.lat, Place.lon, MUNICIPALITY, func.count()).group_by(Place.id),
+        filters,
+        today,
+        school_year_start_month,
+    )
+    rows = [PlacePoint(*row) for row in session.execute(query)]
+    return sorted(rows, key=lambda r: (-r.count, (r.place or "").casefold()))

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% from "_chart.html" import time_controls, chart_scripts with context %}
+
+{% block title %}Planungszahlen{% endblock %}
+{% block heading %}Planungszahlen <span class="tag">intern</span>{% endblock %}
+{% block subheading %}<p class="subheading">Wie die Planung lief: Arbeitszeit des Teams, Material, Absagen, Vorlauf und offene Abrechnungen. Gezählt nach dem Datum der Termine.</p>{% endblock %}
+
+{% block content %}
+{# data-reload: a changed filter reloads the page (static/app.js); the period stays in the address. #}
+<form id="filters" class="filters panel" autocomplete="off" data-api="" data-reload="true" data-default-period="{{ default_period }}">
+  {{ time_controls(filters, bins, presets, "Zurücksetzen") }}
+  <p class="help">Ohne Auswahl gilt das laufende Schuljahr. Ein Klick auf einen Balken wählt diesen Zeitraum.</p>
+</form>
+
+{% call ui.panel(id="stunden") %}
+<div class="panel-head"><h2>Arbeitszeit des Teams</h2></div>
+<section class="figure" data-figure="/api/analyse/planung/stunden">
+  <div class="chart" data-click="period"></div>
+  <p class="empty" hidden>Keine Termine mit Team in diesem Zeitraum.</p>
+</section>
+{% if hours.rows and hours.bins|length <= max_columns %}
+{% call ui.table(["Person"] + hours.bins|map(attribute="label")|list + ["Summe"], caption="Geschätzte Arbeitsstunden pro Person und Zeitraum", class="hours-table") %}
+{% for row in hours.rows %}
+<tr data-person="{{ row.person.id }}">
+  <th scope="row">{{ row.person.name }}</th>
+  {% for cell in row.cells %}<td class="mono" data-hours="{{ cell.total }}">{% if cell.termine %}{{ number(cell.total) }}{% else %}<span class="muted">–</span>{% endif %}</td>{% endfor %}
+  <td class="mono"><strong>{{ number(row.total) }}</strong></td>
+</tr>
+{% endfor %}
+<tr class="table-total">
+  <th scope="row">Team gesamt</th>
+  {% for cell in hours.totals %}<td class="mono">{{ number(cell.total) }}</td>{% endfor %}
+  <td class="mono"><strong>{{ number(hours.totals|sum(attribute="total")) }}</strong></td>
+</tr>
+{% endcall %}
+{% elif hours.rows %}
+<p class="help">Für die Tabelle pro Person sind das zu viele Spalten ({{ hours.bins|length }}): bitte ein gröberes Zeitraster oder einen kürzeren Zeitraum wählen.</p>
+{% endif %}
+<details class="formula">
+  <summary>So wird gerechnet</summary>
+  <p class="help">Geschätzte Arbeitsstunden aller Termine mit Datum außer abgesagten, nach derselben Regel wie auf der Seite Team; kommende Termine zählen mit.</p>
+  <ul>{% for line in formula %}<li>{{ line }}</li>{% endfor %}</ul>
+</details>
+{% endcall %}
+
+<div class="my-grid insights-grid">
+  {% call ui.panel(id="material") %}
+  <div class="panel-head"><h2>Material</h2></div>
+  {% if equipment %}
+  {% call ui.table(["Material", "Bestand", "Termine", "Tage", "Höchster Tagesbedarf", "Tage mit Engpass"], caption="Materialnutzung") %}
+  {% for use in equipment %}
+  <tr data-equipment="{{ use.item.id }}">
+    <th scope="row">{{ use.item.name }}</th>
+    <td class="mono">{{ use.item.quantity if use.item.quantity is not none else "–" }}</td>
+    <td class="mono">{{ use.termine }}</td>
+    <td class="mono">{{ use.days }}</td>
+    <td class="mono">{{ use.peak }}</td>
+    <td class="mono">{% if use.days_short %}<strong>{{ use.days_short }}</strong>{% else %}0{% endif %}</td>
+  </tr>
+  {% endfor %}
+  {% endcall %}
+  <p class="help">Termine ohne Absage; ein Satz ist den ganzen Tag belegt. Engpass: an diesem Tag mehr gebraucht als vorhanden.</p>
+  {% else %}
+  <p class="muted">Kein Material bei Terminen in diesem Zeitraum.</p>
+  {% endif %}
+  {% endcall %}
+
+  {% call ui.panel(id="absagen") %}
+  <div class="panel-head"><h2>Absagen</h2></div>
+  {% if cancellations.cancelled %}
+  <p><strong class="mono">{{ cancellations.cancelled }}</strong> abgesagte Termine{% if cancellations.share is not none %}, {{ "%.0f"|format(100 * cancellations.share) }} % aller Termine mit Datum{% endif %}.</p>
+  {% call ui.table(["Grund", "Termine"], caption="Absagen nach Grund") %}
+  {% for reason, count in cancellations.reasons %}<tr><th scope="row">{{ reason }}</th><td class="mono">{{ count }}</td></tr>{% endfor %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">Keine Absagen in diesem Zeitraum.</p>
+  {% endif %}
+  {% endcall %}
+
+  {% call ui.panel(id="vorlauf") %}
+  <div class="panel-head"><h2>Vorlauf</h2></div>
+  {% if lead_time.count %}
+  <p>Im Mittel (Median) <strong class="mono">{{ "%.0f"|format(lead_time.median) }}</strong> Tage zwischen dem Anlegen eines Termins und dem Termin ({{ lead_time.count }} Termine).</p>
+  {% call ui.table(["Vorlauf", "Termine"], caption="Termine nach Vorlauf") %}
+  {% for label, count in lead_time.bands %}<tr><th scope="row">{{ label }}</th><td class="mono">{{ count }}</td></tr>{% endfor %}
+  {% endcall %}
+  <p class="help">Nur Termine, die in der App angelegt wurden (importierte tragen den Tag des Imports), ohne abgesagte.</p>
+  {% else %}
+  <p class="muted">Keine in der App angelegten Termine in diesem Zeitraum.</p>
+  {% endif %}
+  {% endcall %}
+
+  {% call ui.panel(id="abrechnung") %}
+  <div class="panel-head"><h2>Offene Abrechnung</h2></div>
+  {% if unbilled %}
+  <p><strong class="mono">{{ unbilled|length }}</strong> durchgeführte Termine sind noch nicht abgerechnet.</p>
+  {% call ui.table(["Datum", "Termin", "Kontext", "Phase"], caption="Noch nicht abgerechnete Termine") %}
+  {% for t, name in unbilled %}
+  <tr data-termin="{{ t.id }}">
+    <td class="mono">{{ t.date|day }}</td>
+    <td><a href="/planung/{{ t.course_id }}">{{ name }}</a></td>
+    <td>{{ t.course.context.name if t.course.context else "–" }}</td>
+    <td>{{ ui.stage_pill(t.stage|stage_key, t.stage) }}</td>
+  </tr>
+  {% endfor %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">Alles abgerechnet.</p>
+  {% endif %}
+  <p class="help">Durchgeführt oder abgeschlossen und nicht als abgerechnet markiert. Nur Termine aus der App und aus der Slack-Liste: ältere Daten kennen keine Abrechnung.</p>
+  {% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}{{ chart_scripts() }}{% endblock %}
