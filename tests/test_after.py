@@ -7,6 +7,7 @@ rules as the course page (Verlauf, hints) and the task in Mein Bereich leads to 
 
 import datetime as dt
 import re
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
@@ -17,6 +18,7 @@ from metrics.web.common import today
 from tests.test_mine import _as, _held, _termin, world  # noqa: F401 (fixture)
 from tests.test_web import _client
 
+STATIC = Path(after.__file__).parent.parent / "web" / "static"
 TODAY = today()
 YESTERDAY = TODAY - dt.timedelta(days=1)
 
@@ -104,6 +106,12 @@ def test_only_what_is_missing_with_herkunft(world, kim):  # noqa: F811
 
     html = kim.get(_url(t)).text
     assert 'name="participants_female"' in html and "Herkunft" in html
+    # Nothing entered yet: a neutral hint instead of "0 von 0, es fehlen 0" in warning colour.
+    assert 'class="after-sum is-neutral"' in html and "0 von 0" not in html
+    assert (
+        "is-neutral" in (STATIC / "after.js").read_text()
+        and ".after-sum.is-neutral" in (STATIC / "style.css").read_text()
+    )
     # Municipalities used before in the same context are offered as rows.
     assert 'name="origin_name" value="Seedorf"' in html and 'name="origin_name" value="Musterstadt"' in html
 
@@ -112,6 +120,7 @@ def test_only_what_is_missing_with_herkunft(world, kim):  # noqa: F811
     assert response.status_code == 303 and response.headers["location"].startswith(_url(t))
     html = kim.get(_url(t)).text
     assert 'name="participants_female"' not in html and 'data-fixed-total="23"' in html
+    assert "is-neutral" not in html and 'von <b class="mono">23</b>' in html
 
     # Herkunft alone keeps the counts; a sum that does not match keeps the form open.
     data = {"origin_name": ["Seedorf", "Musterstadt", "", ""], "origin_count": ["17", "", "", ""]}
