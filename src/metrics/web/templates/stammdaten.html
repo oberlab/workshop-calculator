@@ -95,7 +95,7 @@
     {% if e.status != MERGED %}<p class="help">Bestätigte Einträge ändert ein Admin.</p>{% endif %}
     {% endif %}
     {% if needs %}
-    <section aria-labelledby="material-titel">
+    <section class="format-needs" aria-labelledby="material-titel">
       <h3 id="material-titel">Material</h3>
       <p class="help">Was das Format üblicherweise braucht. Neue Termine übernehmen es und können es ändern; vorhandene Termine bleiben, wie sie sind.</p>
       {% if needs.rows and detail.editable %}

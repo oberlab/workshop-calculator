@@ -29,7 +29,7 @@
   {% if workload.estimate %}<p class="help">Geschätzt für diesen Termin: {% for role, h in workload.estimate.items() %}{{ role }} {{ h }} Std.{{ ", " if not loop.last }}{% endfor %} pro Person (<a href="/team#auslastung">so wird gerechnet</a>).</p>{% endif %}
   <details class="add-termine"{% if workload.own or errors %} open{% endif %}>
     <summary class="btn btn-secondary btn-sm">Eigene Werte für diesen Kurs</summary>
-    <div class="fields">
+    <div class="fields fields-aligned">
       {% for f in workload.fields %}{{ ui.field(f.label, f.name, f.own, help=("eigener Wert; leer: " if f.own else "leer: ") ~ f.inherited, attrs={"inputmode": "decimal", "placeholder": f.placeholder, "disabled": none if on else true}) }}{% endfor %}
     </div>
     <p class="help">Gilt für alle Termine des Kurses. Leer übernimmt den Wert des Formats bzw. Orts, sonst den Standard.</p>

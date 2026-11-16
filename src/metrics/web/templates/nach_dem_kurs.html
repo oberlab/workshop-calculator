@@ -19,7 +19,7 @@
   <label class="stepper-label" for="{{ id }}">{{ label }}</label>
   <div class="stepper-control">
     <button type="button" class="stepper-step" data-step="-1" hidden aria-label="{{ label }}: eins weniger">−</button>
-    <input type="number" id="{{ id }}" name="{{ name }}" value="{{ value }}" min="0" max="999" inputmode="numeric" data-{{ kind }}>
+    <input type="number" id="{{ id }}" name="{{ name }}" value="{{ value }}" placeholder="0" min="0" max="999" inputmode="numeric" data-{{ kind }}>
     <button type="button" class="stepper-step" data-step="1" hidden aria-label="{{ label }}: eins mehr">+</button>
   </div>
 </div>

@@ -54,7 +54,7 @@
       {{ ui.hint_badge(badge[task.level], task.badge if task.badge != task.level else none) }}
       <div class="queue-body">
         <p class="queue-title">{{ task.text }}</p>
-        <p class="queue-meta"><span>{{ titles[t.id] }}</span><span class="mono">{{ t.date|day }}</span>{% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}{% if task.more %}<span>+{{ task.more }} weitere Hinweis{{ "e" if task.more > 1 }}</span>{% endif %}</p>
+        <p class="queue-meta"><span>{{ titles[t.id] }}</span><span class="mono">{{ t.date|day }}</span>{% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}{% if task.more %}<span>+{{ task.more }} {{ "weitere Hinweise" if task.more > 1 else "weiterer Hinweis" }}</span>{% endif %}</p>
       </div>
       {{ ui.button(task.action, href=task.href, kind="primary" if task.level == "Kritisch" else "secondary", size="sm", attrs={"aria-label": task.action ~ ": " ~ titles[t.id] ~ ", " ~ (t.date|day)}) }}
     </li>
