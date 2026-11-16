@@ -76,6 +76,8 @@ TEAM_ROUTES = {
     "GET /mein-bereich",
     "GET /kalender",
     "GET /kalender/termin/{appointment_id:int}",
+    # Team (WM-131): lanes, workload and "Wer ist frei?" for everyone in the team; read only.
+    "GET /team",
     # Series (WM-111): add Termine, bulk actions over the Termine of a course.
     "POST /planung/{course_id:int}/termine",
     "POST /planung/{course_id:int}/alle",

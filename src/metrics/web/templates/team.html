@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "_lanes.html" as cal with context %}
+
+{% block title %}Team{% endblock %}
+{% block heading %}Team{% endblock %}
+{% block actions %}{{ ui.button("+ Neuer Kurs", href="/planung/neu") }}{% endblock %}
+{% block subheading %}<p class="subheading">Wer ist wann eingeplant, wie voll sind die nächsten Wochen, wer ist frei. Gestrichelt ist Unterstützung, grau ist abwesend.</p>{% endblock %}
+
+{% block content %}
+<div class="panel panel-flush">
+  {% call ui.tabs(views, view, "Ansicht") %}
+  <span class="cal-nav">
+    {{ ui.button("‹", href=prev, kind="secondary", size="sm", attrs={"aria-label": "Vorherige " ~ ("Woche" if view == "woche" else "Monat")}) }}
+    {{ ui.button("Heute", href=now, kind="secondary", size="sm") }}
+    {{ ui.button("›", href=next, kind="secondary", size="sm", attrs={"aria-label": "Nächste " ~ ("Woche" if view == "woche" else "Monat")}) }}
+  </span>
+  {% endcall %}
+  <div class="tab-panel cal-panel">
+    <div class="cal-head">
+      <h2 class="cal-title">{{ title }} <span class="muted small">{{ count }} Termin{{ "e" if count != 1 }}</span></h2>
+    </div>
+    {% for week in weeks %}{{ cal.week_section(week, loop.index) }}{% endfor %}
+  </div>
+</div>
+
+<div class="my-grid team-grid">
+  {% call ui.panel(id="auslastung") %}
+  <div class="panel-head"><h2>Auslastung pro Woche</h2></div>
+  {% call ui.table(["Person"] + week_labels + ["Summe"], caption="Geschätzte Arbeitsstunden pro Person und Woche", class="load-table") %}
+  {% for row in rows %}
+  <tr data-person="{{ row.person.id }}">
+    <th scope="row">{{ ui.avatar(row.person.name, "sm") }} {{ row.person.name }}{% if row.capacity %}<span class="muted small load-capacity">{{ hours(row.capacity) }} Std./Woche</span>{% endif %}</th>
+    {% for cell in row.cells %}
+    <td data-week="{{ cell.monday.isoformat() }}" data-hours="{{ cell.total }}" data-termine="{{ cell.termine }}"{% if row.above(cell) %} class="is-above"{% endif %}>
+      {% if cell.absent %}<span class="load-absent">{{ cell.absent|join(", ") }}</span>{% endif %}
+      {% if cell.termine %}
+      {% set label = hours(cell.total) ~ ((" / " ~ hours(row.capacity)) if row.capacity else "") ~ " Std." %}
+      {{ ui.workload_bar(cell.lead|float, row.capacity|float if row.capacity else none, cell.support|float, label=label, scale=scale) }}
+      {% set parts = ([cell.lead_termine ~ " Leitung"] if cell.lead_termine else []) + ([cell.support_termine ~ " Unterstützung"] if cell.support_termine else []) + ([cell.without_hours ~ " ohne Dauer"] if cell.without_hours else []) %}
+      <span class="muted small">{{ parts|join(", ") }}</span>
+      {% elif not cell.absent %}<span class="muted">–</span>{% endif %}
+    </td>
+    {% endfor %}
+    <td class="mono">{{ hours(row.total) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="{{ week_labels|length + 2 }}">{{ ui.empty_state("Noch niemand im Team.", "Personen kommen aus den Stammdaten.") }}</td></tr>
+  {% endfor %}
+  {% endcall %}
+  <p class="help">Geschätzte Arbeitsstunden aller Termine außer abgesagten, Leitung kräftig, Unterstützung blass. Gemessen an den Wochenstunden der Person (bis Kimai angebunden ist, von Hand bei den Personen eingetragen); gelb über 80 %, magenta über 100 %.</p>
+  <details class="formula">
+    <summary>So wird gerechnet</summary>
+    <ul>{% for line in formula %}<li>{{ line }}</li>{% endfor %}</ul>
+    <p class="help">Die Vor- und Nachbereitung eines Formats steht bei den Formaten, die Fahrtzeit bei den Orten; die Standardwerte in der Instanz-Konfiguration.</p>
+  </details>
+  {% endcall %}
+
+  {% call ui.panel(id="frei") %}
+  <div class="panel-head"><h2>Wer ist frei?</h2></div>
+  <form class="filter-row" method="get" action="/team#frei" aria-label="Wer ist frei?">
+    <input type="hidden" name="ansicht" value="{{ view }}">
+    <input type="hidden" name="datum" value="{{ day.isoformat() }}">
+    {{ ui.field("Datum", "frei", free.day.isoformat(), type="date", required=true) }}
+    {{ ui.field("von", "von", free.start.strftime("%H:%M") if free.start else "", type="time") }}
+    {{ ui.field("bis", "bis", free.end.strftime("%H:%M") if free.end else "", type="time") }}
+    {{ ui.button("Anzeigen", type="submit", kind="secondary", size="sm") }}
+  </form>
+  <p class="help">{{ free.day|day }}{% if free.start and free.end %}, {{ free.start.strftime("%H:%M") }}–{{ free.end.strftime("%H:%M") }}{% else %}, ganzer Tag{% endif %}: dieselbe Prüfung wie bei der Teamauswahl im Kurs.</p>
+  {% if free.free %}
+  <ul class="free-list" aria-label="Frei">{% for p in free.free %}<li data-person="{{ p.id }}">{{ ui.avatar(p.name, "sm") }} {{ p.name }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="muted">Niemand ist frei.</p>
+  {% endif %}
+  {% if free.busy or free.absent %}
+  <ul class="busy-list muted small" aria-label="Nicht frei">
+    {% for p, what in free.busy %}<li data-busy="{{ p.id }}">{{ p.name }}: belegt, {{ what }}</li>{% endfor %}
+    {% for p, kind in free.absent %}<li data-absent="{{ p.id }}">{{ p.name }}: {{ kind }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p>{{ ui.button("Kurs an diesem Tag anlegen", href="/planung/neu?date=" ~ free.day.isoformat(), kind="secondary", size="sm") }}</p>
+  {% endcall %}
+</div>
+
+{% call ui.side_panel("termin-panel", "Termin") %}<p class="muted">Wird geladen …</p>{% endcall %}
+{% endblock %}

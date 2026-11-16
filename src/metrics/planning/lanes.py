@@ -30,6 +30,7 @@ class Lane:
     label: str
     person: Person | None
     days: list[list[Item]] = field(default_factory=lambda: [[] for _ in range(7)])
+    absent: list[str | None] = field(default_factory=lambda: [None] * 7)  # kind of absence per day
 
     @property
     def count(self) -> int:
@@ -69,11 +70,21 @@ def sort_key(t: Appointment):
 
 
 def weeks(
-    appointments: Iterable[Appointment], start: dt.date, end: dt.date, only: int | None = None
+    appointments: Iterable[Appointment],
+    start: dt.date,
+    end: dt.date,
+    only: int | None = None,
+    people: Iterable[Person] = (),
+    absences: dict[int, dict[dt.date, str]] | None = None,
 ) -> list[Week]:
     """The lanes for the weeks from `start` (a Monday) to `end`. With `only`, the lane of that one
-    person (the person filter); otherwise every person with a Termin in the week."""
+    person (the person filter); otherwise every person with a Termin in the week, plus a lane for
+    each of `people` even without one (the Team page). `absences` (person ID -> day -> kind, WM-142)
+    marks the days a person is away."""
     result = [Week(start + dt.timedelta(weeks=i)) for i in range(((end - start).days // 7) + 1)]
+    for week in result:
+        for person in people:
+            _lane(week, person.name, person)
     for t in sorted(appointments, key=sort_key):
         if t.date is None or not start <= t.date <= end:
             continue
@@ -87,6 +98,9 @@ def weeks(
         for person, role in people:
             _lane(week, person.name, person).days[weekday].append(Item(t, role))
     for week in result:
+        for lane in week.lanes:
+            away = (absences or {}).get(lane.person.id, {}) if lane.person else {}
+            lane.absent = [away.get(day) for day in week.days]
         week.lanes.sort(key=lambda lane: (lane.person is None, lane.label.casefold()))
     return result
 

@@ -348,6 +348,29 @@ def test_conflicts_only_from_today_on():
     assert not {"person-doppelt", "gleichzeitig", "selber-tag"} & set(rules_of(found(a, b)))
 
 
+def test_above_capacity_from_the_week_sums():
+    """WM-131: the estimated hours of a person's week (`Facts.week_hours`) above their weekly hours."""
+    full = Person(id=5, name="Mo", status=CONFIRMED, weekly_hours=Decimal(10))
+    monday = TODAY - dt.timedelta(days=TODAY.weekday())
+    t = termin(stage=BESTAETIGT, date=TODAY + dt.timedelta(days=3), lead=full, support=(LEA,))
+    next_monday = monday + dt.timedelta(days=7)
+    facts = hints.Facts(TODAY, week_hours={(5, next_monday): Decimal("10.5"), (2, next_monday): Decimal(40)})
+    hit = only(hints.evaluate(t, facts), "ueber-kapazitaet")
+    assert (hit.level, hit.blocking) == (hints.WICHTIG, False)
+    assert hit.text == f"Mo: in KW {next_monday.isocalendar().week} 10,5 Std. geschätzt, Wochenstunden 10"
+    # Exactly full is fine; Lea has no weekly hours, so no capacity to exceed.
+    facts.week_hours[(5, next_monday)] = Decimal(10)
+    assert "ueber-kapazitaet" not in rules_of(hints.evaluate(t, facts))
+    # Past weeks and held Termine are not planned any more.
+    old = termin(stage=GEPLANT, date=monday - dt.timedelta(days=1), lead=full)
+    facts.week_hours[(5, monday - dt.timedelta(days=7))] = Decimal(50)
+    assert "ueber-kapazitaet" not in rules_of(hints.evaluate(old, facts))
+    held = termin(stage=DURCHGEFUEHRT, date=TODAY, lead=full)
+    facts.week_hours[(5, monday)] = Decimal(50)
+    assert "ueber-kapazitaet" not in rules_of(hints.evaluate(held, facts))
+    assert "ueber-kapazitaet" in rules_of(hints.evaluate(termin(stage=GEPLANT, date=TODAY, lead=full), facts))
+
+
 # --- Places and list entries ------------------------------------------------------------------
 
 

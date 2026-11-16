@@ -112,6 +112,8 @@ class Place(Base):
     municipality: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[float | None] = mapped_column(Float)
     lon: Mapped[float | None] = mapped_column(Float)
+    # Extra hours per person on a Termin here (travel), for the workload estimate (WM-131).
+    travel_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     status: Mapped[str] = _status_column()
     merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("places.id"))
     created_at: Mapped[dt.datetime] = _created_at()

@@ -1020,3 +1020,22 @@ table.mun input[type="number"] { width: 90px; }
 .bulk form { margin: 0; }
 .add-form > .btn { justify-self: start; }
 .add-termine + .field-label { margin-top: 16px; }
+
+/* ---- Team (WM-131) ---------------------------------------------------------------------------- */
+
+/* Absences (from Kimai, WM-142): a grey hatched day in the lanes and the table. */
+.cal-grid td.is-absent { background: repeating-linear-gradient(45deg, var(--surface-sunken) 0 6px, var(--surface) 6px 12px); }
+.cal-absent, .load-absent { display: inline-block; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
+.load-absent { background: var(--surface-sunken); border-radius: 4px; padding: 1px 6px; margin-bottom: 4px; }
+.team-grid { grid-template-columns: minmax(0, 1fr); margin-top: 20px; }
+.load-table th[scope="row"] { white-space: nowrap; font: 600 0.9rem var(--body); letter-spacing: 0; text-transform: none; color: var(--text); vertical-align: top; }
+.load-table td { min-width: 7.5rem; }
+.load-table td .workload { margin-bottom: 2px; }
+.load-table td.is-above .workload-label { color: var(--critical-ink); }
+.load-capacity { display: block; font-weight: 400; }
+.formula { margin-top: 10px; font-size: 0.9rem; }
+.formula > summary { cursor: pointer; font-weight: 600; }
+.formula ul { margin: 8px 0; padding-left: 1.2rem; }
+.free-list { list-style: none; margin: 12px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.free-list li { display: inline-flex; align-items: center; gap: 6px; }
+.busy-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 2px; }

@@ -8,10 +8,9 @@ linked Person has no Mein Bereich. Who counts:
   held. Plus calendar invitations the person has not answered yet (lead or support).
 - Meine nächsten Termine and the workload: every Termin where the person is lead or support.
 
-Workload is course hours only for now (Ende minus Beginn, or the recorded duration). The overhead
-rule (`PROPOSAL.md` 4.3) and the weekly hours from Kimai come with the Team page (WM-131, WM-142);
-until then the capacity is the Person's optional `weekly_hours`, and without it the bars show the
-hours alone.
+Workload is the estimated working hours of the Team page (WM-131, `metrics.planning.workload`):
+course hours plus overhead. The capacity is the Person's optional `weekly_hours` until it comes
+from Kimai (WM-142); without it the bars show the hours alone.
 """
 
 import datetime as dt
@@ -34,6 +33,8 @@ from metrics.db import (
     appointment_support,
 )
 from metrics.planning import workflow
+from metrics.planning import workload as team_load
+from metrics.planning.workload import monday_of
 
 WEEKS = 4  # the workload shows this week and the next three
 UPCOMING_DAYS = 28  # "Meine nächsten Termine": the next four weeks
@@ -187,27 +188,8 @@ def upcoming(session: Session, person: Person, today: dt.date) -> list[Appointme
 
 
 @dataclass
-class Week:
-    """Course hours of one person in one calendar week."""
-
-    monday: dt.date
-    lead: Decimal = Decimal(0)
-    support: Decimal = Decimal(0)
-    termine: int = 0
-    without_hours: int = 0  # Termine without times or duration
-
-    @property
-    def number(self) -> int:
-        return self.monday.isocalendar().week
-
-    @property
-    def total(self) -> Decimal:
-        return self.lead + self.support
-
-
-@dataclass
 class Workload:
-    weeks: list[Week] = field(default_factory=list)
+    weeks: list[team_load.Cell] = field(default_factory=list)
     capacity: Decimal | None = None  # weekly hours of the Person, if entered
 
     @property
@@ -216,18 +198,10 @@ class Workload:
         return max([w.total for w in self.weeks] + [Decimal(1)])
 
 
-def monday_of(day: dt.date) -> dt.date:
-    return day - dt.timedelta(days=day.weekday())
-
-
 def workload(session: Session, person: Person, today: dt.date, weeks: int = WEEKS) -> Workload:
-    """Course hours per week, lead and support apart, for this week and the following ones.
-    Every stage but Abgesagt counts: a held Termin of this week was still work."""
+    """Estimated working hours per week (`metrics.planning.workload`), lead and support apart, for
+    this week and the following ones: the person's row of the Team page's table."""
     start = monday_of(today)
-    result = Workload(
-        [Week(start + dt.timedelta(weeks=i)) for i in range(weeks)],
-        Decimal(person.weekly_hours) if person.weekly_hours else None,
-    )
     end = start + dt.timedelta(weeks=weeks, days=-1)
     stmt = select(Appointment).where(
         involving(person.id),
@@ -235,14 +209,6 @@ def workload(session: Session, person: Person, today: dt.date, weeks: int = WEEK
         Appointment.date >= start,
         Appointment.date <= end,
     )
-    for t in session.scalars(stmt.options(selectinload(Appointment.support))):
-        week = result.weeks[(t.date - start).days // 7]
-        week.termine += 1
-        hours = hints.duration(t)
-        if hours is None:
-            week.without_hours += 1
-        elif t.lead_id == person.id:
-            week.lead += hours
-        else:
-            week.support += hours
-    return result
+    mine = list(session.scalars(team_load.load_stmt(stmt)))
+    (row,) = [r for r in team_load.table(session, [person], start, weeks, mine) if r.person.id == person.id]
+    return Workload(row.cells, row.capacity)
