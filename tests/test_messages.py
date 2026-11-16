@@ -8,6 +8,7 @@ reminder the day before at 15:00, DM the day after at 09:00), restarts it and ru
 import dataclasses
 import datetime as dt
 import logging
+import urllib.error
 from datetime import time
 
 import pytest
@@ -44,10 +45,13 @@ class FakeSlack:
     def __init__(self):
         self.posts: list[tuple[str, str]] = []
         self.errors: list[Exception] = []
+        self.broken: dict[str, str] = {}  # channel -> the Slack error every post to it gets
 
     def post(self, channel: str, text: str) -> str:
         if self.errors:
             raise self.errors.pop(0)
+        if channel in self.broken:
+            raise messages.SlackError(self.broken[channel])
         self.posts.append((channel, text))
         return f"1700000000.{len(self.posts):06d}"
 
@@ -340,3 +344,82 @@ def test_logs_name_no_people(team, slack, caplog):
     assert "2 reminders sent" in caplog.text
     for secret in ("Kim", "Lea", "U0KIM00001", "U0LEA00001", "Löten"):
         assert secret not in caplog.text
+
+
+def test_a_failing_reminder_run_never_sends_the_next_days_reminders_at_night(team, slack):
+    w = team
+    confirmed(w, THURSDAY, w.kim)  # Kim's reminder keeps failing on Wednesday
+    confirmed(w, FRIDAY, w.lea)  # Lea's reminder is due on Thursday at 15:00
+    w.db.commit()
+    slack.broken["U0KIM00001"] = "ratelimited"
+    job = next(j for j in scheduler.JOBS if j.name == "slack-reminders")
+    clock = Clock(at(WEDNESDAY, 15))
+    tick_hourly(Scheduler(jobs=(job,), clock=clock), clock, at(THURSDAY, 18))
+
+    # Retried hourly within the window of Wednesday's slot (15:00 to 21:00), then given up.
+    kim, lea = sorted(rows(w.db), key=lambda r: r.id)
+    assert (kim.status, kim.attempts, kim.error) == ("failed", 6, "ratelimited")
+    # Lea's reminder belongs to Thursday's slot: not sent at midnight, but at Thursday 15:00.
+    assert lea.status == "sent" and lea.sent_at.astimezone(LOCAL) == at(THURSDAY, 15)
+    assert slack.to("U0LEA00001") and len(slack.posts) == 1
+
+
+def test_the_slack_jobs_send_only_for_their_own_slot_until_the_evening(team, slack):
+    assert messages.occasion(at(WEDNESDAY, 15), scheduler.SLACK_AFTERNOON) == WEDNESDAY
+    assert messages.occasion(at(WEDNESDAY, 20, 59), scheduler.SLACK_AFTERNOON) == WEDNESDAY
+    assert messages.occasion(at(WEDNESDAY, 21), scheduler.SLACK_AFTERNOON) is None
+    assert messages.occasion(at(THURSDAY, 0, 5), scheduler.SLACK_AFTERNOON) is None
+    assert messages.occasion(at(THURSDAY, 14), scheduler.SLACK_AFTERNOON) is None
+    assert messages.occasion(at(THURSDAY, 8), scheduler.SLACK_MORNING) is None
+
+    t = confirmed(team, THURSDAY, team.kim)
+    workflow.mark_done(team.db, t, "Test")
+    team.db.commit()
+    # The day after at 22:00 and the next night: too late for Friday's DM, too early for Saturday's.
+    for when in (at(FRIDAY, 22), at(FRIDAY + dt.timedelta(days=1), 1)):
+        assert messages.send_after_course(when).startswith("too late for the ")
+        assert messages.send_weekly_status(when).startswith("too late for the ")
+        assert messages.send_reminders(when).startswith("too late for the ")
+    assert slack.posts == [] and rows(team.db) == []
+
+
+def test_a_stale_slack_id_is_undeliverable_and_does_not_fail_the_job(team, slack, caplog):
+    w = team
+    confirmed(w, THURSDAY, w.kim, [w.lea])
+    w.db.commit()
+    slack.broken["U0KIM00001"] = "channel_not_found"
+    job = next(j for j in scheduler.JOBS if j.name == "slack-reminders")
+    caplog.set_level(logging.DEBUG, logger="metrics")
+
+    assert scheduler.run_job(job, at(WEDNESDAY, 15)) is True
+    assert "1 reminders sent, 0 already sent, 1 undeliverable (channel_not_found)" in caplog.text
+    assert sorted((r.status, r.error) for r in rows(w.db)) == [
+        ("sent", None),
+        ("undeliverable", "channel_not_found"),
+    ]
+    # Final: not tried again, even once the Slack ID works again.
+    del slack.broken["U0KIM00001"]
+    assert messages.send_reminders(at(WEDNESDAY, 16)) == "0 reminders sent, 2 already sent"
+    assert [c for c, _ in slack.posts] == ["U0LEA00001"]
+    assert "U0KIM00001" not in caplog.text and "Kim" not in caplog.text
+
+
+def test_http_429_and_5xx_are_retried_but_a_broken_connection_never(team, slack):
+    w = team
+    confirmed(w, THURSDAY, w.kim, [w.lea, w.sam])
+    w.db.commit()
+    job = next(j for j in scheduler.JOBS if j.name == "slack-reminders")
+
+    def http(code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError(messages.API_URL, code, "error", hdrs=None, fp=None)  # type: ignore[arg-type]
+
+    slack.errors = [http(429), http(503), ConnectionResetError("reset")]
+    assert scheduler.run_job(job, at(WEDNESDAY, 15)) is False
+    assert sorted((r.status, r.error) for r in rows(w.db)) == [
+        ("failed", "http_429"),
+        ("failed", "http_503"),
+        ("unclear", "ConnectionResetError"),
+    ]
+    assert scheduler.run_job(job, at(WEDNESDAY, 16)) is True
+    assert len(slack.posts) == 2
+    assert sorted(r.status for r in rows(w.db)) == ["sent", "sent", "unclear"]
