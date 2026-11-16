@@ -214,6 +214,9 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "backup": {"state": "overdue", "last_ok": None},
         "login-sessions": {"state": "overdue", "last_ok": None},
         "hints": {"state": "overdue", "last_ok": None},
+        "slack-after-course": {"state": "overdue", "last_ok": None},
+        "slack-weekly-status": {"state": "overdue", "last_ok": None},
+        "slack-reminders": {"state": "overdue", "last_ok": None},
         "calendar": {"state": "overdue", "last_ok": None},
     }
 
@@ -222,6 +225,8 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
     record(db, "backup", now - timedelta(hours=3), True)
     record(db, "login-sessions", now - timedelta(hours=3), True)
     record(db, "calendar", now - timedelta(minutes=10), True)
+    for name in ("slack-after-course", "slack-weekly-status", "slack-reminders"):
+        record(db, name, now - timedelta(hours=4), True)
     body = healthz()
     assert body["status"] == "ok"
     assert {name: job["state"] for name, job in body["jobs"].items()} == {
@@ -229,6 +234,9 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "backup": "ok",
         "login-sessions": "ok",
         "hints": "ok",
+        "slack-after-course": "ok",
+        "slack-weekly-status": "ok",
+        "slack-reminders": "ok",
         "calendar": "ok",
     }
 

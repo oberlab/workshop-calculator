@@ -68,6 +68,20 @@ lead_overhead_hours = 1.0
 support_factor = 1.0
 support_overhead_hours = 0.5
 
+[messages]
+# Slack messages of the bot (WM-130), each switched on here; all off by default. Nothing is sent
+# without SLACK_BOT_TOKEN (scope chat:write); links need PUBLIC_URL. Each message goes out at most
+# once (recorded in the database), only for Termine from Bestätigt on.
+# after_course: DM to the Kursleitung 1, 2, 3 and 7 days after a Termin (09:00) while participants
+#   or Herkunft are missing, with the link to the phone form.
+# reminder: DM to everyone on the team the day before a Termin (16:00): time, place, team.
+# weekly_status: Friday 12:00 to `channel`: next week's Termine, open hints, waiting proposals.
+after_course = false
+reminder = false
+weekly_status = false
+# The team channel's ID (Slack: channel details, at the bottom); the bot must be a member.
+# channel = "C0000000000"
+
 [features]
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
 # Shown only on the analysis page (team login).

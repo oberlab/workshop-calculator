@@ -4,7 +4,7 @@ The instance directory is private (never in the public repository). Everything i
 it is optional: without it the app runs with the neutral defaults in this package.
 
     instance/
-    ├── config.toml          calendar, target groups, Slack column mapping, workload estimate
+    ├── config.toml          calendar, target groups, Slack column mapping, workload estimate, Slack messages
     ├── theme/tokens.toml    colours and inks, fonts, category colours, chart palette, map gradient
     ├── theme/fonts/         font files referenced by tokens.toml
     ├── seeds/locations.csv  lookup per location: school?, school type, address, coordinates, municipality
@@ -166,6 +166,28 @@ def load_projects(config: dict) -> list[Project]:
 
 
 @dataclass(frozen=True)
+class Messages:
+    """`[messages]`: which Slack messages of the bot are sent (WM-130). All off by default; nothing
+    is sent without SLACK_BOT_TOKEN either. `channel` is the team channel of the weekly status."""
+
+    after_course: bool = False
+    reminder: bool = False
+    weekly_status: bool = False
+    channel: str | None = None
+
+
+def load_messages(config: dict) -> Messages:
+    entry = config.get("messages") or {}
+    channel = str(entry.get("channel") or "").strip() or None
+    return Messages(
+        after_course=bool(entry.get("after_course", False)),
+        reminder=bool(entry.get("reminder", False)),
+        weekly_status=bool(entry.get("weekly_status", False)),
+        channel=channel,
+    )
+
+
+@dataclass(frozen=True)
 class ProjectList:
     """A project's own Slack List (e.g. JugendLab), transferred once with `metrics transfer-slack`.
 
@@ -279,6 +301,7 @@ class Instance:
     slack_project_list: ProjectList | None = None
     slack_stages: dict[str, str] = field(default_factory=dict)
     workload: WorkloadRule = field(default_factory=WorkloadRule)
+    messages: Messages = field(default_factory=Messages)
 
     def project(self, slug: str) -> Project | None:
         return next((p for p in self.projects if p.slug == slug), None)
@@ -416,6 +439,7 @@ def load_instance(instance_dir: Path) -> Instance:
         slack_project_list=load_project_list(slack),
         slack_stages={str(k): str(v) for k, v in (slack.get("stages") or {}).items()},
         workload=load_workload(config),
+        messages=load_messages(config),
     )
 
 

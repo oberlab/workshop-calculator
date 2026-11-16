@@ -437,6 +437,33 @@ class JobRun(Base):
     message: Mapped[str | None] = mapped_column(Text)
 
 
+class SlackMessage(Base):
+    """One Slack message of the bot (WM-130), recorded before it is sent so it goes out at most once.
+
+    `key` names the occasion (e.g. the reminder for one Termin, date and person); a second row with
+    the same key cannot exist. `status`: `sending` while the request runs, `sent`, `failed` (Slack
+    answered with an error, so nothing was posted: tried again on a later run), `unclear` (the request
+    broke off, it may have arrived: never tried again). The text itself is not kept.
+    """
+
+    __tablename__ = "slack_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True)
+    appointment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("appointments.id", ondelete="SET NULL"), index=True
+    )
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
+    channel: Mapped[str] = mapped_column(String(32))  # a Slack user ID (DM) or channel ID
+    status: Mapped[str] = mapped_column(String(16))
+    attempts: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    error: Mapped[str | None] = mapped_column(Text)  # Slack's error code or the exception type
+    ts: Mapped[str | None] = mapped_column(String(32))  # Slack's message timestamp
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ImportRun(Base):
     """One legacy or baseline load, shown as the data timestamp on the page."""
 
