@@ -304,7 +304,7 @@ def _pick(session: Session, model, value: str, label: str, errors: list, current
     """A list entry chosen in a picker: an active one, or the one already set (whatever its status)."""
     if not value:
         return None
-    if not value.isdigit():
+    if not lists.is_whole(value):
         errors.append(f"{label}: ungültige Auswahl")
         return current
     entry = session.get(model, int(value))

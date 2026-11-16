@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from metrics import courses, equipment, hints
+from metrics import courses, equipment, hints, lists
 from metrics.db import ABGESAGT, BESTAETIGT, GEPLANT, Appointment, Course
 from metrics.instance import clean_name
 from metrics.planning import workflow
@@ -75,7 +75,7 @@ def parse_dates(form: Form, errors: list[str], *, prefix: str = "") -> list[dt.d
     if first is None and not errors:
         errors.append("Für eine Reihe braucht es das Datum des ersten Termins.")
     raw = workflow.one(form, f"{prefix}anzahl")
-    count = int(raw) if raw.isdigit() else 0
+    count = int(raw) if lists.is_whole(raw) else 0
     if not 1 <= count <= MAX_TERMINE:
         errors.append(f"Anzahl der Termine: zwischen 1 und {MAX_TERMINE}.")
         return []

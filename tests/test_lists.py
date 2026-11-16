@@ -481,3 +481,14 @@ def test_admin_marks_a_format_continuous(seeded, monkeypatch):
     assert seeded.get(Format, fmt.id).continuous is True
     assert [h.field for h in _history(seeded, "formats", fmt.id)] == ["continuous"]
     assert "fortlaufend" in lists.describe(seeded.get(Format, fmt.id), {})
+
+
+def test_counts_and_ids_take_ascii_digits_only(seeded):
+    """ "²".isdigit() is True but int("²") fails: such input is a form error, not a crash (WM-101)."""
+    assert lists.is_whole("0") and lists.is_whole("10000") and lists.is_whole("123456789")
+    for bad in ("", "²", "١٢", "-1", "1.5", " 1", "1234567890"):
+        assert not lists.is_whole(bad)
+    types = lists.school_types(seeded)
+    for bad in ("²", "٣"):
+        _, errors = lists.parse(lists.EQUIPMENT, {"name": "Calliope", "quantity": bad}, types, new=True)
+        assert errors == {"quantity": f"Bitte eine ganze Zahl zwischen 0 und {lists.MAX_COUNT} eingeben."}

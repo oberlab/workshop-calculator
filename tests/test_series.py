@@ -62,6 +62,7 @@ def test_series_dates_and_parsing():
     for bad, message in (
         (form(rhythmus="woechentlich", erster="2026-12-01", anzahl=0), "zwischen 1 und 52"),
         (form(rhythmus="woechentlich", erster="2026-12-01", anzahl=53), "zwischen 1 und 52"),
+        (form(rhythmus="woechentlich", erster="2026-12-01", anzahl="²"), "zwischen 1 und 52"),
         (form(rhythmus="woechentlich", anzahl=3), "Datum des ersten Termins"),
         (form(rhythmus="daten"), "mindestens ein Datum"),
         (form(rhythmus="monatlich"), "Unbekannter Rhythmus"),

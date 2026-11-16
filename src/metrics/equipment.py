@@ -61,7 +61,7 @@ def parse(session: Session, form: dict, current: Needs, errors: list[str]) -> Ne
     equipment can be added; what is needed already stays choosable whatever its status."""
     needs: Needs = {}
     for key, values in form.items():
-        if not key.startswith(FIELD) or not key[len(FIELD) :].isdigit():
+        if not key.startswith(FIELD) or not lists.is_whole(key[len(FIELD) :]):
             continue
         value = values[-1] if isinstance(values, list) else values
         raw = (value or "").strip()
@@ -70,7 +70,7 @@ def parse(session: Session, form: dict, current: Needs, errors: list[str]) -> Ne
         item = session.get(Equipment, int(key[len(FIELD) :]))
         if item is None:
             continue
-        if not raw.isdigit() or int(raw) > lists.MAX_COUNT:
+        if not lists.is_whole(raw) or int(raw) > lists.MAX_COUNT:
             errors.append(f"Material {item.name}: bitte eine ganze Zahl zwischen 0 und {lists.MAX_COUNT}")
             continue
         if int(raw) == 0:

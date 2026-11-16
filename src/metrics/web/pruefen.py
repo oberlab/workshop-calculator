@@ -76,7 +76,7 @@ def _filter(params) -> hints.QueueFilter:
     return hints.QueueFilter(
         level=level if level in hints.LEVELS else None,
         rule=rule_id if rule_id in hints.RULES else None,
-        context_id=int(context) if context.isdigit() else None,
+        context_id=int(context) if lists.is_whole(context) else None,
         date_from=_date(params.get("von")),
         date_to=_date(params.get("bis")),
         status=status if status in STATUS_FILTERS else hints.OPEN,
@@ -163,7 +163,7 @@ async def accept(request: Request):
     rule_id = form.get("regel") or ""
     back = _filter_query({k: v[-1] for k, v in parse_qs(form.get("zurueck") or "").items()})
     try:
-        if not appointment_id.isdigit() or rule_id not in hints.RULES:
+        if not lists.is_whole(appointment_id) or rule_id not in hints.RULES:
             raise hints.HintError("Unbekannter Hinweis.")
         with get_sessionmaker()() as session, session.begin():
             hints.accept(
@@ -188,7 +188,7 @@ async def _decide_correction(request: Request, confirm: bool):
     proposal_id = form.get("vorschlag") or ""
     by = current_login(request).user
     try:
-        if not proposal_id.isdigit():
+        if not lists.is_whole(proposal_id):
             raise corrections.CorrectionError("Unbekannte Korrektur.")
         with get_sessionmaker()() as session, session.begin():
             if confirm:

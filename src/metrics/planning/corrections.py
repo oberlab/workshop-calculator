@@ -121,7 +121,7 @@ def _entry_id(session: Session, model, label: str, value: str, was, errors: list
     """The ID of an active list entry chosen in a select (or the one already set)."""
     if not value:
         return None
-    if not value.isdigit():
+    if not lists.is_whole(value):
         errors.append(f"{label}: ungültige Auswahl")
         return was
     entry = session.get(model, int(value))
@@ -204,7 +204,7 @@ def parse(session: Session, t: Appointment, form: workflow.Form) -> dict:
         ids = []
         had = set(values["support"])
         for value in dict.fromkeys(clean_name(v) for v in form.get("support", [])):
-            was = int(value) if value.isdigit() and int(value) in had else None
+            was = int(value) if lists.is_whole(value) and int(value) in had else None
             person = _entry_id(session, Person, "Unterstützung", value, was, errors)
             if person is not None and person != values["lead"]:
                 ids.append(person)
