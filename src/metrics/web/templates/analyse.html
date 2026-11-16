@@ -36,7 +36,8 @@
 {% set tabs = [("zeitverlauf", "Zeitverlauf")]
    + ([("kursleitungen", "Kursleitungen")] if instructor_ranking else [])
    + [("schularten", "Schularten")]
-   + ([("gemeinden", "Gemeinden")] if map else []) %}
+   + ([("gemeinden", "Gemeinden")] if map else [])
+   + ([("herkunft", "Herkunft")] if origins_map else []) %}
 <div class="panel panel-flush">
   <div class="tabs" role="tablist" aria-label="Ansichten">
     {% for key, label in tabs %}
@@ -73,6 +74,20 @@
       <dl class="totals map-side" aria-live="polite">
         <div><dt>{{ map.outside_label }}</dt><dd data-meta="outside">–</dd></div>
         <div><dt>Ohne Gemeinde (z.&nbsp;B. Online)</dt><dd data-meta="unassigned">–</dd></div>
+      </dl>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if origins_map %}
+  <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-herkunft" aria-labelledby="tab-herkunft" data-figure="/api/analyse/origins" hidden>
+    <h2 class="view-title">Teilnehmende nach Herkunft: {{ map.title }}</h2>
+    <p class="help">Wohnorte der Teilnehmenden, gezählt wie die Kennzahl Teilnehmende. {{ same_filters }}</p>
+    <div class="map-layout">
+      <div class="chart"></div>
+      <dl class="totals map-side" aria-live="polite">
+        <div><dt>{{ map.outside_label }}</dt><dd data-meta="outside">–</dd></div>
+        <div><dt>Ohne Angabe zur Herkunft</dt><dd data-meta="unassigned">–</dd></div>
       </dl>
     </div>
   </section>

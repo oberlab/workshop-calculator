@@ -46,6 +46,8 @@ def _analysis_page(request: Request, project: Project | None = None) -> HTMLResp
             fixed=urlencode([("context", c) for c in project.contexts]) if project else "",
             instructor_ranking=instance.instructor_ranking,
             map=instance.map,
+            # Herkunft map (WM-134): only where the project's context asks for home municipalities.
+            origins_map=bool(instance.map and project and project.participant_municipalities),
         ),
     )
 
@@ -101,6 +103,32 @@ def sessions_by_municipality(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "spec": charts.municipality_map(instance.map, counts, instance.theme),
+            "meta": {
+                "title": instance.map.title,
+                "inside": sum(counts.inside.values()),
+                "outside": counts.outside,
+                "unassigned": counts.unassigned,
+            },
+        }
+    )
+
+
+@router.get("/api/analyse/origins")
+def participants_by_origin(request: Request) -> JSONResponse:
+    """Map of participants per home municipality (Herkunft), plus those outside the map and those
+    without a Herkunft (all filters; shown on project pages whose context asks for it)."""
+    instance = get_instance()
+    if instance.map is None:
+        raise HTTPException(404, "Keine Karte eingerichtet")
+    filters = parse_filters(request.query_params)
+    with get_sessionmaker()() as session:
+        rows = analytics.count_participants_by_origin(
+            session, filters, today(), instance.school_year_start_month
+        )
+    counts = analytics.by_municipality(rows, instance)
+    return JSONResponse(
+        {
+            "spec": charts.municipality_map(instance.map, counts, instance.theme, measure="Teilnehmende"),
             "meta": {
                 "title": instance.map.title,
                 "inside": sum(counts.inside.values()),

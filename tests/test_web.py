@@ -180,6 +180,7 @@ def test_overview_has_only_time_controls(client):
         "/api/analyse/sessions-over-time",
         "/api/analyse/schools",
         "/api/analyse/municipalities",
+        "/api/analyse/origins",
         "/api/instructor-ranking",
         "/instructors/U1/image",
     ],
