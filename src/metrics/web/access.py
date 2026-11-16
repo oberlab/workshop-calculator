@@ -47,6 +47,9 @@ ADMIN_ROUTES = {
     "POST /pruefen/kalender/pruefen",
     "POST /pruefen/kalender/ignorieren",
     "POST /pruefen/kalender/kurs",
+    # Prüfen: confirming or rejecting a proposed correction of an abgeschlossen Termin (WM-132).
+    "POST /pruefen/korrektur/bestaetigen",
+    "POST /pruefen/korrektur/ablehnen",
     # Personen: the team overview, kept by hand (WM-105); the people picker stays Team.
     "GET /stammdaten/personen",
     "POST /stammdaten/personen",
@@ -70,6 +73,8 @@ TEAM_ROUTES = {
     "POST /planung/{course_id:int}",
     "POST /planung/{course_id:int}/aktion",
     "POST /planung/{course_id:int}/akzeptieren",
+    # Corrections (WM-132): anyone in the team proposes one; admins decide in "Prüfen".
+    "POST /planung/{course_id:int}/korrektur",
     "GET /planung/termin/{appointment_id:int}",
     "GET /api/planung/belegt",
     # Mein Bereich and the calendar (WM-112): read only; "mine" is the Person linked to the login.

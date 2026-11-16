@@ -18,7 +18,8 @@ Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
 - "Final bestätigen" (`finalize`) goes through `courses.finally_confirm` (confirmed list entries,
   no blocking hint); open warnings must be ticked as checked, which the Verlauf records.
 - Abgeschlossen is locked except `billed`; a course's shared fields are locked as soon as one of
-  its Termine is Abgeschlossen (they are counted in the charts).
+  its Termine is Abgeschlossen (they are counted in the charts). Changes to it are proposed as
+  corrections and applied when an admin confirms them (`metrics.planning.corrections`, WM-132).
 - Only Bestätigt Termine can be cancelled (with a reason); only Geplant ones deleted, which the
   Verlauf keeps (the summary of the deleted Termin). Nothing else is ever deleted.
 
@@ -105,6 +106,7 @@ LABELS = {
     "participants_male": "TN männlich",
     "participants_diverse": "TN divers",
     "participants_unspecified": "TN keine Angabe",
+    "participants_total": "TN gesamt",
     "origins": "Herkunft",
     "billed": "Abgerechnet",
     "stage": "Phase",

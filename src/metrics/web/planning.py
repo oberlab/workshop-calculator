@@ -15,6 +15,8 @@
 - `POST /planung/{course_id}/termine`: "Termine hinzufügen" (weekly, every two weeks, or dates).
 - `POST /planung/{course_id}/alle`: bulk actions over the course's Termine (`action`: `confirm`,
   `calendar`, `cancel`); the calendar gets one update per changed Termin.
+- `POST /planung/{course_id}/korrektur`: propose a correction of an Abgeschlossen Termin with a
+  reason (WM-132, `metrics.planning.corrections`); it changes nothing until an admin confirms it.
 - `GET /planung/termin/{id}`: the course page of a Termin (links from hints and the calendar).
 - `GET /api/planung/belegt?date=&start=&end=&exclude=`: who is booked at that time, for the team
   pickers (`{person ID: Termin}`).
@@ -54,7 +56,7 @@ from metrics.db import (
     get_sessionmaker,
 )
 from metrics.instance import get_instance
-from metrics.planning import caldav, series, workflow
+from metrics.planning import caldav, corrections, series, workflow
 from metrics.planning.workflow import FormError
 from metrics.web.common import TIMEZONE, current_login, page, public_base, today
 from metrics.web.lists import picker_context
@@ -425,6 +427,7 @@ def course_context(
 def _course_page(request, session, course, t, *, new=False, errors=None, status_code=200, extra=None):
     context = course_context(request, session, course, t, new=new, errors=errors) | (extra or {})
     context["calendar"] = calendar_context(request, t)
+    context["correction"] = correction_context(session, t) if not new else {"on": False}
     return page(request, "planung_course.html", context, status_code=status_code)
 
 
@@ -805,6 +808,45 @@ async def accept_hint(course_id: int, request: Request):
             return _refused(request, session, course_id, termin_id, FormError(str(error)))
         session.commit()
         return _back(t, "Hinweis akzeptiert.")
+
+
+@router.post("/planung/{course_id:int}/korrektur", response_class=HTMLResponse)
+async def propose_correction(course_id: int, request: Request):
+    """Propose a correction of an Abgeschlossen Termin (WM-132); an admin decides in "Prüfen"."""
+    form = await _form(request)
+    termin_id = _int(workflow.one(form, "termin"))
+    with get_sessionmaker()() as session:
+        course = _get_course(session, course_id)
+        t = _selected(course, termin_id)
+        try:
+            corrections.propose(session, t, form, workflow.one(form, "grund"), _who(request))
+        except FormError as error:
+            return _refused(request, session, course_id, termin_id, error)
+        session.commit()
+        return _back(t, "Korrektur vorgeschlagen: sie gilt, sobald ein Admin sie bestätigt.")
+
+
+def correction_context(session: Session, t: Appointment) -> dict:
+    """The open corrections of a Termin and the choices of the correction form (Abgeschlossen)."""
+    if not t.id or t.stage != ABGESCHLOSSEN:
+        return {"on": False}
+    course = t.course
+
+    def options(kind, selected):
+        return [(e.id, lists.label(e)) for e in lists.choices(session, kind, selected)]
+
+    return {
+        "on": True,
+        "open": [(p, corrections.changes(p)) for p in corrections.open_for(session, [t.id])],
+        "entries": [
+            ("format", "Format", options(lists.FORMATS, course.format_id), course.format_id),
+            ("context", "Kontext", options(lists.CONTEXTS, course.context_id), course.context_id),
+            ("place", "Ort", options(lists.PLACES, course.place_id), course.place_id),
+        ],
+        "people": _pickable(session, t),
+        "only_total": corrections.only_total(t),
+        "shared": len(course.appointments) > 1,
+    }
 
 
 @router.get("/api/planung/belegt")
