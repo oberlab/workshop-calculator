@@ -8,10 +8,14 @@ and, for admins only, `/pruefen` and the Personen page.
 A sidebar on every page holds the login and the navigation.
 """
 
+from contextlib import asynccontextmanager
+
+import anyio.to_thread
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from metrics.db import WEB_THREADS
 from metrics.web import (
     analyse,
     health,
@@ -31,8 +35,17 @@ from metrics.web.access import PageRefused, check_access
 from metrics.web.common import HERE, page
 from metrics.web.security import SecurityHeaders, check_csrf
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Routes run in this many threads at most; the database pool is sized to match (`metrics.db`).
+    anyio.to_thread.current_default_thread_limiter().total_tokens = WEB_THREADS
+    yield
+
+
 app = FastAPI(
     title="Einsätze",
+    lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
     openapi_url=None,

@@ -572,10 +572,24 @@ class ImportRun(Base):
     message: Mapped[str | None] = mapped_column(Text)
 
 
+# The web app runs its routes in at most WEB_THREADS threads (set in `metrics.web.app`), plus the
+# event loop's own. A request may hold two connections at once (its session and the sidebar's in
+# `web.common.page`), so the pool has room for one per thread and one more: some request can always
+# finish. With fewer, many parallel requests each held one connection and waited for a second until
+# the pool timeout (seen in the ZAP active scan, WM-153).
+WEB_THREADS = 20
+POOL_SIZE = 5
+POOL_OVERFLOW = WEB_THREADS + 2 - POOL_SIZE
+
+
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
     # The timeout keeps /healthz and the pages from hanging when the database does not answer.
     engine = create_engine(
-        get_settings().database_url, pool_pre_ping=True, connect_args={"connect_timeout": 10}
+        get_settings().database_url,
+        pool_pre_ping=True,
+        pool_size=POOL_SIZE,
+        max_overflow=POOL_OVERFLOW,
+        connect_args={"connect_timeout": 10},
     )
     return sessionmaker(engine, expire_on_commit=False)

@@ -201,3 +201,25 @@ def test_every_post_form_in_the_templates_has_the_token():
             if re.search(r'method="post"', form.group(0)[:300], re.I):
                 assert 'name="csrf_token" value="{{ csrf_token }}"' in form.group(1), template.name
 
+
+def test_database_pool_outlasts_the_route_threads(monkeypatch):
+    """A route thread may hold two connections at once (its session and the sidebar's): with one
+    connection per thread and one more, parallel requests cannot starve the pool (ZAP, WM-153)."""
+    import anyio
+    import anyio.to_thread
+
+    from metrics import db
+    from metrics.web import app as web_app
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://unused@localhost/unused")
+    db.get_sessionmaker.cache_clear()
+    pool = db.get_sessionmaker().kw["bind"].pool
+    db.get_sessionmaker.cache_clear()
+    threads_and_loop = db.WEB_THREADS + 1
+    assert pool.size() + pool._max_overflow >= threads_and_loop + 1
+
+    async def tokens_after_start():
+        async with web_app.lifespan(web_app.app):
+            return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    assert anyio.run(tokens_after_start) == db.WEB_THREADS
