@@ -16,6 +16,6 @@ Everything specific to one organisation lives in an instance directory that is m
 | `mappings/ort.csv` | Location aliases (`alias` → `canonical`) |
 | `seeds/instructors.csv` | Legacy first names that belong to a Slack user (`alias` → `slack_id`), for the instructor ranking |
 
-`config.toml` also holds feature switches: `[features] instructor_ranking` (internal ranking with Slack profile pictures, off by default; keep it off for anything public).
+`config.toml` also holds feature switches: `[features] instructor_ranking` (internal ranking with Slack profile pictures, off by default; keep it off for anything public) and `[messages]` (the bot's Slack messages: `after_course`, `reminder`, `weekly_status`, each off by default, and the team `channel` for the weekly status; nothing is sent without `SLACK_BOT_TOKEN`).
 
 The mapping tables are suggestions only: imports never rename anything. Locations missing from `locations.csv` are reported by the import and get the target group "Unbekannt" for children.

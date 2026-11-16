@@ -66,7 +66,7 @@ services:
       # Bound to localhost by default; set APP_BIND to expose it on another interface.
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
 
-  # Stage moves, hints, the calendar check and the nightly pg_dump (metrics/scheduler.py). It writes only to the backup
+  # Stage moves, hints, the calendar check, Slack messages and the nightly pg_dump (metrics/scheduler.py). It writes only to the backup
   # directory, which must exist and be writable by the image's user (uid 10001), see ops/DEPLOY.md.
   scheduler:
     build: .
@@ -80,13 +80,17 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://metrics:${POSTGRES_PASSWORD}@db:5432/metrics
       BACKUP_DIR: /backups
+      INSTANCE_DIR: /instance
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Slack messages (WM-130): off without the token, each switched on in [messages] of the instance.
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       CALDAV_URL: ${CALDAV_URL:-}
       CALDAV_USERNAME: ${CALDAV_USERNAME:-}
       CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
       CALDAV_ORGANIZER: ${CALDAV_ORGANIZER:-}
     volumes:
       - ${BACKUP_DIR:-./backups/nightly}:/backups
+      - ${INSTANCE_DIR:-./instance.example}:/instance:ro
     # Time to finish a running dump after SIGTERM.
     stop_grace_period: 2m
 

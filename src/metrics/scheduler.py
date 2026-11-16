@@ -6,7 +6,7 @@ JOBS whether it is due and runs the due ones one after the other. Each run is a 
 so a restart neither skips nor repeats a run. A job that raises is recorded as failed and
 logged; the loop goes on. SIGTERM and SIGINT stop the loop after the job that is running.
 
-Adding a job (Slack messages WM-130, Kimai WM-142): write a function
+Adding a job (e.g. Kimai WM-142): write a function
 `(now: datetime) -> str` that does the work in its own database session and returns a short
 message for `job_runs`, then add a `Job` with a schedule to JOBS. `/healthz` picks it up.
 
@@ -155,6 +155,27 @@ def check_calendar(now: datetime) -> str:
     return result.summary()
 
 
+def slack_after_course(now: datetime) -> str:
+    """The DM to the lead after the course (WM-130); off without SLACK_BOT_TOKEN or its switch."""
+    from metrics import messages
+
+    return messages.send_after_course(now)
+
+
+def slack_reminders(now: datetime) -> str:
+    """The reminder the day before a Termin (WM-130)."""
+    from metrics import messages
+
+    return messages.send_reminders(now)
+
+
+def slack_weekly_status(now: datetime) -> str:
+    """The weekly status to the team channel (WM-130); sends on Friday, Saturday and Sunday catch up."""
+    from metrics import messages
+
+    return messages.send_weekly_status(now)
+
+
 def nightly_backup(now: datetime) -> str:
     settings = get_settings()
     day = now.astimezone(LOCAL).date()
@@ -166,6 +187,10 @@ JOBS: tuple[Job, ...] = (
     Job("hints", Daily(time(0, 30)), recompute_hints),  # after the stage moves
     Job("backup", Daily(time(3, 30)), nightly_backup),
     Job("login-sessions", Daily(time(4, 0)), prune_login_sessions),
+    # Slack messages (WM-130): after the stage moves and the hints, so they see today's state.
+    Job("slack-after-course", Daily(time(9, 0)), slack_after_course),
+    Job("slack-weekly-status", Daily(time(12, 0)), slack_weekly_status),
+    Job("slack-reminders", Daily(time(16, 0)), slack_reminders),
     Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 
