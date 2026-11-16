@@ -1,9 +1,12 @@
-"""Kalender (WM-112): week and month with a lane per person, and a Termin in a side panel.
+"""Kalender (WM-112): week and month with a lane per person or per piece of equipment, and a Termin
+in a side panel.
 
 - `GET /kalender`: `ansicht` (`woche`, default, or `monat`), `datum` (any day of the week or month
   to show, default today), and the filters `person` (an ID or `ich`), `kontext` and `phase` (empty
   for every stage but Abgesagt, or one of the course list's tabs). The month shows its calendar
-  weeks from Monday to Sunday. On phones the lanes become a list per day.
+  weeks from Monday to Sunday. On phones the lanes become a list per day. `spuren=material` shows a
+  lane per piece of equipment instead (WM-140): what the Termine of each day need together, over all
+  Termine but the cancelled ones (availability is the whole team's, so the filters do not apply).
 - `GET /kalender/termin/{id}`: the summary of a Termin's course for the side panel (an htmx
   partial); opened directly, it redirects to the course page.
 
@@ -20,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from metrics import hints, lists
+from metrics import equipment, hints, lists
 from metrics.db import Appointment, Context, get_sessionmaker
 from metrics.planning import lanes, workflow
 from metrics.planning.mine import monday_of
@@ -35,6 +38,8 @@ VIEWS = {WEEK: "Woche", MONTH: "Monat"}
 # No phase is the list's "Alle" tab; `alle` itself is accepted but not offered twice.
 PHASES = {"": "Alle außer abgesagte", **{k: v for k, v in planning.TABS if k != planning.ALL}}
 FILTERS = ("person", "kontext", "phase")
+PEOPLE_LANES, EQUIPMENT_LANES = "personen", "material"
+LANES = {PEOPLE_LANES: "Personen", EQUIPMENT_LANES: "Material"}
 
 
 def stages(phase: str) -> tuple[str, ...]:
@@ -82,9 +87,14 @@ def calendar(request: Request):
     view = params.get("ansicht") or WEEK
     if view not in VIEWS:
         raise HTTPException(400, "Unbekannte Ansicht")
+    lanes_by = params.get("spuren") or PEOPLE_LANES
+    if lanes_by not in LANES:
+        raise HTTPException(400, "Unbekannte Spuren")
     day = planning._date(params.get("datum")) or today()
     start, end = span(view, day)
     kept = {k: params[k] for k in FILTERS if params.get(k)}
+    if lanes_by == EQUIPMENT_LANES:
+        kept["spuren"] = lanes_by
 
     def link(**changes) -> str:
         query = {"ansicht": view, "datum": day.isoformat(), **kept, **changes}
@@ -92,9 +102,14 @@ def calendar(request: Request):
 
     with get_sessionmaker()() as session:
         me = planning._me(session, request)
-        shown = termine(session, params, me, start, end)
         person = params.get("person") or ""
-        only = (me.id if me else -1) if person == "ich" else planning._int(person)
+        if lanes_by == EQUIPMENT_LANES:
+            shown = equipment.booked_between(session, start, end)
+            weeks = lanes.equipment_weeks(shown, start, end, equipment.listed(session))
+        else:
+            shown = termine(session, params, me, start, end)
+            only = (me.id if me else -1) if person == "ich" else planning._int(person)
+            weeks = lanes.weeks(shown, start, end, only)
         found = planning.open_hints(session, [t.id for t in shown])
         list_query = {
             "phase": params.get("phase") or planning.ALL,
@@ -109,9 +124,14 @@ def calendar(request: Request):
             {
                 "view": view,
                 "views": [(key, label, link(ansicht=key)) for key, label in VIEWS.items()],
+                "lanes_by": lanes_by,
+                "lane_kinds": [
+                    (key, label, link(spuren=key if key != PEOPLE_LANES else ""))
+                    for key, label in LANES.items()
+                ],
                 "day": day,
                 "title": _title(view, day, start, end),
-                "weeks": lanes.weeks(shown, start, end, only),
+                "weeks": weeks,
                 "count": len(shown),
                 "today": today(),
                 "prev": link(datum=_shift(view, day, -1).isoformat()),

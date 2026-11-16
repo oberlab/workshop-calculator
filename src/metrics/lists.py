@@ -1,4 +1,5 @@
-"""Reference lists (Stammdaten): places, contexts, formats and people (WM-101, PROPOSAL.md section 3).
+"""Reference lists (Stammdaten): places, contexts, formats, people and equipment (WM-101, WM-140,
+PROPOSAL.md section 3).
 
 Any team member may propose a new entry; it is usable at once (status `vorgeschlagen`, with a
 Vorschlag for the admin queue and a Verlauf row). An admin confirms it, merges it into another
@@ -30,9 +31,12 @@ from metrics.db import (
     PROPOSED,
     REJECTED,
     Appointment,
+    AppointmentEquipment,
     Context,
     Course,
+    Equipment,
     Format,
+    FormatEquipment,
     HistoryEntry,
     Person,
     Place,
@@ -88,7 +92,15 @@ PEOPLE = Kind(
     "Person",
     "Das Team. Die Anmeldung wird beim ersten Login über die E-Mail-Adresse mit der Person verknüpft.",
 )
-KINDS = {k.slug: k for k in (PLACES, CONTEXTS, FORMATS, PEOPLE)}
+EQUIPMENT = Kind(
+    "material",
+    Equipment,
+    "Material",
+    "Material",
+    "Kritisches Material mit der Anzahl, die es gibt. Ein Format nennt, was es braucht; reicht es an "
+    "einem Tag nicht für alle Termine, bekommen sie einen kritischen Hinweis.",
+)
+KINDS = {k.slug: k for k in (PLACES, CONTEXTS, FORMATS, EQUIPMENT, PEOPLE)}
 KIND_BY_MODEL = {k.model: k for k in KINDS.values()}
 
 STATUS_LABELS = {
@@ -151,6 +163,7 @@ def search(session: Session, kind: Kind, query: str | None = None, status: str |
             CONTEXTS: (Context.name, Context.page_title),
             FORMATS: (Format.name, Format.category),
             PEOPLE: (Person.name, Person.email, Person.slack_id),
+            EQUIPMENT: (Equipment.name, Equipment.note),
         }[kind]
         stmt = stmt.where(or_(*(c.ilike(pattern) for c in columns)))
     return sorted(session.scalars(stmt), key=_sort_key)
@@ -206,6 +219,9 @@ def describe(entry, types: dict[str, str]) -> str:
     elif isinstance(entry, Person):
         if not entry.active:
             parts.append("inaktiv")
+    elif isinstance(entry, Equipment):
+        if entry.quantity is not None:
+            parts.append(f"{entry.quantity} vorhanden")
     if entry.status == PROPOSED:
         parts.append("wartet auf Bestätigung")
     elif entry.status == REJECTED:
@@ -249,6 +265,20 @@ def usage(session: Session, kind: Kind, ids: list[int] | None = None) -> dict[in
         ).group_by(both.c.pid)
         if ids is not None:
             stmt = stmt.where(both.c.pid.in_(ids))
+    elif kind is EQUIPMENT:
+        item = AppointmentEquipment.equipment_id
+        stmt = (
+            select(
+                item,
+                func.count(func.distinct(Appointment.course_id)),
+                func.count(Appointment.id),
+                final,
+            )
+            .join(Appointment, Appointment.id == AppointmentEquipment.appointment_id)
+            .group_by(item)
+        )
+        if ids is not None:
+            stmt = stmt.where(item.in_(ids))
     else:
         column = {PLACES: Course.place_id, CONTEXTS: Course.context_id, FORMATS: Course.format_id}[kind]
         stmt = (
@@ -429,7 +459,7 @@ def entries_confirmed(appointment: Appointment) -> bool:
 class Field:
     name: str
     label: str
-    type: str = "text"  # text, yesno, school_type, bool, number, email, category
+    type: str = "text"  # text, yesno, school_type, bool, number, count, email, category
     required: bool = False  # for a new proposal
     help: str | None = None
 
@@ -474,6 +504,11 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("active", "Aktiv im Team", "bool"),
         Field("weekly_hours", "Wochenstunden", "number"),
     ),
+    EQUIPMENT: (
+        Field("name", "Name", required=True, help="z. B. Calliope mini (Klassensatz-Geräte einzeln)"),
+        Field("quantity", "Anzahl vorhanden", "count", required=True),
+        Field("note", "Notiz", help="z. B. wo es steht oder wer es verwaltet"),
+    ),
 }
 
 # Fields a new proposal asks for (the rest is filled in on the list page).
@@ -482,8 +517,10 @@ PROPOSAL_FIELDS: dict[Kind, tuple[str, ...]] = {
     CONTEXTS: ("name",),
     FORMATS: ("name", "category", "duration_hours"),
     PEOPLE: ("name", "email"),
+    EQUIPMENT: ("name", "quantity", "note"),
 }
 
+MAX_COUNT = 10000  # the most of one piece of equipment (and of a need)
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 SLACK_ID = re.compile(r"[UW][A-Z0-9]{8,20}")
@@ -503,6 +540,8 @@ def form_values(kind: Kind, entry) -> dict[str, str]:
             values[f.name] = "1" if value else ""
         elif f.type == "number":
             values[f.name] = _number(value)
+        elif f.type == "count":
+            values[f.name] = "" if value is None else str(value)
         else:
             values[f.name] = value or ""
     return values
@@ -548,6 +587,13 @@ def parse(
                     errors[f.name] = "Bitte eine Zahl zwischen 0 und 1000 eingeben."
                 else:
                     values[f.name] = number
+        elif f.type == "count":
+            values[f.name] = None
+            if raw:
+                if not raw.isdigit() or int(raw) > MAX_COUNT:
+                    errors[f.name] = f"Bitte eine ganze Zahl zwischen 0 und {MAX_COUNT} eingeben."
+                    continue
+                values[f.name] = int(raw)
         else:
             values[f.name] = raw or None
         if f.required and new and values[f.name] in (None, ""):
@@ -764,6 +810,9 @@ def missing_details(kind: Kind, entry) -> list[str]:
             missing.append("Kategorie")
         if entry.duration_hours is None:
             missing.append("Dauer")
+    elif kind is EQUIPMENT:
+        if entry.quantity is None:
+            missing.append("Anzahl vorhanden")
     return missing
 
 
@@ -805,6 +854,8 @@ def merge(session: Session, kind: Kind, entry, target, by: str, reason: str | No
     moved = 0
     if kind is PEOPLE:
         moved = _move_person(session, entry, target, by, why)
+    elif kind is EQUIPMENT:
+        moved = _move_equipment(session, entry, target, by, why)
     else:
         column = {PLACES: "place_id", CONTEXTS: "context_id", FORMATS: "format_id"}[kind]
         courses = list(session.scalars(select(Course).where(getattr(Course, column) == entry.id)))
@@ -828,6 +879,41 @@ def merge(session: Session, kind: Kind, entry, target, by: str, reason: str | No
     entry.merged_into_id = target.id
     _decide(session, entry, MERGED, by, why)
     session.flush()
+    return moved
+
+
+def _move_equipment(session: Session, item: Equipment, target: Equipment, by: str, why: str) -> int:
+    """Every need of `item` (formats and Termine) becomes a need of `target`; where the format or
+    Termin needs `target` already, the two quantities are added up (they were the same thing).
+    Returns the number of Termine moved."""
+    moved = 0
+    for model, owner, table in (
+        (FormatEquipment, "format_id", "formats"),
+        (AppointmentEquipment, "appointment_id", "appointments"),
+    ):
+        rows = list(session.scalars(select(model).where(model.equipment_id == item.id)))
+        for row in rows:
+            owner_id = getattr(row, owner)
+            there = session.get(model, (owner_id, target.id))
+            new = row.quantity + (there.quantity if there else 0)
+            _log(
+                session,
+                table,
+                owner_id,
+                "equipment",
+                f"{row.quantity} {item.name}",
+                f"{new} {target.name}",
+                by,
+                why,
+            )
+            if there is not None:
+                there.quantity = new
+                session.delete(row)  # the need lives on in the target's row; the Verlauf has both
+            else:
+                row.equipment_id = target.id
+            session.flush()
+        if model is AppointmentEquipment:
+            moved = len(rows)
     return moved
 
 

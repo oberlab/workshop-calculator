@@ -28,6 +28,7 @@
 {% set times_on = "times" in editable %}
 {% set team_on = "team" in editable %}
 {% set held_on = "held" in editable %}
+{% set equipment_on = "equipment" in editable %}
 
 <div class="course-layout">
   <div class="course-main">
@@ -131,13 +132,32 @@
         </div>
         {% if later and (times_on or team_on) %}
         <fieldset class="scope">
-          <legend class="field-label">Änderungen an Datum, Zeit und Team gelten für</legend>
+          <legend class="field-label">Änderungen an Datum, Zeit, Team und Material gelten für</legend>
           <label class="check"><input type="radio" name="umfang" value="dieser" checked> nur diesen Termin</label>
           <label class="check"><input type="radio" name="umfang" value="folgende"> diesen und alle folgenden ({{ later|length }} weitere)</label>
           <p class="help">Ein verschobenes Datum verschiebt die folgenden um gleich viele Tage. Durchgeführte und abgesagte Termine bleiben wie sie sind.</p>
         </fieldset>
         {% endif %}
       </section>
+
+      {% if equipment %}
+      <section class="panel" id="material">
+        <h2>Material</h2>
+        {% if new %}
+        <p class="help">Kommt aus dem Format und ist nach dem Anlegen für jeden Termin änderbar.</p>
+        {% else %}
+        <input type="hidden" name="material" value="1">
+        <div class="fields">
+          {% for n in equipment %}
+          {% set of = (" von " ~ n.item.quantity) if n.item.quantity is not none else "" %}
+          {% set day = (" · am Tag sonst " ~ n.others ~ " verplant") if n.others else "" %}
+          {{ ui.field(n.item.name, "material_" ~ n.item.id, n.quantity, type="number", help=("Anzahl" ~ of ~ day) if (of or day) else none, error=("reicht am " ~ (t.date|day) ~ " nicht: " ~ (n.quantity + n.others) ~ of) if n.short else none, attrs={"min": 0, "inputmode": "numeric", "disabled": none if equipment_on else true}) }}
+          {% endfor %}
+        </div>
+        <p class="help">Leer oder 0: braucht der Termin nicht. Ein Satz ist den ganzen Tag belegt; reicht es an einem Tag nicht für alle Termine, bekommen sie einen kritischen Hinweis.</p>
+        {% endif %}
+      </section>
+      {% endif %}
 
       <section class="panel">
         <h2>Teilnehmende {% if t.stage in ("Geplant", "Bestätigt") %}<span class="section-note">Pflicht für den Abschluss, auch vorab eintragbar</span>{% endif %}</h2>

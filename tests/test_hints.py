@@ -18,10 +18,12 @@ from metrics.db import (
     PROPOSED,
     AlternativeDate,
     Appointment,
+    AppointmentEquipment,
     AppointmentOrigin,
     CalendarResponse,
     Context,
     Course,
+    Equipment,
     Format,
     HintDecision,
     Person,
@@ -368,6 +370,51 @@ def test_above_capacity_from_the_week_sums():
     facts.week_hours[(5, monday)] = Decimal(50)
     assert "ueber-kapazitaet" not in rules_of(hints.evaluate(held, facts))
     assert "ueber-kapazitaet" in rules_of(hints.evaluate(termin(stage=GEPLANT, date=TODAY, lead=full), facts))
+
+
+CALLIOPE = Equipment(id=1, name="Calliope mini", quantity=30, status=CONFIRMED)
+LAPTOPS = Equipment(id=2, name="Laptopkoffer", quantity=2, status=CONFIRMED)
+
+
+def _needs(t: Appointment, **items: int) -> Appointment:
+    by_name = {"calliope": CALLIOPE, "laptops": LAPTOPS}
+    t.equipment = [
+        AppointmentEquipment(equipment_id=by_name[k].id, equipment=by_name[k], quantity=n)
+        for k, n in items.items()
+    ]
+    return t
+
+
+def test_rule_material_knapp():
+    # A kit blocks the whole day: 20 + 15 of 30 is short, though the times do not overlap.
+    a = _needs(_planned(1, T(8), T(11)), calliope=20, laptops=1)
+    b = _needs(_planned(2, T(14), T(16), lead=LEA), calliope=15)
+    hit = only(found(a, b), "material-knapp")
+    assert (hit.level, hit.blocking, hit.other_id) == ("Kritisch", False, None)
+    assert hit.text == (
+        "Calliope mini: 35 benötigt, 30 vorhanden; am selben Tag auch „Calliope-Einsteiger“ (Termin 2) 15"
+    )
+    assert only(found(b, a), "material-knapp").text.startswith("Calliope mini: 35 benötigt")
+    # Enough for both, one alone, another day, or a cancelled neighbour: no hint.
+    assert "material-knapp" not in rules_of(
+        found(a, _needs(_planned(2, T(14), T(16), lead=LEA), calliope=10))
+    )
+    assert "material-knapp" not in rules_of(found(a))
+    later = termin(2, stage=BESTAETIGT, date=TODAY + dt.timedelta(days=8), lead=LEA)
+    assert "material-knapp" not in rules_of(found(a, _needs(later, calliope=15)))
+    cancelled = termin(2, stage=ABGESAGT, date=a.date, lead=LEA)
+    assert "material-knapp" not in rules_of(found(a, _needs(cancelled, calliope=15)))
+    # One Termin alone needing more than there is; an unknown number is never short.
+    assert only(found(_needs(_planned(1, T(8), T(11)), laptops=3)), "material-knapp").text == (
+        "Laptopkoffer: 3 benötigt, 2 vorhanden"
+    )
+    unknown = Equipment(id=3, name="Neu", quantity=None, status=PROPOSED)
+    c = _planned(1, T(8), T(11))
+    c.equipment = [AppointmentEquipment(equipment_id=3, equipment=unknown, quantity=99)]
+    assert "material-knapp" not in rules_of(found(c))
+    # Past days are history, not planning.
+    past = dict(stage=DURCHGEFUEHRT, date=TODAY - dt.timedelta(days=2))
+    assert "material-knapp" not in rules_of(found(_needs(termin(1, **past), laptops=3)))
 
 
 # --- Places and list entries ------------------------------------------------------------------

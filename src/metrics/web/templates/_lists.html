@@ -43,7 +43,7 @@
   {{ ui.field(f.label, name, values.get(f.name), required=required, help=f.help, error=errors.get(f.name), attrs={"list": prefix ~ "kategorien", "autocomplete": "off"}) }}
   <datalist id="{{ prefix }}kategorien">{% for c in categories %}<option value="{{ c }}"></option>{% endfor %}</datalist>
   {% else %}
-  {% set attrs = {"inputmode": "decimal"} if f.type == "number" else ({"autocomplete": "off"} if f.type == "text" else {}) %}
+  {% set attrs = {"inputmode": "decimal"} if f.type == "number" else ({"inputmode": "numeric", "autocomplete": "off"} if f.type == "count" else ({"autocomplete": "off"} if f.type == "text" else {})) %}
   {{ ui.field(f.label, name, values.get(f.name), type="email" if f.type == "email" else "text", required=required or (f.name == "name" and not new), help=f.help, error=errors.get(f.name), attrs=dict(attrs, **first)) }}
   {% endif %}
 {% endfor %}
