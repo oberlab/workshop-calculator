@@ -27,6 +27,15 @@ def theme_css() -> Response:
     return Response(theme_css_text(get_instance().theme), media_type="text/css")
 
 
+FAVICON = Path(__file__).parent / "static" / "favicon.svg"
+
+
+@router.get("/favicon.ico")
+def favicon() -> FileResponse:
+    """The app icon for clients that ask for /favicon.ico without reading the page's icon link."""
+    return FileResponse(FAVICON, media_type="image/svg+xml")
+
+
 @router.get("/theme/fonts/{name}")
 def theme_font(name: str) -> FileResponse:
     theme = get_instance().theme
