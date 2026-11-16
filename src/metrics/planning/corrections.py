@@ -352,6 +352,7 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
     course = t.course
     before_course, before = workflow.course_snapshot(course), workflow.appointment_snapshot(t)
     total = t.participants_total
+    old_team = hints.team_of([t])
     _apply(session, t, changes)
     session.flush()
     workflow._record(session, "courses", course.id, before_course, workflow.course_snapshot(course), by, why)
@@ -362,7 +363,7 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
         contacts.drop_if_elsewhere(session, course, by)
     _decide(proposal, CONFIRMED, by, reason)
     courses.renumber(session, course, by)
-    hints.refresh(session, [a.id for a in course.appointments])
+    hints.refresh(session, [a.id for a in course.appointments], extra_people=old_team)
     return t
 
 
