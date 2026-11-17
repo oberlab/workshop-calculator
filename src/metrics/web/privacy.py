@@ -1,10 +1,13 @@
-"""Datenschutz and Impressum: two public pages (WM-153).
+"""Datenschutz and Impressum (WM-153).
 
-The privacy notice describes what the app does from the code: the retention periods, cookie names
-and job intervals below are read from the constants the code uses (`facts`), so the text cannot
-drift from the behaviour; `tests/test_privacy.py` fails if a constant changes and the page does not.
-Who is responsible, the legal wording and the imprint come from the private instance config
-(`[privacy]`, `[imprint]`, `metrics.instance`); a missing value shows a marked placeholder, and
+The privacy notice has two parts: a short public one at `/datenschutz` for visitors of the public pages
+and the login (who is responsible, what a visit leaves behind, cookies, rights), and the team part at
+`/datenschutz/team` behind the login (data about team members, contact persons and participants, who
+sees what, where data goes, retention). Both describe what the app does from the code: the retention
+periods, cookie names and job intervals below are read from the constants the code uses (`facts`), so
+the text cannot drift from the behaviour; `tests/test_privacy.py` fails if a constant changes and the
+page does not. Who is responsible, the legal wording and the imprint come from the private instance
+config (`[privacy]`, `[imprint]`, `metrics.instance`); a missing value shows a marked placeholder, and
 admins see which keys are missing.
 """
 
@@ -74,11 +77,19 @@ def facts() -> dict[str, str | int]:
     }
 
 
+def _privacy_context() -> dict:
+    settings = get_instance().privacy
+    return {"privacy": settings, "facts": facts(), "missing": settings.missing}
+
+
 @router.get("/datenschutz", response_class=HTMLResponse)
 def privacy_notice(request: Request):
-    settings = get_instance().privacy
-    context = {"privacy": settings, "facts": facts(), "missing": settings.missing}
-    return page(request, "datenschutz.html", context)
+    return page(request, "datenschutz.html", _privacy_context())
+
+
+@router.get("/datenschutz/team", response_class=HTMLResponse)
+def privacy_notice_team(request: Request):
+    return page(request, "datenschutz_team.html", _privacy_context())
 
 
 @router.get("/impressum", response_class=HTMLResponse)

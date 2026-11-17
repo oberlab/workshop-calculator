@@ -61,6 +61,9 @@ ADMIN_ROUTES = {
 }
 
 TEAM_ROUTES = {
+    # The team part of the privacy notice (WM-153): data about team members, contact persons and
+    # participants; the short public part is `GET /datenschutz`.
+    "GET /datenschutz/team",
     "GET /analyse",
     "GET /projekte/{slug}",
     "GET /api/analyse/sessions-over-time",

@@ -1,5 +1,6 @@
-"""Datenschutz and Impressum (WM-153): public pages, placeholders from the instance config, and the
-privacy notice's numbers read from the code's own constants."""
+"""Datenschutz and Impressum (WM-153): the public pages and the team part of the privacy notice,
+placeholders from the instance config, and the privacy notice's numbers read from the code's own
+constants."""
 
 import datetime as dt
 import re
@@ -7,7 +8,7 @@ import re
 import pytest
 
 from metrics import auth, backup, instance, kimai, logins, oidc
-from metrics.web import common, login, public, security
+from metrics.web import access, common, login, public, security
 from metrics.web import privacy as page
 from tests.conftest import EXAMPLE_INSTANCE
 from tests.test_web import _client
@@ -61,10 +62,22 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
-def _as_admin(monkeypatch):
-    """An admin login without a database: the login check and the sidebar counters stubbed."""
-    monkeypatch.setattr(common, "current_login", lambda request: auth.Login("Admin", admin=True, subject="a"))
+def _as_admin(monkeypatch, admin=True):
+    """A login without a database: the login check, the access rule and the sidebar counters stubbed."""
+    person = auth.Login("Admin" if admin else "Team", admin=admin, subject="a")
+    monkeypatch.setattr(common, "current_login", lambda request: person)
+    monkeypatch.setattr(access, "current_login", lambda request: person)
     monkeypatch.setattr(common, "list_state", lambda login=None: common.ListState([], {}))
+
+
+def _team_page(monkeypatch) -> str:
+    client = _client(monkeypatch)
+    _as_admin(monkeypatch, admin=False)
+    return client.get("/datenschutz/team").text
+
+
+# Facts that belong to the team part only: they never appear on the public page.
+TEAM_ONLY = ("Slack", "Kimai", "Kontaktperson", "Wochenstunden", "Abwesenheit", "Sicherung", "Verlauf")
 
 
 @pytest.mark.parametrize("path", ["/datenschutz", "/impressum"])
@@ -79,6 +92,75 @@ def test_every_page_links_both(monkeypatch, path):
     html = _client(monkeypatch).get(path).text
     footer = html[html.index('class="page-foot"') :]
     assert 'href="/datenschutz"' in footer and 'href="/impressum"' in footer
+    assert 'href="/datenschutz/team"' not in footer  # only for logged-in team members
+
+
+@pytest.mark.parametrize("path", ["/datenschutz", "/impressum", "/datenschutz/team"])
+def test_logged_in_footer_links_the_team_part(monkeypatch, path):
+    client = _client(monkeypatch)
+    _as_admin(monkeypatch, admin=False)
+    html = client.get(path).text
+    footer = html[html.index('class="page-foot"') :]
+    for href in ("/datenschutz", "/impressum", "/datenschutz/team"):
+        assert f'href="{href}"' in footer
+    assert ">Datenschutz (Team)</a>" in footer
+
+
+def test_team_part_needs_login(monkeypatch):
+    client = _client(monkeypatch)
+    response = client.get("/datenschutz/team", follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == "/login"
+    assert access.level("GET /datenschutz/team") == access.TEAM
+
+
+def test_public_part_has_no_team_facts(monkeypatch, tmp_path):
+    _with_config(monkeypatch, tmp_path, PRIVACY)
+    html = _client(monkeypatch).get("/datenschutz").text
+    main = _text(html[html.index('id="main"') : html.index('class="page-foot"')])
+    for word in TEAM_ONLY:
+        assert word not in main, word
+    assert "Art. 15" in main and "Art. 77" in main and "Testaufsicht" in main
+    assert "zusammengefasste Kennzahlen" in main and "keine personenbezogenen Daten" in main
+    link = html[html.index("data-team-link") :].split("</p>")[0]
+    assert 'href="/datenschutz/team"' in link
+
+
+def test_team_part_shows_the_team_facts(monkeypatch, tmp_path):
+    _with_config(monkeypatch, tmp_path, PRIVACY)
+    html = _team_page(monkeypatch)
+    main = _text(html[html.index('id="main"') : html.index('class="page-foot"')])
+    for word in TEAM_ONLY:
+        assert word in main, word
+    for section in ("zweck", "daten", "zugriff", "dienste", "speicherdauer", "rechte"):
+        assert f'id="{section}"' in html
+    assert "Art. 15" in main and "Art. 77" in main and 'href="/datenschutz#rechte"' in html
+    assert 'href="/datenschutz"' in html[html.index("data-public-link") :].split("</p>")[0]
+    assert "Testhoster in Testland" in html and 'href="mailto:datenschutz@test.invalid"' in html
+    assert "Stand: 01.12.2026" in html and "data-draft" not in html
+    assert "<script>" not in html
+
+
+def test_team_part_placeholders_and_admin_notice(monkeypatch, tmp_path):
+    _with_config(monkeypatch, tmp_path, "")
+    client = _client(monkeypatch)
+    _as_admin(monkeypatch)
+    html = client.get("/datenschutz/team").text
+    for key in ("contact_email", "hosting", "legal_basis"):
+        assert f'data-placeholder="{key}"' in html
+    assert "data-admin-notice" in html and "data-draft" in html and "Entwurf, noch nicht freigegeben" in html
+
+
+def test_legal_basis_for_visitors(monkeypatch, tmp_path):
+    """Without `legal_basis_visitors` both parts show `legal_basis`; with it the public part has its own."""
+    _with_config(monkeypatch, tmp_path, PRIVACY)
+    public_html = _client(monkeypatch).get("/datenschutz").text
+    assert "Testgrundlage für alle" in public_html.split("data-legal-basis")[1].split("</p>")[0]
+    _with_config(monkeypatch, tmp_path, PRIVACY + 'legal_basis_visitors = "Nur für Besuch"\n')
+    public_html = _client(monkeypatch).get("/datenschutz").text
+    basis = public_html.split("data-legal-basis")[1].split("</p>")[0]
+    assert "Nur für Besuch" in basis and "Testgrundlage" not in public_html
+    team_basis = _team_page(monkeypatch).split("data-legal-basis")[1].split("</p>")[0]
+    assert "Testgrundlage für alle" in team_basis and "Nur für Besuch" not in team_basis
 
 
 def test_login_page_links_both_in_its_text(monkeypatch):
@@ -176,15 +258,16 @@ def test_bad_config_is_refused(text, error, tmp_path):
 # --- The numbers come from the code ---------------------------------------------------------
 
 
-def test_page_states_the_current_constants(monkeypatch):
+def test_pages_state_the_current_constants(monkeypatch):
     text = _text(_client(monkeypatch).get("/datenschutz").text)
+    for name in (auth.COOKIE_NAME, security.CSRF_COOKIE, oidc.STATE_COOKIE):
+        assert name in text
+    text = _text(_team_page(monkeypatch))
     assert "spätestens nach 12 Stunden und nach 2 Stunden ohne Aktivität" in text
     assert "30 Tage nach ihrem Ablauf gelöscht" in text
     assert "die neuesten 14 täglichen und 12 monatlichen Sicherungen" in text
     assert "bis zu 12 Monate" in text
     assert "der vergangenen 31 Tage und der kommenden 400 Tage" in text
-    for name in (auth.COOKIE_NAME, security.CSRF_COOKIE, oidc.STATE_COOKIE):
-        assert name in text
 
 
 def test_pruning_uses_the_constants_the_page_shows():
@@ -207,8 +290,12 @@ def test_pruning_uses_the_constants_the_page_shows():
     ],
 )
 def test_page_follows_a_changed_constant(monkeypatch, module, name, value, fact, expected):
+    """Cookies are in the public part, retention and services in the team part."""
     monkeypatch.setattr(module, name, value)
-    html = _client(monkeypatch).get("/datenschutz").text
+    if fact.endswith("-cookie"):
+        html = _client(monkeypatch).get("/datenschutz").text
+    else:
+        html = _team_page(monkeypatch)
     if expected is None:  # Kimai's window is stated in the services section
         assert "der vergangenen 8 Tage" in _text(html)
         return

@@ -86,9 +86,10 @@ weekly_status = false
 # channel = "C0000000000"
 
 [privacy]
-# The organisation's part of the privacy notice (/datenschutz). Everything the app does itself (what it
-# stores, how long, where data goes, cookies) is written from the code. Missing values show a marked
-# placeholder on the page and a notice for admins; without `updated` the page is marked "Entwurf".
+# The organisation's part of the privacy notice: the short public part (/datenschutz, for visitors and
+# the login) and the team part (/datenschutz/team, behind the login). Everything the app does itself
+# (what it stores, how long, where data goes, cookies) is written from the code. Missing values show a
+# marked placeholder and a notice for admins; without `updated` both parts are marked "Entwurf".
 # Multi-line values keep their line breaks. Have the texts checked before setting `updated`.
 # Every key is commented out here, so the example shows the placeholders; uncomment and fill in.
 # responsible = """
@@ -100,7 +101,10 @@ weekly_status = false
 # Who runs the server and where, and how long its own logs and server backups are kept.
 # hosting = "Der Server wird von [Hoster] in [Land] betrieben. [Aufbewahrung der Server-Protokolle und Server-Sicherungen]"
 # The legal basis for each group of people (team, contact persons), as the organisation words it.
+# Shown in the team part, and in the public part too unless legal_basis_visitors is set.
 # legal_basis = "[Rechtsgrundlage je Personengruppe, von der verantwortlichen Stelle geprüft]"
+# Optional: a separate wording for visitors of the public pages and the login (public part only).
+# legal_basis_visitors = "[Rechtsgrundlage für Besucherinnen und Besucher der öffentlichen Seiten]"
 # supervisory_authority = """
 # [Name der zuständigen Datenschutz-Aufsichtsbehörde]
 # [Anschrift]

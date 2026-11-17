@@ -18,3 +18,19 @@
 </div>
 {% endif %}
 {%- endmacro %}
+
+{# The privacy contact as a mail link, or its placeholder. #}
+{% macro privacy_contact(privacy) -%}
+{% if privacy.contact_email %}<a href="mailto:{{ privacy.contact_email }}">{{ privacy.contact_email }}</a>{% else %}{{ value(none, "E-Mail-Adresse für Datenschutzfragen", "contact_email") }}{% endif %}
+{%- endmacro %}
+
+{# Both parts of the privacy notice: the draft warning on top and the "Stand" line at the end. #}
+{% macro draft_notice(privacy) -%}
+{% if privacy.draft %}
+<div class="alert alert-warning" role="note" data-draft><p><strong>Entwurf:</strong> Dieser Text ist noch nicht geprüft und freigegeben. Er gilt erst, wenn hier ein Stand-Datum steht.</p></div>
+{% endif %}
+{%- endmacro %}
+
+{% macro updated_line(privacy) -%}
+<p class="muted small" data-updated>{% if privacy.updated %}Stand: {{ privacy.updated.strftime("%d.%m.%Y") }}{% else %}Stand: Entwurf, noch nicht freigegeben{% endif %}</p>
+{%- endmacro %}
