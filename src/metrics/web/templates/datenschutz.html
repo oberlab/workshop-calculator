@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 {% import "_legal.html" as legal %}
-{# The privacy notice (WM-153). Facts about the app come from the code (`metrics.web.privacy.facts`),
-   organisation-specific values from [privacy] in the instance config. #}
+{# The public part of the privacy notice (WM-153): for visitors of the public pages and the login. What
+   the app stores about team members, contact persons and participants is in the team part
+   (`datenschutz_team.html`, behind the login). Facts about the app come from the code
+   (`metrics.web.privacy.facts`), organisation-specific values from [privacy] in the instance config. #}
 
 {% block title %}Datenschutz{% endblock %}
 {% block heading %}Datenschutz{% endblock %}
-{% block subheading %}<p class="subheading">Welche Daten diese App speichert, wozu, wer sie sieht, wohin sie gehen und wie lange sie bleiben.</p>{% endblock %}
+{% block subheading %}<p class="subheading">Was beim Besuch dieser Seiten und bei der Anmeldung gespeichert wird, und welche Rechte Sie haben.</p>{% endblock %}
 
 {% block content %}
 {% set f = facts %}
 {{ legal.missing_notice(login, "privacy", missing) }}
-{% if privacy.draft %}
-<div class="alert alert-warning" role="note" data-draft><p><strong>Entwurf:</strong> Dieser Text ist noch nicht geprüft und freigegeben. Er gilt erst, wenn hier ein Stand-Datum steht.</p></div>
-{% endif %}
+{{ legal.draft_notice(privacy) }}
 
 <div class="legal">
 {% call ui.panel("Verantwortlich", id="verantwortlich") %}
@@ -21,7 +21,7 @@
   <dt>Verantwortliche Stelle</dt>
   <dd>{{ legal.value(privacy.responsible, "Verantwortliche Stelle (Name und Anschrift)", "responsible") }}</dd>
   <dt>Kontakt für Datenschutzfragen</dt>
-  <dd>{% if privacy.contact_email %}<a href="mailto:{{ privacy.contact_email }}">{{ privacy.contact_email }}</a>{% else %}{{ legal.value(none, "E-Mail-Adresse für Datenschutzfragen", "contact_email") }}{% endif %}</dd>
+  <dd>{{ legal.privacy_contact(privacy) }}</dd>
   {% if privacy.dpo %}
   <dt>Datenschutzbeauftragte Person</dt>
   <dd>{{ legal.value(privacy.dpo, "", "dpo") }}</dd>
@@ -30,84 +30,20 @@
 {% endcall %}
 
 {% call ui.panel("Worum es geht", id="zweck") %}
-<p>Die App dient der Planung von Kursen und Terminserien, der Erfassung der Teilnehmendenzahlen, dem Überblick über die Auslastung des Teams und der Auswertung der Kurse. Die öffentliche Übersicht zeigt nur zusammengefasste Kennzahlen; alles andere ist nur nach Anmeldung erreichbar.</p>
-<ul>
-  <li><strong>Planung:</strong> Wer leitet und unterstützt welchen Termin, wann und wo; Einladungen in den Kalender und Erinnerungen.</li>
-  <li><strong>Auslastung:</strong> geschätzte Arbeitsstunden je Person im Vergleich zu ihren Wochenstunden; Abwesenheiten, damit niemand eingeplant wird, der nicht da ist.</li>
-  <li><strong>Absprache mit Einrichtungen:</strong> Kontaktpersonen an Schulen und anderen Orten.</li>
-  <li><strong>Berichte und Auswertung:</strong> zusammengefasste Zahlen zu Kursen und Teilnehmenden, etwa für Projektberichte und die öffentliche Übersicht.</li>
-  <li><strong>Sicherheit und Nachvollziehbarkeit:</strong> Anmeldesitzungen und ein Verlauf, der festhält, wer was wann geändert hat.</li>
-</ul>
+<p>Diese App ist das Planungs- und Auswertungswerkzeug des Teams. Ohne Anmeldung erreichbar sind nur die Übersicht, diese Seite, das Impressum und die Anmeldung. Die Übersicht zeigt nur zusammengefasste Kennzahlen zu Kursen und Teilnehmenden, keine personenbezogenen Daten und keine Namen von Personen oder Orten.</p>
+<p data-team-link>Teammitglieder finden die Informationen dazu, welche Daten die App über sie und ihre Arbeit speichert, nach der Anmeldung unter <a href="/datenschutz/team">Datenschutz (Team)</a>.</p>
 <h3>Rechtsgrundlage</h3>
-<p>{{ legal.value(privacy.legal_basis, "Rechtsgrundlage der Verarbeitung", "legal_basis") }}</p>
+<p data-legal-basis>{{ legal.value(privacy.visitors_legal_basis, "Rechtsgrundlage der Verarbeitung", "legal_basis") }}</p>
 {% endcall %}
 
-{% call ui.panel("Welche Daten gespeichert werden", id="daten") %}
-<h3>Beim Besuch der öffentlichen Seiten</h3>
+{% call ui.panel("Beim Besuch dieser Seiten", id="besuch") %}
 <ul>
-  <li>Die Übersicht, diese Seite und das Impressum funktionieren ohne Anmeldung. Die App speichert dabei nichts über die Besucherinnen und Besucher in ihrer Datenbank.</li>
+  <li>Die App speichert beim Besuch der öffentlichen Seiten nichts über die Besucherinnen und Besucher in ihrer Datenbank.</li>
   <li>Um zu viele Anfragen abzuwehren, zählt die App Anfragen je IP-Adresse (Anmeldung: Zeitfenster von {{ f.login_window }}, Daten der Übersicht: Zeitfenster von {{ f.data_window }}). Die Adresse liegt dafür nur im Arbeitsspeicher, wird nie in die Datenbank oder eine Datei geschrieben und ist nach einem Neustart der App weg.</li>
-  <li>Das Zugriffsprotokoll der App enthält Methode, Pfad und Statuscode einer Anfrage, aber keine IP-Adressen und keine Abfrageparameter. Der vorgeschaltete Webserver beim Hoster führt ein eigenes Protokoll (siehe „Hosting“).</li>
-</ul>
-<h3>Über Teammitglieder</h3>
-<ul>
-  <li>Name, E-Mail-Adresse, Slack-ID, Kimai-Benutzer und Kimai-Benutzer-ID, Wochenstunden (aus dem Arbeitsvertrag in Kimai oder von einem Admin eingetragen), ob die Person aktiv im Team ist, und die Kennung ihres Anmeldekontos (bei der ersten Anmeldung über die bestätigte E-Mail-Adresse verknüpft).</li>
-  <li>Auf Wunsch eines Admins Name und Profilbild aus Slack (für eine interne Rangliste, die standardmäßig ausgeschaltet ist).</li>
-  <li>Einsätze: bei welchen Terminen die Person leitet oder unterstützt, und die daraus geschätzten Arbeitsstunden.</li>
-  <li>Abwesenheiten aus Kimai: Tag, ganz- oder halbtags und Art (z. B. Urlaub, Krank). Nur genehmigte Abwesenheiten werden übernommen; Kommentare oder Gründe aus Kimai nie. Die Art sieht nur die Person selbst, alle anderen sehen „abwesend“.</li>
-  <li>Antworten auf Kalendereinladungen (zugesagt, abgesagt, vielleicht) mit der E-Mail-Adresse.</li>
-  <li>Anmeldesitzungen: Kennung des Kontos, Anzeigename, ob Admin, Beginn, letzte Aktivität, Ablauf, Ende und wer sie beendet hat. Der Wert im Cookie wird nur als Hash gespeichert.</li>
-  <li>Verlauf: Jede Änderung an Kursen, Terminen und Stammdaten wird mit dem Namen der ändernden Person, dem Zeitpunkt, dem alten und neuen Wert und einem Grund festgehalten.</li>
-  <li>Slack-Nachrichten der App: Art, Anlass, Empfänger (Slack-ID oder Kanal), Zustellstatus und Zeitpunkt. Der Text der Nachricht wird nicht gespeichert.</li>
-</ul>
-<h3>Über Kontaktpersonen an Orten</h3>
-<ul>
-  <li>Name, Funktion (z. B. Klassenleitung, Sekretariat), E-Mail-Adresse und Telefonnummer, zugeordnet zu einem Ort (etwa einer Schule) und an einem Kurs ausgewählt.</li>
-  <li>Kontaktpersonen erscheinen nur auf der Kursseite und beim Ort in den Stammdaten, für angemeldete Teammitglieder. Sie stehen nie in Exporten, Auswertungen, Kalendereinträgen, Slack-Nachrichten oder Protokollen. Der Verlauf hält fest, wer einen Kontakt angelegt, geändert, ausgewählt oder gelöscht hat, aber nicht die Werte.</li>
-  <li>Auf Wunsch der Kontaktperson löscht jedes Teammitglied den Kontakt sofort; danach steht im Verlauf nur „Kontakt gelöscht“.</li>
-</ul>
-<h3>Über Teilnehmende</h3>
-<ul>
-  <li>Keine Namen und keine Angaben zu einzelnen Personen. Je Termin nur Zahlen: Teilnehmende je Kategorie (weiblich, männlich, divers, keine Angabe) und insgesamt, bei manchen Projekten die Zahl je Wohngemeinde, dazu Klassenstufe oder Durchschnittsalter der Gruppe.</li>
-  <li>Notizen an Kursen und Terminen sind für organisatorische Hinweise gedacht, nicht für Angaben über einzelne Teilnehmende.</li>
-</ul>
-{% endcall %}
-
-{% call ui.panel("Wer was sieht", id="zugriff") %}
-<dl class="legal-facts">
-  <dt>Alle, ohne Anmeldung</dt>
-  <dd>Die Übersicht: Einsätze über die Zeit nach Kategorie und Kennzahlen, zusammengefasst. Keine Namen von Personen oder Orten.</dd>
-  <dt>Team (Anmeldung über den Anmeldedienst)</dt>
-  <dd>Planung, Kalender, Kurse mit Team und Kontaktperson, Mein Bereich, die Team-Seite mit Einsätzen, geschätzten Arbeitsstunden, Wochenstunden und Abwesenheiten (als „abwesend“), Analyse, Planungszahlen (Stunden je Person), Tabelle und Verlauf.</dd>
-  <dt>Admins</dt>
-  <dd>Zusätzlich die Personen-Seite (E-Mail, Slack-ID, Kimai-Zuordnung, Wochenstunden; wer gerade angemeldet ist, „Überall abmelden“) und „Prüfen“.</dd>
-  <dt>Nur die Person selbst</dt>
-  <dd>Die Art ihrer Abwesenheiten.</dd>
-</dl>
-{% endcall %}
-
-{% call ui.panel("Wohin Daten gehen", id="dienste") %}
-<ul>
-  <li><strong>Anmeldedienst:</strong> Die Anmeldung läuft über den Anmeldedienst der Organisation (OpenID Connect). Die App erhält von dort eine Kennung des Kontos, den Anzeigenamen, die bestätigte E-Mail-Adresse und die Gruppenzugehörigkeit; Passwörter erreichen die App nicht.</li>
-  <li><strong>Slack:</strong> Wenn eingeschaltet, schickt die App Teammitgliedern Direktnachrichten (nach einem Kurs die Bitte, die Teilnehmenden einzutragen; am Tag vor einem Termin Zeit, Ort und Team) und dem Team-Kanal einen Wochenstatus mit den Terminen der Woche, Ort und Kursleitung. Kontaktpersonen gehen nie an Slack.</li>
-  <li><strong>Kalenderserver:</strong> Für Termine ab „Bestätigt“ legt die App einen Kalendereintrag an: Titel, Ort, Zeit, Kontext, Klasse oder Alter, Namen von Kursleitung und Unterstützung und ein Link zur Kursseite. Mit eingeschalteten Einladungen stehen Kursleitung und Unterstützung mit ihrer E-Mail-Adresse als Teilnehmende im Eintrag, und der Kalenderserver verschickt die Einladungen. Die App prüft die Einträge {{ f.calendar_when }}. Sie löscht keine Einträge, sondern sagt sie ab.</li>
-  <li><strong>Kimai:</strong> Die App liest {{ f.kimai_when }} aus Kimai die Benutzer (Name, E-Mail-Adresse), die Wochenstunden aus dem Arbeitsvertrag und die genehmigten Abwesenheiten der vergangenen {{ f.kimai_past }} und der kommenden {{ f.kimai_ahead }}. Sie schreibt nichts nach Kimai.</li>
-  <li><strong>Hosting:</strong> {{ legal.value(privacy.hosting, "Hoster und Standort des Servers", "hosting") }}</li>
+  <li>Das Zugriffsprotokoll der App enthält Methode, Pfad und Statuscode einer Anfrage, aber keine IP-Adressen und keine Abfrageparameter.</li>
+  <li><strong>Hosting:</strong> {{ legal.value(privacy.hosting, "Hoster und Standort des Servers", "hosting") }} Der vorgeschaltete Webserver beim Hoster führt ein eigenes Protokoll.</li>
 </ul>
 <p>Die Seiten laden keine Inhalte von fremden Servern (Schriften und Skripte kommen von der App selbst), und es gibt keine Werbung, kein Tracking und keine Statistikdienste.</p>
-{% endcall %}
-
-{% call ui.panel("Wie lange Daten bleiben", id="speicherdauer") %}
-{% call ui.table(["Daten", "Wie lange"], caption="Speicherdauer") %}
-<tr><td>Anmeldesitzungen</td><td data-fact="sessions">Eine Sitzung endet spätestens nach {{ f.session_lifetime }} und nach {{ f.session_idle }} ohne Aktivität, beim Abmelden sofort. Der Eintrag wird {{ f.session_retention }} nach ihrem Ablauf gelöscht (Prüfung {{ f.session_prune }}).</td></tr>
-<tr><td>Datenbanksicherungen</td><td data-fact="backups">Jede Nacht eine Sicherung der ganzen Datenbank ({{ f.backup_when }}). Aufbewahrt werden die neuesten {{ f.backup_daily }} täglichen und {{ f.backup_monthly }} monatlichen Sicherungen (die erste eines Monats); ältere löscht die App selbst. Gelöschte Daten, etwa ein gelöschter Kontakt, bleiben deshalb in älteren Sicherungen, bis diese wegfallen: bis zu {{ f.backup_monthly }} Monate. Sicherungen vor einem Update der App und Sicherungen des Servers durch den Hoster löscht die App nicht.</td></tr>
-<tr><td>Abwesenheiten</td><td data-fact="absences">Werden {{ f.kimai_when }} aus Kimai übernommen. Eine Abwesenheit, die in Kimai zurückgezogen wird, markiert die App als zurückgezogen und zeigt sie nicht mehr an, löscht sie aber nicht. Ältere Abwesenheiten bleiben gespeichert.</td></tr>
-<tr><td>Teammitglieder, Kurse, Termine, Verlauf</td><td>Die App löscht sie nicht von selbst. Wer das Team verlässt, wird von einem Admin auf „nicht aktiv“ gesetzt. Anfragen zur Löschung gehen an die verantwortliche Stelle.</td></tr>
-<tr><td>Kontaktpersonen</td><td>Bis zur Löschung auf Wunsch (siehe oben); danach nur noch in älteren Sicherungen.</td></tr>
-<tr><td>Antworten auf Kalendereinladungen</td><td>Solange der Termin besteht.</td></tr>
-<tr><td>Slack-Nachrichten</td><td>Der Eintrag (ohne Text) bleibt, damit keine Nachricht doppelt verschickt wird; die App löscht ihn nicht von selbst. Die Nachricht selbst liegt in Slack.</td></tr>
-<tr><td>Protokolle</td><td>Ohne IP-Adressen und Abfrageparameter; wie lange sie aufbewahrt werden, legt der Betrieb des Servers fest (siehe „Hosting“).</td></tr>
-{% endcall %}
 {% endcall %}
 
 {% call ui.panel("Cookies", id="cookies") %}
@@ -130,11 +66,11 @@
   <li>Datenübertragbarkeit (Art. 20),</li>
   <li>Widerspruch gegen die Verarbeitung (Art. 21).</li>
 </ul>
-<p>Anfragen gehen an {% if privacy.contact_email %}<a href="mailto:{{ privacy.contact_email }}">{{ privacy.contact_email }}</a>{% else %}{{ legal.value(none, "E-Mail-Adresse für Datenschutzfragen", "contact_email") }}{% endif %}. Kontaktpersonen können ihre Daten auch über das Team, mit dem sie zu tun haben, sofort löschen lassen.</p>
+<p>Anfragen gehen an {{ legal.privacy_contact(privacy) }}.</p>
 <p>Außerdem besteht das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist:</p>
 <p class="legal-address">{{ legal.value(privacy.supervisory_authority, "Zuständige Aufsichtsbehörde (Name und Anschrift)", "supervisory_authority") }}</p>
 {% endcall %}
 
-<p class="muted small" data-updated>{% if privacy.updated %}Stand: {{ privacy.updated.strftime("%d.%m.%Y") }}{% else %}Stand: Entwurf, noch nicht freigegeben{% endif %}</p>
+{{ legal.updated_line(privacy) }}
 </div>
 {% endblock %}

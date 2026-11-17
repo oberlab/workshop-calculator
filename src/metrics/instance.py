@@ -208,18 +208,20 @@ def _check_keys(entry: dict, allowed: tuple[str, ...], section: str) -> None:
 
 @dataclass(frozen=True)
 class Privacy:
-    """`[privacy]`: the organisation's part of the privacy notice (`/datenschutz`, WM-153).
+    """`[privacy]`: the organisation's part of the privacy notice (WM-153): the short public part at
+    `/datenschutz` and the team part at `/datenschutz/team`.
 
     Everything the app itself does (what it stores, how long, where data goes) is described from the
-    code (`metrics.privacy`); only who is responsible and the legal wording come from here. A missing
-    value shows a marked placeholder on the page and a notice for admins; without `updated` the page
-    is marked as a draft.
+    code (`metrics.web.privacy`); only who is responsible and the legal wording come from here. A
+    missing value shows a marked placeholder on the page and a notice for admins; without `updated`
+    the pages are marked as a draft.
     """
 
     responsible: str | None = None  # name and address, several lines
     contact_email: str | None = None
     hosting: str | None = None  # who runs the server and where
-    legal_basis: str | None = None  # the legal basis wording, checked by the organisation
+    legal_basis: str | None = None  # the legal basis wording, checked by the organisation (team part)
+    legal_basis_visitors: str | None = None  # optional: for visitors of the public pages, else legal_basis
     supervisory_authority: str | None = None  # name and address, several lines
     dpo: str | None = None  # data protection officer (optional), several lines
     updated: dt.date | None = None
@@ -234,8 +236,21 @@ class Privacy:
     def draft(self) -> bool:
         return self.updated is None
 
+    @property
+    def visitors_legal_basis(self) -> str | None:
+        """The legal basis shown in the public part: its own wording if set, else the common one."""
+        return self.legal_basis_visitors or self.legal_basis
 
-PRIVACY_TEXT_KEYS = ("responsible", "contact_email", "hosting", "legal_basis", "supervisory_authority", "dpo")
+
+PRIVACY_TEXT_KEYS = (
+    "responsible",
+    "contact_email",
+    "hosting",
+    "legal_basis",
+    "legal_basis_visitors",
+    "supervisory_authority",
+    "dpo",
+)
 
 
 def load_privacy(config: dict) -> Privacy:

@@ -67,6 +67,7 @@
     {% block content %}{% endblock %}
     <footer class="page-foot" aria-label="Rechtliches">
       <a href="/datenschutz"{% if path == "/datenschutz" %} aria-current="page"{% endif %}>Datenschutz</a>
+      {% if login %}<a href="/datenschutz/team"{% if path == "/datenschutz/team" %} aria-current="page"{% endif %}>Datenschutz (Team)</a>{% endif %}
       <a href="/impressum"{% if path == "/impressum" %} aria-current="page"{% endif %}>Impressum</a>
     </footer>
   </main>
