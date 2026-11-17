@@ -176,6 +176,8 @@ def fake_kimai(args: argparse.Namespace) -> None:
     argv = ["--host", args.host, "--port", str(args.port)]
     if args.today:
         argv += ["--today", args.today.isoformat()]
+    if args.eingeschraenkt:
+        argv.append("--eingeschraenkt")
     kimai_fake.main(argv)
 
 
@@ -318,6 +320,11 @@ def main() -> None:
     fake_k.add_argument("--host", default="127.0.0.1")
     fake_k.add_argument("--port", type=int, default=8765)
     fake_k.add_argument("--today", type=date.fromisoformat, help="day the absences lie around")
+    fake_k.add_argument(
+        "--eingeschraenkt",
+        action="store_true",
+        help="play a token without the permissions for other users' contracts and absences",
+    )
     fake_k.set_defaults(func=fake_kimai)
 
     check_k = commands.add_parser(

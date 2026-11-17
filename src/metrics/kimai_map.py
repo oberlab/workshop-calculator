@@ -30,6 +30,10 @@ USER = "/users/{id}"
 # permission `contract_other_profile` for anyone but the token's own user.
 ABSENCES = "/absences"
 ABSENCE_USER, ABSENCE_BEGIN, ABSENCE_END = "user", "begin", "end"
+# [source] GET /api/users/me: the token's own user (`metrics kimai-check` compares its preferences).
+ME = "/users/me"
+# [source] GET /api/absences/calendar: the same absences as calendar events (only `kimai-check`).
+ABSENCES_CALENDAR = "/absences/calendar"
 # [source] GET /api/version: a harmless request for `metrics kimai-check`.
 VERSION = "/version"
 # [source] GET /api/absences/types: the instance's absence types (key -> translated name).
@@ -49,9 +53,9 @@ USER_ID = "id"
 USER_NAME = "username"
 USER_ALIAS = "alias"  # the display name, may be empty
 USER_ENABLED = "enabled"
-# [source] `email` is in the Default group of User.php, so the list and the single user carry it.
-# [assumed] The generated client does not list it; if the list lacks it, the single user has it
-# (the app reads every matched user singly anyway for the preferences).
+USER_ROLES = "roles"  # [source] the single user only: role names such as ROLE_TEAMLEAD
+# [checked on Kimai 2.72, 2026-11-17] `email` is in the list; a user listed without one is read
+# singly. Only the single user has `preferences`.
 USER_EMAIL = "email"
 USER_PREFERENCES = "preferences"  # [source] a list of {"name": …, "value": …}, values as strings
 PREF_NAME, PREF_VALUE = "name", "value"
@@ -86,7 +90,9 @@ DAY_HOURS = (  # contract type day: expected time per weekday
     "work_saturday",
     "work_sunday",
 )
-CONTRACT_PREFERENCES = (CONTRACT_TYPE, HOURS_PER_WEEK, HOURS_PER_MONTH, *DAY_HOURS)
+# [source] Further contract settings: not read, but `metrics kimai-check` reports them.
+CONTRACT_OTHER = ("work_days_week", "work_days_month", "work_start_day", "work_last_day")
+CONTRACT_PREFERENCES = (CONTRACT_TYPE, HOURS_PER_WEEK, HOURS_PER_MONTH, *DAY_HOURS, *CONTRACT_OTHER)
 # [assumed] A month contract becomes weekly hours as monthly hours × 12 / 52.
 WEEKS_PER_MONTH = Decimal(52) / Decimal(12)
 
