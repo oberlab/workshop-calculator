@@ -20,9 +20,12 @@ Rules (decisions of WM-90, `PLANUNG_REGELN.md`):
 - "Final bestätigen" (`finalize`) goes through `courses.finally_confirm` (confirmed list entries,
   no blocking hint); open warnings must be ticked as checked, which the Verlauf records.
 - Abgeschlossen is locked except `billed` and the course's workload values (`WORKLOAD`: they
-  change no chart, only the Team page's estimate); a course's other shared fields are locked as
-  soon as one of its Termine is Abgeschlossen (they are counted in the charts). Changes to it are proposed as
-  corrections and applied when an admin confirms them (`metrics.planning.corrections`, WM-132).
+  change no chart, only the Team page's estimate). Changes to it are proposed as corrections and
+  applied when an admin confirms them (`metrics.planning.corrections`, WM-132).
+- The course's shared fields stay editable on the page of every open Termin, also when other
+  Termine of the course are Abgeschlossen (Alex, 2026-11-17, WM-135): a change of format, context,
+  place or class/age applies to the Termine that are not Abgeschlossen or Abgesagt; those keep the
+  values they had (`courses.keep_values`), so the counted figures do not move.
 - The Kontaktperson of a course (WM-141) is chosen apart from this form (`metrics.contacts`); a new
   place drops a contact of the old one.
 - Only Bestätigt Termine can be cancelled (with a reason); only Geplant ones deleted, which the
@@ -132,6 +135,7 @@ LABELS = {
     "cancel_reason": "Absagegrund",
     "calendar_uid": "Kalender",
     "status": "Status",
+    courses.KEPT_FIELD: "Angaben des Termins",
     **{name: f"Arbeitszeit: {label}" for name, label, _ in WORKLOAD_FIELDS},
 }
 PARTICIPANT_FIELDS = (
@@ -170,16 +174,10 @@ def class_kind(course: Course) -> str | None:
     return None
 
 
-def course_locked(course: Course) -> bool:
-    """The shared fields of a course are locked once one of its Termine is counted."""
-    return any(t.stage == ABGESCHLOSSEN for t in course.appointments)
-
-
 def editable(t: Appointment) -> set[str]:
-    allowed = set(EDITABLE[t.stage])
-    if course_locked(t.course):
-        allowed.discard(COURSE)
-    return allowed
+    """What the Termin's stage allows to change. The course's shared fields (`COURSE`) are open on
+    every open Termin; Abgeschlossen and Abgesagt Termine keep their values (WM-135)."""
+    return set(EDITABLE[t.stage])
 
 
 def participants_total(t: Appointment) -> int | None:
@@ -188,7 +186,7 @@ def participants_total(t: Appointment) -> int | None:
 
 
 def asks_municipalities(t: Appointment) -> bool:
-    return bool(t.course.context and t.course.context.asks_municipalities)
+    return bool(t.context and t.context.asks_municipalities)
 
 
 # --- Snapshots for the Verlauf -------------------------------------------------------------------
@@ -223,6 +221,26 @@ def course_snapshot(course: Course) -> dict[str, str]:
         "target_group": _show(course.target_group),
         **{name: _show(getattr(course, name)) for name, _, _ in WORKLOAD_FIELDS},
     }
+
+
+def termin_values(t: Appointment) -> dict[str, str]:
+    """The Termin's effective course values (WM-135), for the Verlauf of a change to what it keeps."""
+    return {
+        "format": _entry(t.format),
+        "context": _entry(t.context),
+        "place": _entry(t.place),
+        "class_age_text": _show(t.class_age_text),
+        "target_group": _show(t.target_group),
+    }
+
+
+def kept_differences(t: Appointment) -> list[tuple[str, str, str]]:
+    """(label, the Termin's value, the course's) where a Termin that keeps its values differs from
+    its course, for the course page."""
+    if not t.has_frozen_values:
+        return []
+    own, course = termin_values(t), course_snapshot(t.course)
+    return [(LABELS[name], own[name], course[name]) for name in own if own[name] != course[name]]
 
 
 def appointment_snapshot(t: Appointment) -> dict[str, str]:
@@ -471,6 +489,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
         raise FormError(f"Ein Termin in „{t.stage}“ kann nicht mehr geändert werden.")
     course = t.course
     before_course, before = course_snapshot(course), appointment_snapshot(t)
+    before_values = courses.course_values(course)
     old_format = course.format
     old_team = hints.team_of([t])  # someone taken off may lose a capacity hint elsewhere
     errors: list[str] = []
@@ -482,6 +501,7 @@ def save(session: Session, t: Appointment, form: Form, by: str, only: set[str] |
     if errors:
         raise FormError(errors)
     _required_for_stage(t)
+    courses.keep_values(session, course, before_values, by)
     changed = _record(session, "courses", course.id, before_course, course_snapshot(course), by)
     changed += _record(session, "appointments", t.id, before, appointment_snapshot(t), by)
     if "place" in changed:
@@ -585,13 +605,12 @@ def cancel(session: Session, t: Appointment, reason: str, by: str) -> None:
 
 def summary(t: Appointment) -> str:
     """One line that describes a Termin, kept in the Verlauf when it is deleted."""
-    course = t.course
     parts = [
         title(t),
         _show(t.date) or "ohne Datum",
         f"{_show(t.start_time)}–{_show(t.end_time)}" if t.start_time else "",
-        course.place.name if course.place else "ohne Ort",
-        f"Kontext {course.context.name}" if course.context else "",
+        t.place.name if t.place else "ohne Ort",
+        f"Kontext {t.context.name}" if t.context else "",
         f"Leitung {t.lead.name}" if t.lead else "",
         f"Unterstützung {', '.join(p.name for p in t.support)}" if t.support else "",
         f"Kalender {t.calendar_uid}" if t.calendar_uid else "",

@@ -5,8 +5,10 @@ member proposes a correction with a reason (`propose`); it is stored as a Vorsch
 `korrektur` and changes nothing. An admin confirms it in "Prüfen" (`confirm`), which applies it with
 one Verlauf row per field naming both people, or rejects it with a reason (`reject`).
 
-What can be corrected (`FIELDS`): the course's format, context, place, class/age and note (shared by
-every Termin of the course) and the Termin's date, start, end, lead, support and participants (the
+What can be corrected (`FIELDS`): the Termin's format, context, place and class/age (WM-135: the
+correction changes this Termin only, never its course: the Termin first keeps its course's values,
+`courses.keep`, then the correction changes what it keeps), the course's note (shared by every Termin
+of the course, it counts nowhere) and the Termin's date, start, end, lead, support and participants (the
 four counts, or the recorded total of a legacy Termin that has no split) and Herkunft (one number
 per municipality, read as on the Termin form; Alex, 2026-11-16). A Vorschlag keeps, per field, the
 value it found and the proposed one (`{field: {"old", "new", "old_text", "new_text"}}`). Confirming
@@ -20,7 +22,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from metrics import contacts, courses, hints, lists
+from metrics import courses, hints, lists
 from metrics.db import (
     ABGESCHLOSSEN,
     ACTIVE_STATUSES,
@@ -46,6 +48,7 @@ COUNTS = tuple(name for name, _ in PARTICIPANT_FIELDS)
 # The fields that hold a list entry, and its model. Course fields first, as on the form.
 ENTRY_FIELDS = {"format": Format, "context": Context, "place": Place, "lead": Person}
 COURSE_FIELDS = ("format", "context", "place", "class_age_text", "note")
+KEPT_FIELDS = ("format", "context", "place", "class_age_text")  # the Termin's own once corrected
 TERMIN_FIELDS = (
     "date",
     "start_time",
@@ -68,7 +71,9 @@ class CorrectionError(FormError):
 
 
 def _owner(t: Appointment, name: str):
-    return t.course if name in COURSE_FIELDS else t
+    """Where a field is read: the course's note on the course, everything else on the Termin (format,
+    context, place and class/age as its effective values, WM-135)."""
+    return t.course if name == "note" else t
 
 
 def current(t: Appointment) -> dict:
@@ -306,12 +311,15 @@ def _decide(proposal: Proposal, decision: str, by: str, reason: str | None) -> N
     proposal.decision_reason = reason
 
 
-def _apply(session: Session, t: Appointment, changes: dict) -> None:
-    course = t.course
+def _apply(session: Session, t: Appointment, changes: dict, by: str, why: str) -> None:
+    if set(KEPT_FIELDS) & set(changes):
+        courses.keep(session, t, courses.course_values(t.course), by, why)
     for name, change in changes.items():
         new = change["new"]
-        if name in ENTRY_FIELDS:
-            setattr(_owner(t, name), name, session.get(ENTRY_FIELDS[name], new) if new is not None else None)
+        if name in KEPT_FIELDS and name != "class_age_text":
+            setattr(t, f"frozen_{name}", session.get(ENTRY_FIELDS[name], new) if new is not None else None)
+        elif name in ENTRY_FIELDS:
+            setattr(t, name, session.get(ENTRY_FIELDS[name], new) if new is not None else None)
         elif name == "support":
             t.support = [p for i in new if (p := session.get(Person, i)) is not None]
         elif name == "origins":
@@ -326,14 +334,18 @@ def _apply(session: Session, t: Appointment, changes: dict) -> None:
             setattr(t, name, dt.time.fromisoformat(new) if new else None)
         elif name == "class_age_text":
             parsed = parse_class_age(new)
-            course.class_age_text = new
-            course.class_level, course.age, course.age_band = parsed.class_level, parsed.age, parsed.age_band
+            t.frozen_class_age_text = new
+            t.frozen_class_level, t.frozen_age, t.frozen_age_band = (
+                parsed.class_level,
+                parsed.age,
+                parsed.age_band,
+            )
         else:
             setattr(_owner(t, name), name, new)
     if {"start_time", "end_time"} & set(changes) and t.start_time and t.end_time:
         t.duration_hours = workflow._duration(t)
-    if {"format", "context", "place", "class_age_text"} & set(changes):
-        course.target_group = lists.course_target_group(course)
+    if set(KEPT_FIELDS) & set(changes):
+        t.frozen_target_group = lists.course_target_group(t)
 
 
 def confirm(session: Session, proposal_id: int, by: str, reason: str | None = None) -> Appointment:
@@ -364,16 +376,16 @@ def confirm(session: Session, proposal_id: int, by: str, reason: str | None = No
         why += f"; bestätigt: „{reason}“"
     course = t.course
     before_course, before = workflow.course_snapshot(course), workflow.appointment_snapshot(t)
+    before_kept = workflow.termin_values(t)
     total = t.participants_total
     old_team = hints.team_of([t])
-    _apply(session, t, changes)
+    _apply(session, t, changes, by, why)
     session.flush()
     workflow._record(session, "courses", course.id, before_course, workflow.course_snapshot(course), by, why)
+    workflow._record(session, TABLE, t.id, before_kept, workflow.termin_values(t), by, why)
     workflow._record(session, TABLE, t.id, before, workflow.appointment_snapshot(t), by, why)
     if total != t.participants_total:
         workflow.log(session, t, "participants_total", total, t.participants_total, by, why)
-    if "place" in changes:
-        contacts.drop_if_elsewhere(session, course, by)
     _decide(proposal, CONFIRMED, by, reason)
     courses.renumber(session, course, by)
     hints.refresh(session, [a.id for a in course.appointments], extra_people=old_team)

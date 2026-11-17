@@ -499,7 +499,7 @@ def transfer(
     # The same session in both Lists would be counted twice: flag it, a person decides.
     by_day: dict[tuple, list[tuple[str, str]]] = defaultdict(list)
     for spec, label, appointment in created:
-        context = appointment.course.context.name if appointment.course.context else None
+        context = appointment.context.name if appointment.context else None
         if appointment.date and context:
             by_day[(appointment.date, context)].append((spec.kind, label))
     for (day, context), entries in sorted(by_day.items()):

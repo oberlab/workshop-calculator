@@ -10,7 +10,7 @@
 {% block heading %}{{ title }}{% endblock %}
 {% block subheading %}
 <p class="subheading">{% if t.number %}Termin {{ t.number }} · {% endif %}{{ day_text }}{% if t.start_time %} · {{ t.start_time.strftime("%H:%M") }}{% if t.end_time %}–{{ t.end_time.strftime("%H:%M") }}{% endif %}{% endif %}</p>
-<p class="subheading">{% if t.course.place %}{{ t.course.place.name }}{% endif %}{% if t.course.class_age_text %} · {{ t.course.class_age_text }}{% endif %}{% if t.lead %} · {{ t.lead.name }} (Leitung){% endif %}{% for p in t.support %}, {{ p.name }}{% endfor %}</p>
+<p class="subheading">{% if t.place %}{{ t.place.name }}{% endif %}{% if t.class_age_text %} · {{ t.class_age_text }}{% endif %}{% if t.lead %} · {{ t.lead.name }} (Leitung){% endif %}{% for p in t.support %}, {{ p.name }}{% endfor %}</p>
 {% endblock %}
 
 {# One count with minus and plus. #}
@@ -36,7 +36,7 @@
 
 {% elif not gaps.any %}
 {% call ui.panel() %}
-{{ ui.empty_state("Alles eingetragen.", "Teilnehmende" ~ (" und Herkunft" if t.course.context and t.course.context.asks_municipalities else "") ~ " sind da. Ändern geht auf der Kursseite.") }}
+{{ ui.empty_state("Alles eingetragen.", "Teilnehmende" ~ (" und Herkunft" if t.context and t.context.asks_municipalities else "") ~ " sind da. Ändern geht auf der Kursseite.") }}
 <p class="after-summary"><span>Teilnehmende: <b class="mono">{{ total }}</b></span>{% for name, label in participant_fields if t[name] is not none %}<span>{{ label }} {{ t[name] }}</span>{% endfor %}</p>
 <p class="after-links"><a href="{{ course_href }}">Zum Kurs</a> · <a href="/mein-bereich">Mein Bereich</a></p>
 {% endcall %}

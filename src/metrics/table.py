@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from metrics import analytics, metrics
-from metrics.db import Appointment, Course, Format, Person, Place, appointment_support
+from metrics.db import Appointment, Format, Person, Place, appointment_support
 
 
 @dataclass(frozen=True)
@@ -143,7 +143,7 @@ def rows(
         today,
         school_year_start_month,
         Appointment,
-        Course.class_age_text,
+        metrics.CLASS_AGE_TEXT,
         metrics.CATEGORY,
         metrics.CONTEXT,
         metrics.TARGET_GROUP,

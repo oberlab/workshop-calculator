@@ -112,6 +112,9 @@ def _load_appointments(stmt):
         selectinload(Appointment.course).selectinload(Course.format),
         selectinload(Appointment.course).selectinload(Course.context),
         selectinload(Appointment.course).selectinload(Course.place),
+        selectinload(Appointment.frozen_format),
+        selectinload(Appointment.frozen_context),
+        selectinload(Appointment.frozen_place),
         selectinload(Appointment.lead),
         selectinload(Appointment.support),
         selectinload(Appointment.alternatives),
@@ -152,7 +155,8 @@ def open_hints(session: Session, ids: list[int]) -> dict[int, list[StoredHint]]:
 
 
 def _filtered(session: Session, params, me: Person | None):
-    """The list's filters as a select of Termine (without the stage)."""
+    """The list's filters as a select of Termine (without the stage); context, place and category are
+    the Termin's own (WM-135: what it kept, else its course's)."""
     stmt = select(Appointment).join(Course, Course.id == Appointment.course_id)
     person = params.get("person") or ""
     person_id = (me.id if me else -1) if person == "ich" else _int(person)
@@ -166,11 +170,11 @@ def _filtered(session: Session, params, me: Person | None):
     if day := _date(params.get("bis")):
         stmt = stmt.where(Appointment.date <= day)
     if context_id := _int(params.get("kontext")):
-        stmt = stmt.where(Course.context_id == context_id)
+        stmt = stmt.where(Appointment.context_id == context_id)
     if place_id := _int(params.get("ort")):
-        stmt = stmt.where(Course.place_id == place_id)
+        stmt = stmt.where(Appointment.place_id == place_id)
     if category := params.get("kategorie"):
-        stmt = stmt.where(Course.format_id.in_(select(Format.id).where(Format.category == category)))
+        stmt = stmt.where(Appointment.format_id.in_(select(Format.id).where(Format.category == category)))
     if levels := HINT_FILTERS.get(params.get("hinweise") or ""):
         with_hint = select(StoredHint.appointment_id).where(
             StoredHint.level.in_(levels), StoredHint.blocking | ~hints._is_accepted()
@@ -393,6 +397,7 @@ def course_context(
         ]
         warnings = workflow.open_warnings(session, t)
     history = workflow.history(session, course) if not new else []
+    editable = workflow.editable(t) if not new else workflow.EDITABLE[GEPLANT]
     later = series.following(t) if t.id and t.stage in series.PLANNING else []
     last = next((a for a in reversed(termine) if a.date), None)
     return {
@@ -422,14 +427,18 @@ def course_context(
         "title": workflow.title_of_course(course) if not new else "Neuer Kurs",
         "steps": STEPS,
         "next_action": NEXT_ACTION.get(t.stage),
-        "editable": workflow.editable(t) if not new else workflow.EDITABLE[GEPLANT],
+        "editable": editable,
         # Whether the form has anything to save (Abgeschlossen: only "Abgerechnet", saved apart).
         "form_on": new or t.stage in workflow.OPEN_STAGES,
-        "locked_course": workflow.course_locked(course) if not new else False,
+        # Kept course values (WM-135): a change of the course leaves Abgeschlossen Termine as they are.
+        "closed_termine": courses.has_closed(course) if not new else False,
+        "course_open": courses.has_open(course) if not new else False,
+        "kept": workflow.kept_differences(t) if not new else [],
+        "kept_by_termin": {a.id: workflow.kept_differences(a) for a in termine if a.id},
         "pickers": _pickers(session, course),
         "pickable": _pickable(session, t),
         "equipment": _equipment(session, t),
-        "class_kind": workflow.class_kind(course),
+        "class_kind": workflow.class_kind(course if workflow.COURSE in editable else t),
         "class_kinds": workflow.CLASS_KINDS,
         "at_school": workflow.AT_SCHOOL,
         "age_bands": workflow.AGE_BANDS,
@@ -977,9 +986,9 @@ def correction_context(session: Session, t: Appointment) -> dict:
         "on": True,
         "open": [(p, corrections.changes(p)) for p in corrections.open_for(session, [t.id])],
         "entries": [
-            ("format", "Format", options(lists.FORMATS, course.format_id), course.format_id),
-            ("context", "Kontext", options(lists.CONTEXTS, course.context_id), course.context_id),
-            ("place", "Ort", options(lists.PLACES, course.place_id), course.place_id),
+            ("format", "Format", options(lists.FORMATS, t.format_id), t.format_id),
+            ("context", "Kontext", options(lists.CONTEXTS, t.context_id), t.context_id),
+            ("place", "Ort", options(lists.PLACES, t.place_id), t.place_id),
         ],
         "people": _pickable(session, t),
         "only_total": corrections.only_total(t),

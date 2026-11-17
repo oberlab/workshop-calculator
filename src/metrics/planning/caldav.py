@@ -409,12 +409,11 @@ def expected_event(
     """
     if not (t.date and t.start_time and t.end_time):
         return None
-    course = t.course
     status = {GEPLANT: "TENTATIVE", ABGESAGT: "CANCELLED"}.get(t.stage, "CONFIRMED")
     names = lambda role: ", ".join(p.name for p, r in _team(t) if r == role) or "–"  # noqa: E731
     lines = [
-        f"Kontext: {course.context.name if course.context else '–'}",
-        f"Klasse/Alter: {course.class_age_text or '–'}",
+        f"Kontext: {t.context.name if t.context else '–'}",
+        f"Klasse/Alter: {t.class_age_text or '–'}",
         f"Kursleitung: {names('Kursleitung')}",
         f"Unterstützung: {names('Unterstützung')}",
         f"Termin-ID: {t.id}",
@@ -422,9 +421,9 @@ def expected_event(
     if t.stage == ABGESAGT and t.cancel_reason:
         lines.insert(0, f"Abgesagt: {t.cancel_reason}")
     if base:
-        lines.append(f"{LINK_LINE}{base}/planung/{course.id}?termin={t.id}")
+        lines.append(f"{LINK_LINE}{base}/planung/{t.course_id}?termin={t.id}")
     title = hints.title(t)
-    place = course.place.name if course.place else None
+    place = t.place.name if t.place else None
     event = Event(
         uid=uid or t.calendar_uid or new_uid(t),
         summary=" · ".join(x for x in (title, place) if x),

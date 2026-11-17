@@ -54,7 +54,7 @@
       {{ ui.hint_badge(badge[task.level], task.badge if task.badge != task.level else none) }}
       <div class="queue-body">
         <p class="queue-title">{{ task.text }}</p>
-        <p class="queue-meta"><span>{{ titles[t.id] }}</span><span class="mono">{{ t.date|day }}</span>{% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}{% if task.more %}<span>+{{ task.more }} {{ "weitere Hinweise" if task.more > 1 else "weiterer Hinweis" }}</span>{% endif %}</p>
+        <p class="queue-meta"><span>{{ titles[t.id] }}</span><span class="mono">{{ t.date|day }}</span>{% if t.place %}<span>{{ t.place.name }}</span>{% endif %}{% if task.more %}<span>+{{ task.more }} {{ "weitere Hinweise" if task.more > 1 else "weiterer Hinweis" }}</span>{% endif %}</p>
       </div>
       {{ ui.button(task.action, href=task.href, kind="primary" if task.level == "Kritisch" else "secondary", size="sm", attrs={"aria-label": task.action ~ ": " ~ titles[t.id] ~ ", " ~ (t.date|day)}) }}
     </li>
@@ -69,7 +69,7 @@
   {% if termine %}
   <div class="cards">
     {% for t in termine %}
-    {% call ui.card(t.date, titles[t.id], [when(t), t.course.place.name if t.course.place else none, t.course.class_age_text], stage=t.stage|stage_key, href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) %}{{ ui.stage_pill(t.stage|stage_key, t.stage) }}<span>{{ "Leitung" if t.lead_id == me.id else "Unterstützung" }}</span>{% if t.lead and t.lead_id != me.id %}<span>mit {{ t.lead.name }}</span>{% endif %}{% endcall %}
+    {% call ui.card(t.date, titles[t.id], [when(t), t.place.name if t.place else none, t.class_age_text], stage=t.stage|stage_key, href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) %}{{ ui.stage_pill(t.stage|stage_key, t.stage) }}<span>{{ "Leitung" if t.lead_id == me.id else "Unterstützung" }}</span>{% if t.lead and t.lead_id != me.id %}<span>mit {{ t.lead.name }}</span>{% endif %}{% endcall %}
     {% endfor %}
   </div>
   <p class="help"><a href="/planung?person=ich&amp;von={{ today.isoformat() }}">Alle meine Termine in der Kursliste</a></p>

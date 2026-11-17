@@ -66,8 +66,8 @@ def exact(value: Decimal | float | int) -> str:
 def course_hours(t: Appointment) -> Decimal | None:
     """Ende minus Beginn, else the recorded duration, else the Format's usual duration."""
     hours = hints.duration(t)
-    if hours is None and t.course is not None and t.course.format is not None:
-        hours = t.course.format.duration_hours
+    if hours is None and t.course is not None and t.format is not None:
+        hours = t.format.duration_hours
     return Decimal(hours) if hours is not None else None
 
 
@@ -118,12 +118,19 @@ TERMS = {
 }
 
 
-def values(course: Course | None, workload: WorkloadRule | None = None, own_values: bool = True) -> Values:
+def values(
+    course: Course | None,
+    workload: WorkloadRule | None = None,
+    own_values: bool = True,
+    t: Appointment | None = None,
+) -> Values:
     """The rule for this course: its own value, else the Format's or place's, else the default.
-    Without `own_values`: what the course inherits (the course page shows it for empty fields)."""
+    Without `own_values`: what the course inherits (the course page shows it for empty fields).
+    With a Termin `t`: its Format and place (the ones it kept, WM-135)."""
     w = workload or rule()
-    fmt = course.format if course is not None else None
-    place = course.place if course is not None else None
+    holder = t if t is not None else course
+    fmt = holder.format if holder is not None else None
+    place = holder.place if holder is not None else None
 
     def own(name: str) -> tuple[Decimal | None, str, None]:
         return (getattr(course, name) if course is not None and own_values else None, OWN, None)
@@ -162,7 +169,7 @@ class Estimate:
 
 
 def estimate(t: Appointment, role: str, workload: WorkloadRule | None = None) -> Estimate:
-    v = values(t.course, workload)
+    v = values(t.course, workload, t=t)
     if role == LEAD:
         parts = (v.lead_factor, v.preparation_factor, v.lead_overhead)
     else:
@@ -348,7 +355,7 @@ def own_values(appointments: Iterable[Appointment]) -> list[tuple[Course, list[s
     for t in counted(appointments):
         if t.course is None or t.course_id in found:
             continue
-        v = values(t.course)
+        v = values(t.course, t=t)
         own = [f"{TERMS[n]} {show(n, x)}" for n, x in vars(v).items() if x.source == OWN]
         if own:
             found[t.course_id] = (t.course, own)

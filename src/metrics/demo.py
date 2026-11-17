@@ -802,9 +802,7 @@ class _Builder:
             (
                 t
                 for t in self.termine
-                if t.stage == ABGESCHLOSSEN
-                and t.course.context.name == SCHOOL
-                and (t.participants_male or 0) > 1
+                if t.stage == ABGESCHLOSSEN and t.context.name == SCHOOL and (t.participants_male or 0) > 1
             ),
             key=lambda t: (t.date, t.id),
         )

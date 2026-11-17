@@ -100,7 +100,7 @@
   <tr data-termin="{{ t.id }}">
     <td class="mono">{{ t.date|day }}</td>
     <td><a href="/planung/{{ t.course_id }}">{{ name }}</a></td>
-    <td>{{ t.course.context.name if t.course.context else "–" }}</td>
+    <td>{{ t.context.name if t.context else "–" }}</td>
     <td>{{ ui.stage_pill(t.stage|stage_key, t.stage) }}</td>
   </tr>
   {% endfor %}

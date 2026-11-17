@@ -24,6 +24,8 @@ Die Zahl neben „Mein Bereich“ in der Seitenleiste ist die Zahl deiner offene
 
 **+ Neuer Kurs** (Seitenleiste oder oben rechts). Ein Kurs hat gemeinsame **Eckdaten** (Format, Kontext, Ort), **Klasse/Alter** und eine Notiz, und einen oder mehrere **Termine** mit Datum, Beginn, Ende, Team, Material und Teilnehmenden.
 
+Die Eckdaten und Klasse/Alter lassen sich bei jedem offenen Termin ändern, auch wenn andere Termine des Kurses schon abgeschlossen sind. Die Änderung gilt dann für die offenen Termine; abgeschlossene (und abgesagte) behalten ihre Angaben, die Kennzahlen bleiben also gleich. In der Terminliste stehen solche Termine mit „eigene Angaben“.
+
 - **Format, Kontext, Ort** werden aus Listen gewählt. Fehlt ein Eintrag, **Neu vorschlagen**: er ist sofort nutzbar, ein Admin bestätigt ihn aber, bevor ein Termin abgeschlossen werden kann.
 - **Klasse/Alter:** Schulklasse (Klassenstufe), Lehrkräfte, Durchschnittsalter (Kinder) oder Altersgruppe (Erwachsene). An einer Schule gehen nur Schulklasse oder Lehrkräfte.
 - **Team:** Kursleitung und Unterstützung. Wer zur selben Zeit schon eingeplant ist, steht in der Auswahl als „belegt“.
@@ -85,7 +87,7 @@ Manche Hinweise **blockieren „Final bestätigen“**, bis die Angaben stimmen:
 
 ## Eine Korrektur vorschlagen
 
-Abgeschlossene Termine zählen in den Kennzahlen und sind gesperrt. Stimmt etwas nicht (z. B. die Liste der Lehrerin kam nachträglich), auf der Kursseite im Kasten **Korrektur vorschlagen** auf **Korrektur vorschlagen …** klicken, die richtigen Werte und einen Grund eintragen. Die Änderung gilt erst, wenn ein Admin sie unter „Prüfen“ bestätigt; bis dahin ändert sich nichts. Je Termin wartet höchstens eine Korrektur.
+Abgeschlossene Termine zählen in den Kennzahlen und sind gesperrt. Stimmt etwas nicht (z. B. die Liste der Lehrerin kam nachträglich), auf der Kursseite im Kasten **Korrektur vorschlagen** auf **Korrektur vorschlagen …** klicken, die richtigen Werte und einen Grund eintragen. Die Änderung gilt erst, wenn ein Admin sie unter „Prüfen“ bestätigt; bis dahin ändert sich nichts. Je Termin wartet höchstens eine Korrektur. Eine Korrektur von Format, Kontext, Ort oder Klasse/Alter ändert nur diesen Termin, nie den Kurs und seine anderen Termine; die Notiz gehört zum Kurs.
 
 ## Team
 

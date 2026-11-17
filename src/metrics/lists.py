@@ -280,7 +280,12 @@ def usage(session: Session, kind: Kind, ids: list[int] | None = None) -> dict[in
         if ids is not None:
             stmt = stmt.where(item.in_(ids))
     else:
-        column = {PLACES: Course.place_id, CONTEXTS: Course.context_id, FORMATS: Course.format_id}[kind]
+        # The Termin's effective entry (WM-135); a course without Termine counts with its own.
+        column = {
+            PLACES: Appointment.place_id,
+            CONTEXTS: Appointment.context_id,
+            FORMATS: Appointment.format_id,
+        }[kind]
         stmt = (
             select(column, func.count(func.distinct(Course.id)), func.count(Appointment.id), final)
             .select_from(Course)
@@ -384,9 +389,10 @@ def with_contexts(session: Session, instance: Instance) -> Instance:
     return replace(instance, projects=projects(session), teacher_contexts=teacher_contexts(session))
 
 
-def course_target_group(course: Course) -> str:
+def course_target_group(course: Course | Appointment) -> str:
     """The target-group rule for a course on the new model: its stored class/age, its context's
-    teacher-training flag and its place's school flag (the same rule the imports used)."""
+    teacher-training flag and its place's school flag (the same rule the imports used). Given a Termin,
+    the rule runs on its effective values (WM-135)."""
     class_age = ClassAge(
         class_level=course.class_level,
         age=course.age,
@@ -413,6 +419,26 @@ def _recompute_target_groups(session: Session, courses, by: str, reason: str) ->
     return changed
 
 
+# The column of a Termin's frozen course values (WM-135) that points at an entry of each list.
+FROZEN_COLUMNS = {"orte": "frozen_place_id", "kontexte": "frozen_context_id", "formate": "frozen_format_id"}
+
+
+def frozen_using(session: Session, kind: Kind, entry_id: int) -> list[Appointment]:
+    """Termine with frozen course values (WM-135) that name this entry."""
+    column = getattr(Appointment, FROZEN_COLUMNS[kind.slug])
+    stmt = select(Appointment).where(Appointment.frozen_at.is_not(None), column == entry_id)
+    return list(session.scalars(stmt.order_by(Appointment.id)))
+
+
+def _recompute_frozen_target_groups(session: Session, appointments, by: str, reason: str) -> None:
+    """The frozen target group follows a list entry's changed flags, like a course's does."""
+    for t in appointments:
+        new = course_target_group(t)
+        if new != t.frozen_target_group:
+            _log(session, "appointments", t.id, "target_group", t.frozen_target_group, new, by, reason)
+            t.frozen_target_group = new
+
+
 # --- Final confirmation of a Termin waits for its list entries -------------------------------
 
 
@@ -435,13 +461,12 @@ class Pending:
 
 
 def pending_entries(appointment: Appointment) -> list[Pending]:
-    """The list entries of a Termin (its course's place, context and format, its lead and support)
-    that are not confirmed. Final confirmation waits until this is empty."""
-    course = appointment.course
+    """The list entries of a Termin (its place, context and format, its lead and support) that are not
+    confirmed. Final confirmation waits until this is empty."""
     used = [
-        ("Ort", PLACES, course.place),
-        ("Kontext", CONTEXTS, course.context),
-        ("Format", FORMATS, course.format),
+        ("Ort", PLACES, appointment.place),
+        ("Kontext", CONTEXTS, appointment.context),
+        ("Format", FORMATS, appointment.format),
         ("Kursleitung", PEOPLE, appointment.lead),
         *(("Unterstützung", PEOPLE, person) for person in appointment.support),
     ]
@@ -798,7 +823,9 @@ def update(session: Session, kind: Kind, entry, values: dict, by: str, admin: bo
     if {"is_school", "teacher_training"} & set(changed):
         column = Course.place_id if kind is PLACES else Course.context_id
         courses = session.scalars(select(Course).where(column == entry.id))
-        _recompute_target_groups(session, courses, by, f"{kind.singular} „{label(entry)}“ geändert")
+        why = f"{kind.singular} „{label(entry)}“ geändert"
+        _recompute_target_groups(session, courses, by, why)
+        _recompute_frozen_target_groups(session, frozen_using(session, kind, entry.id), by, why)
     return changed
 
 
@@ -886,11 +913,17 @@ def merge(session: Session, kind: Kind, entry, target, by: str, reason: str | No
         for course in courses:
             _log(session, "courses", course.id, column, entry.id, target.id, by, why)
             setattr(course, column, target.id)
+        # Termine that kept their course values (WM-135) move as well: a merge says it is one entry.
+        frozen = frozen_using(session, kind, entry.id)
+        for t in frozen:
+            _log(session, "appointments", t.id, column, entry.id, target.id, by, why)
+            setattr(t, FROZEN_COLUMNS[kind.slug], target.id)
         session.flush()
-        for course in courses:
-            session.refresh(course)
+        for row in [*courses, *frozen]:
+            session.refresh(row)
         if kind in (PLACES, CONTEXTS):
             _recompute_target_groups(session, courses, by, why)
+            _recompute_frozen_target_groups(session, frozen, by, why)
         if kind is PLACES:
             from metrics import contacts  # contacts imports this module
 
