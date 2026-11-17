@@ -54,7 +54,7 @@
   {{ ui.kpi_tile("Teilnehmende", id="total-participants", sup="*") }}
   {{ ui.kpi_tile("Orte", id="total-locations") }}
 </dl>
-<p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Bei fortlaufenden Formaten (z.&nbsp;B. JuLab, Repair Café) zählt jeder Termin. Einträge ohne Terminnummer zählen nicht mit.</p>
+<p class="footnote"><sup>*</sup> Teilnehmende werden nur beim ersten Termin eines Kurses gezählt (Terminnummer 1), damit Kinder in mehrteiligen Kursen nicht mehrfach zählen. Bei fortlaufenden Formaten (z.&nbsp;B. offene Werkstatt, Repair Café) zählt jeder Termin. Einträge ohne Terminnummer zählen nicht mit.</p>
 {% endif %}
 <p id="meta" class="meta"></p>
 {% if panel %}</section>{% endif %}
@@ -66,7 +66,7 @@
    them are listed below the tiles. #}
 {% set KPIS = [
   ("sessions", "Einsätze", "Durchgeführte Termine: final bestätigt (Abgeschlossen) und mit Datum."),
-  ("participants", "Teilnehmende", "Gezählt beim Termin mit Terminnummer 1, damit Kinder in mehrteiligen Kursen nicht mehrfach zählen; bei fortlaufenden Formaten (z. B. JuLab, Repair Café) bei jedem Termin. Termine ohne Terminnummer zählen nicht."),
+  ("participants", "Teilnehmende", "Gezählt beim Termin mit Terminnummer 1, damit Kinder in mehrteiligen Kursen nicht mehrfach zählen; bei fortlaufenden Formaten (z. B. offene Werkstatt, Repair Café) bei jedem Termin. Termine ohne Terminnummer zählen nicht."),
   ("places", "Orte", "Verschiedene Orte mit mindestens einem Einsatz."),
   ("hours", "Stunden", "Kursstunden: Summe der Dauer (Ende minus Beginn) aller Einsätze, gerundet. Nicht die geschätzte Arbeitszeit des Teams; Termine ohne Dauer zählen nicht."),
   ("schools", "Schulen erreicht", "Verschiedene Orte, die als Schule eingetragen sind, mit mindestens einem Einsatz."),
