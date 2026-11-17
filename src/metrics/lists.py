@@ -462,6 +462,7 @@ class Field:
     type: str = "text"  # text, yesno, school_type, bool, number, count, email, category
     required: bool = False  # for a new proposal
     help: str | None = None
+    limit: int | None = None  # the largest whole number of a "count" (default MAX_COUNT)
 
 
 FIELDS: dict[Kind, tuple[Field, ...]] = {
@@ -501,8 +502,20 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("email", "E-Mail", "email", help="Verknüpft die Anmeldung beim ersten Login"),
         Field("slack_id", "Slack-ID", help="Mitglieds-ID aus dem Slack-Profil, z. B. U012AB3CD"),
         Field("kimai_user", "Kimai-Nutzer"),
+        Field(
+            "kimai_user_id",
+            "Kimai-Nutzer-ID",
+            "count",
+            help="Nur nötig, wenn die E-Mail in Kimai anders ist; die ID zeigt „metrics kimai-check“",
+            limit=999_999_999,
+        ),
         Field("active", "Aktiv im Team", "bool"),
-        Field("weekly_hours", "Wochenstunden", "number"),
+        Field(
+            "weekly_hours",
+            "Wochenstunden",
+            "number",
+            help="Kommt stündlich aus dem Arbeitsvertrag in Kimai, wenn Kimai ihn kennt",
+        ),
     ),
     EQUIPMENT: (
         Field("name", "Name", required=True, help="z. B. Calliope mini (Klassensatz-Geräte einzeln)"),
@@ -599,8 +612,9 @@ def parse(
         elif f.type == "count":
             values[f.name] = None
             if raw:
-                if not is_whole(raw) or int(raw) > MAX_COUNT:
-                    errors[f.name] = f"Bitte eine ganze Zahl zwischen 0 und {MAX_COUNT} eingeben."
+                limit = f.limit or MAX_COUNT
+                if not is_whole(raw) or int(raw) > limit:
+                    errors[f.name] = f"Bitte eine ganze Zahl zwischen 0 und {limit} eingeben."
                     continue
                 values[f.name] = int(raw)
         else:
@@ -670,6 +684,7 @@ def person_conflicts(session: Session, values: dict, exclude_id: int | None = No
     checks = (
         ("email", func.lower(Person.email) == str(values.get("email") or "").lower(), "E-Mail-Adresse"),
         ("slack_id", Person.slack_id == values.get("slack_id"), "Slack-ID"),
+        ("kimai_user_id", Person.kimai_user_id == values.get("kimai_user_id"), "Kimai-Nutzer-ID"),
     )
     for field, condition, what in checks:
         if not values.get(field):

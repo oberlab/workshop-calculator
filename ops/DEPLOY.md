@@ -61,6 +61,7 @@ The `scheduler` service runs from the app's image (`metrics scheduler`, code in 
 | `slack-weekly-status` | daily 09:00, sends on Monday | status to the team channel: this year's Einsätze and Teilnehmende and this week's Termine; a missed Monday is caught up on a later day of the same week, one message per week | no success for 26 h |
 | `slack-reminders` | daily 15:00 | DM to everyone on the team of a Bestätigt Termin of tomorrow: time, place, team, equipment | no success for 26 h |
 | `calendar` | every 15 minutes | the calendar check: pushes pending and failed event updates, marks missing or changed events, reads the answers to invitations, lists events without a Termin on "Prüfen"; never creates or deletes an event | no success for 45 min |
+| `kimai` | every hour | reads approved absences and contract weekly hours from Kimai Cloud (read only; off without `KIMAI_URL`/`KIMAI_TOKEN`); an absence that disappears is marked withdrawn, never deleted; refreshes the hints of the affected days | no success for 3 h |
 
 A job that never ran also counts as overdue; on the first start every job runs once. A failed daily job is tried again an hour later. Every run is a row in `job_runs` (with the error message on failure); `/healthz` shows each job's state (`ok`, `failed`, `overdue`) and its last success, and `"status": "degraded"` (still HTTP 200) when one is not ok. Its log: `docker compose logs scheduler`. A job can be run by hand: `docker compose run --rm scheduler metrics scheduler --run backup`.
 
@@ -188,6 +189,10 @@ CALDAV_URL=https://<nextcloud>/remote.php/dav/calendars/<user>/<calendar>/
 CALDAV_USERNAME=<app account>
 CALDAV_PASSWORD=<app password>
 CALDAV_ORGANIZER=<app account's e-mail address>
+
+# Kimai Cloud (WM-142, optional): a read-only account's API token; without both the import is off.
+KIMAI_URL=https://<name>.kimai.cloud
+KIMAI_TOKEN=<API token of the app's Kimai user>
 
 AUTH_MODE=oidc
 # The shared team password stays off on the server.

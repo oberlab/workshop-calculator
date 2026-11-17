@@ -1,6 +1,6 @@
 """Command line: `metrics load-legacy`, `sync-instructors`, `archive-slack`, `delete-slack`,
 `transfer-slack`, `hash-password`, `export-baseline`, `load-baseline`, `scheduler`, `hints`,
-`fake-calendar`, `demo-data`."""
+`fake-calendar`, `fake-kimai`, `kimai-check`, `demo-data`."""
 
 import argparse
 import getpass
@@ -170,6 +170,32 @@ def fake_calendar(args: argparse.Namespace) -> None:
     caldav_fake.main(["--host", args.host, "--port", str(args.port)])
 
 
+def fake_kimai(args: argparse.Namespace) -> None:
+    from metrics import kimai_fake
+
+    argv = ["--host", args.host, "--port", str(args.port)]
+    if args.today:
+        argv += ["--today", args.today.isoformat()]
+    kimai_fake.main(argv)
+
+
+def kimai_check(args: argparse.Namespace) -> None:
+    """Read Kimai's users and the app's people and print the matching and what the endpoints answer.
+    GET requests only; the database is only read. Names and e-mails go to the terminal, never a log."""
+    from metrics import kimai
+
+    client = kimai.client()
+    if client is None:
+        sys.exit("Kimai ist aus: KIMAI_URL und KIMAI_TOKEN fehlen.")
+    try:
+        with get_sessionmaker()() as session:
+            lines = kimai.check(session, client, args.today or hints.today())
+            session.rollback()
+    except kimai.KimaiError as error:
+        sys.exit(f"Kimai antwortet nicht wie erwartet: {error}")
+    print("\n".join(lines))
+
+
 def run_scheduler(args: argparse.Namespace) -> None:
     if not args.run:
         scheduler.serve()
@@ -268,7 +294,7 @@ def main() -> None:
     baseline.set_defaults(func=load_baseline_file)
 
     loop = commands.add_parser(
-        "scheduler", help="Run the scheduler loop (stage moves, hints, calendar, backup)"
+        "scheduler", help="Run the scheduler loop (stage moves, hints, calendar, Kimai, backup)"
     )
     loop.add_argument(
         "--run", choices=[job.name for job in scheduler.JOBS], help="run this one job now, then exit"
@@ -285,6 +311,21 @@ def main() -> None:
     fake.add_argument("--host", default="127.0.0.1")
     fake.add_argument("--port", type=int, default=5232)
     fake.set_defaults(func=fake_calendar)
+
+    fake_k = commands.add_parser(
+        "fake-kimai", help="Serve a fake Kimai with invented users and absences for local tries"
+    )
+    fake_k.add_argument("--host", default="127.0.0.1")
+    fake_k.add_argument("--port", type=int, default=8765)
+    fake_k.add_argument("--today", type=date.fromisoformat, help="day the absences lie around")
+    fake_k.set_defaults(func=fake_kimai)
+
+    check_k = commands.add_parser(
+        "kimai-check",
+        help="Show how Kimai's users match the people and what Kimai answers (read only, prints names)",
+    )
+    check_k.add_argument("--today", type=date.fromisoformat, help="day the absence window lies around")
+    check_k.set_defaults(func=kimai_check)
 
     demo = commands.add_parser(
         "demo-data",

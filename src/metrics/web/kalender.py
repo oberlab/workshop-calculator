@@ -4,7 +4,8 @@ in a side panel.
 - `GET /kalender`: `ansicht` (`woche`, default, or `monat`), `datum` (any day of the week or month
   to show, default today), and the filters `person` (an ID or `ich`), `kontext` and `phase` (empty
   for every stage but Abgesagt, or one of the course list's tabs). The month shows its calendar
-  weeks from Monday to Sunday. On phones the lanes become a list per day. `spuren=material` shows a
+  weeks from Monday to Sunday. On phones the lanes become a list per day. Days a person of a lane is
+  away in Kimai (WM-142) are grey, with the kind only in the viewer's own lane. `spuren=material` shows a
   lane per piece of equipment instead (WM-140): what the Termine of each day need together, over all
   Termine but the cancelled ones (availability is the whole team's, so the filters do not apply).
 - `GET /kalender/termin/{id}`: the summary of a Termin's course for the side panel (an htmx
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from metrics import equipment, hints, lists
 from metrics.db import Appointment, Context, get_sessionmaker
-from metrics.planning import lanes, workflow
+from metrics.planning import lanes, workflow, workload
 from metrics.planning.mine import monday_of
 from metrics.web import planning
 from metrics.web.common import page, templates, today
@@ -109,7 +110,8 @@ def calendar(request: Request):
         else:
             shown = termine(session, params, me, start, end)
             only = (me.id if me else -1) if person == "ich" else planning._int(person)
-            weeks = lanes.weeks(shown, start, end, only)
+            away = workload.absences(session, start, end, me.id if me else None)
+            weeks = lanes.weeks(shown, start, end, only, absences=away)
         found = planning.open_hints(session, [t.id for t in shown])
         list_query = {
             "phase": params.get("phase") or planning.ALL,

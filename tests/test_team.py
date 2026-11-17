@@ -216,11 +216,11 @@ def test_page_shows_lanes_for_the_team_and_the_formula(week, monkeypatch):
 
 
 def test_absences_hook_greys_out_lanes_and_who_is_free(week, monkeypatch):
-    """Until WM-142 nobody is absent; once the hook returns something, lanes and "Wer ist frei?"
-    show it."""
+    """Without absences from Kimai nobody is absent; once there are some, lanes and "Wer ist frei?"
+    show them (WM-142 fills them from Kimai, see tests/test_kimai.py)."""
     w, _ = week
     assert workload.absences(w.db, NEXT_MONDAY, NEXT_MONDAY) == {}
-    monkeypatch.setattr(workload, "absences", lambda s, a, b: {w.sam.id: {TUESDAY: "Urlaub"}})
+    monkeypatch.setattr(workload, "absences", lambda s, a, b, own=None: {w.sam.id: {TUESDAY: "Urlaub"}})
     html = _as(monkeypatch, "Kim", "kc-kim").get(f"/team?datum={NEXT_MONDAY}&frei={TUESDAY}").text
     assert '<span class="cal-absent">Urlaub</span>' in html
     assert f'data-absent="{w.sam.id}"' in html and f'<li data-person="{w.sam.id}">' not in html

@@ -96,6 +96,7 @@ LEFT_EMPTY = {
     "calendar_orphans": "calendar fields stay empty (no calendar server)",
     "slack_messages": "written by the scheduler when it sends a message",
     "job_runs": "written by the scheduler",
+    "absences": "written by the Kimai job (try it with `metrics fake-kimai`)",
     "login_sessions": "written at login",
 }
 

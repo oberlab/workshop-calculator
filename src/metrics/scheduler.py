@@ -6,7 +6,7 @@ JOBS whether it is due and runs the due ones one after the other. Each run is a 
 so a restart neither skips nor repeats a run. A job that raises is recorded as failed and
 logged; the loop goes on. SIGTERM and SIGINT stop the loop after the job that is running.
 
-Adding a job (e.g. Kimai WM-142): write a function
+Adding a job (e.g. `kimai`, WM-142): write a function
 `(now: datetime) -> str` that does the work in its own database session and returns a short
 message for `job_runs`, then add a `Job` with a schedule to JOBS. `/healthz` picks it up.
 
@@ -182,6 +182,19 @@ def slack_weekly_status(now: datetime) -> str:
     return messages.send_weekly_status(now)
 
 
+def sync_kimai(now: datetime) -> str:
+    """Absences and weekly hours from Kimai (WM-142); without KIMAI_URL and KIMAI_TOKEN it does nothing."""
+    from metrics import kimai
+
+    kimai_client = kimai.client()
+    if kimai_client is None:
+        log.info("Kimai is off")
+        return kimai.OFF
+    with get_sessionmaker()() as session, session.begin():
+        result = kimai.sync(session, kimai_client, now.astimezone(LOCAL).date(), now)
+    return result.summary()
+
+
 def nightly_backup(now: datetime) -> str:
     settings = get_settings()
     day = now.astimezone(LOCAL).date()
@@ -197,6 +210,7 @@ JOBS: tuple[Job, ...] = (
     Job("slack-after-course", SLACK_MORNING, slack_after_course),
     Job("slack-weekly-status", SLACK_MORNING, slack_weekly_status),
     Job("slack-reminders", SLACK_AFTERNOON, slack_reminders),
+    Job("kimai", Every(timedelta(hours=1)), sync_kimai),
     Job("calendar", Every(timedelta(minutes=15)), check_calendar),
 )
 

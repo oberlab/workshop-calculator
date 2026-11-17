@@ -129,6 +129,20 @@ uv run metrics fake-calendar --port 5232     # outbox of would-be e-mails: http:
 CALDAV_URL=http://127.0.0.1:5232/cal/ CALDAV_ORGANIZER=planung@example.org ...
 ```
 
+### Absences and weekly hours from Kimai
+
+With `KIMAI_URL` and `KIMAI_TOKEN` (a read-only Kimai Cloud account) the scheduler reads every hour each person's approved absences and the weekly hours of their working contract; people are matched by the Kimai user an admin assigned on the Personen page, else by e-mail. Absences show on the Team page and in the calendar, mark people in the team pickers, and a Termin with an absent person gets a Kritisch hint. The app never writes to Kimai and never deletes an absence: one that disappears from Kimai is marked as withdrawn. Every assumption about Kimai's API is in `src/metrics/kimai_map.py`; `metrics kimai-check` prints the matching and what the endpoints answer (read only).
+
+To try it without Kimai, run the fake with invented users matching `metrics demo-data`:
+
+```sh
+uv run metrics fake-kimai --port 8765        # prints KIMAI_URL and KIMAI_TOKEN; state: http://127.0.0.1:8765/_state
+KIMAI_URL=http://127.0.0.1:8765/api KIMAI_TOKEN=fake-kimai-token uv run metrics kimai-check
+KIMAI_URL=... KIMAI_TOKEN=... uv run metrics scheduler --run kimai
+curl -X POST 'http://127.0.0.1:8765/_abwesenheit?email=kim.beispiel@example.org&date=2026-11-20'
+curl -X POST 'http://127.0.0.1:8765/_wochenstunden?email=kim.beispiel@example.org&hours=10'
+```
+
 ## Command line
 
 `metrics <command>`, inside the container `docker compose run --rm app metrics <command>` (or `docker compose exec app …` while the app runs), locally `uv run metrics <command>`. `metrics <command> --help` lists the options.
@@ -140,7 +154,9 @@ CALDAV_URL=http://127.0.0.1:5232/cal/ CALDAV_ORGANIZER=planung@example.org ...
 | `hints [--today DATE]` | Recomputes every hint, as the nightly job does, and prints the count per rule. |
 | `demo-data [--seed N] [--today DATE] [--reset]` | Fills an empty throwaway database with demo data (see above). |
 | `fake-calendar [--host H] [--port P]` | A fake CalDAV server for local tries, with an outbox instead of e-mail. |
-| `sync-instructors` | Fetches names and profile pictures of the instructors from Slack (needs `SLACK_BOT_TOKEN` with `users:read`, and `SLACK_LIST_ID` set). |
+| `fake-kimai [--host H] [--port P]` | A fake Kimai Cloud API for local tries (invented users matching `demo-data`). |
+| `kimai-check` | Read only: shows which people match a Kimai user and what the Kimai endpoints answer. |
+| `sync-instructors` | Fetches names and profile pictures of the instructors from Slack (needs `SLACK_BOT_TOKEN` with `users:read`). |
 | `export-baseline --harmonised CSV --slack-export CSV --out FILE` | Writes the reviewed legacy data into one baseline CSV and prints its sha256. |
 | `load-baseline CSV --version NAME [--sha256 HASH]` | Loads the baseline once and freezes it. |
 | `load-legacy [--harmonised CSV …] [--slack-export CSV …]` | Replaces all legacy rows with the given CSV files (only entries after the baseline). |

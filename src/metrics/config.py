@@ -32,6 +32,10 @@ class Settings:
     caldav_username: str | None = None
     caldav_password: str | None = None
     caldav_organizer: str | None = None
+    # Kimai Cloud (WM-142): absences and weekly hours, read hourly by the scheduler with the API token
+    # of a read-only account. Without both the Kimai job does nothing. Never log the token.
+    kimai_url: str | None = None
+    kimai_token: str | None = None
     # Nightly dumps of the scheduler (WM-103); the only directory the scheduler writes to.
     backup_dir: Path = Path("backups/nightly")
 
@@ -64,6 +68,8 @@ def get_settings() -> Settings:
         caldav_username=os.environ.get("CALDAV_USERNAME") or None,
         caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
         caldav_organizer=os.environ.get("CALDAV_ORGANIZER") or None,
+        kimai_url=(os.environ.get("KIMAI_URL") or "").strip().rstrip("/") or None,
+        kimai_token=(os.environ.get("KIMAI_TOKEN") or "").strip() or None,
         backup_dir=Path(os.environ.get("BACKUP_DIR") or "backups/nightly"),
     )
 

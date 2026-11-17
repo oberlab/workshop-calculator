@@ -3,9 +3,9 @@
 `GET /team` (Team route, `access.py`), read only:
 - `ansicht` (`woche`, default, or `monat`) and `datum` (any day of the week or month, default
   today): the calendar lanes, one per active team member and anyone else with a Termin, every
-  stage but Abgesagt (the calendar's lanes and side panel, `_lanes.html`); absences as grey
-  blocks once WM-142 fills `workload.absences`. Below them the equipment lanes of the same days
-  (WM-140), when there is a Material list.
+  stage but Abgesagt (the calendar's lanes and side panel, `_lanes.html`); absences from Kimai
+  (WM-142) as grey blocks, with the kind only in the viewer's own lane. Below them the equipment
+  lanes of the same days (WM-140), when there is a Material list.
 - The workload table per person and calendar week: four weeks from the week shown, or the weeks
   of the month shown, with the estimated working hours (`metrics.planning.workload`) against the
   person's weekly hours, and the formula in words.
@@ -57,12 +57,14 @@ def team(request: Request):
         return "/team?" + urlencode({k: v for k, v in query.items() if v})
 
     with get_sessionmaker()() as session:
+        me = planning._me(session, request)
+        own = me.id if me else None
         team_people = lists.choices(session, lists.PEOPLE)
         shown = workload.termine(session, start, max(end, table_end))
         in_lanes = [t for t in shown if start <= t.date <= end]
-        away = workload.absences(session, start, max(end, table_end))
+        away = workload.absences(session, start, end, own)
         found = planning.open_hints(session, [t.id for t in in_lanes])
-        rows = workload.table(session, team_people, start, weeks, shown)
+        rows = workload.table(session, team_people, start, weeks, shown, own)
         # Equipment lanes (WM-140) for the same days, when there is a Material list.
         items = equipment.listed(session)
         booked = equipment.booked_between(session, start, end) if items else []
@@ -88,7 +90,7 @@ def team(request: Request):
                 "scale": max([float(c.total) for r in rows for c in r.cells] + [1.0]),
                 "formula": workload.formula(),
                 "own_values": [(c, workflow.title_of_course(c), v) for c, v in workload.own_values(shown)],
-                "free": workload.who_is_free(session, free_day, free_start, free_end),
+                "free": workload.who_is_free(session, free_day, free_start, free_end, own),
                 "top": {i: hs[0] for i, hs in found.items()},
                 "badge": hints.BADGE,
                 "titles": {t.id: workflow.title(t) for t in in_lanes + booked},
