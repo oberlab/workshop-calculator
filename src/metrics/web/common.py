@@ -113,6 +113,7 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
         "login": login,
         "nav": nav.sidebar(login, request.url.path, counts, projects, front=hosts.front_href(request)),
         "front_href": hosts.front_href(request),
+        "brand": hosts.brand(request),
         "login_href": hosts.login_href(request),
         "auth_off": auth.mode() == "off",
         "path": request.url.path,

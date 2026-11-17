@@ -14,12 +14,12 @@
 <body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
 <a class="skip-link" href="#main">Zum Inhalt springen</a>
 <header class="topbar">
-  <a class="brand" href="/">Zahlen</a>
+  <a class="brand" href="/">{{ brand }}</a>
   <button type="button" class="menu-button" aria-expanded="false" aria-controls="sidebar" data-menu-toggle><span class="menu-icon" aria-hidden="true"></span>Menü</button>
 </header>
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="Navigation">
-    <a class="brand" href="/">Zahlen</a>
+    <a class="brand" href="/">{{ brand }}</a>
     <section class="account" aria-label="Anmeldung">
       {% if login %}
       <div class="account-user">

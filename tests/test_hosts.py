@@ -78,6 +78,7 @@ def test_front_page_links_to_the_team_address(monkeypatch):
     html = _front_client(monkeypatch).get("/").text
     assert f'href="{TEAM}/login"' in html
     assert 'href="/"' in html  # the Übersicht entry stays on this address
+    assert '<a class="brand" href="/">Zahlen</a>' in html
 
 
 def test_team_address_has_no_front_page(monkeypatch):
@@ -86,6 +87,7 @@ def test_team_address_has_no_front_page(monkeypatch):
     assert (response.status_code, response.headers["location"]) == (303, "/login")
     login_page = client.get("/login").text
     assert f'href="{FRONT}/"' in login_page
+    assert '<a class="brand" href="/">Kursplaner</a>' in login_page
 
     _log_in(client, monkeypatch)
     response = client.get("/", follow_redirects=False)

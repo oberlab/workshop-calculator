@@ -38,3 +38,8 @@ def login_href(request: Request) -> str:
     if on_front_host(request):
         return f"{auth.get_settings().public_url}/login"
     return "/login"
+
+
+def brand(request: Request) -> str:
+    """The name in the sidebar: the team tool is the "Kursplaner"; the front address keeps "Zahlen"."""
+    return "Zahlen" if on_front_host(request) else "Kursplaner"
