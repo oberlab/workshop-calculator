@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "_legal.html" as legal %}
+{# The imprint (WM-153): every value from [imprint] in the instance config. #}
+
+{% block title %}Impressum{% endblock %}
+{% block heading %}Impressum{% endblock %}
+
+{% block content %}
+{{ legal.missing_notice(login, "imprint", missing) }}
+<div class="legal">
+{% call ui.panel("Angaben gemäß § 5 DDG", id="angaben") %}
+<p class="legal-address">{{ legal.value(imprint.name, "Name und Rechtsform", "name") }}<br>{{ legal.value(imprint.address, "Anschrift", "address") }}</p>
+<dl class="legal-facts">
+  <dt>Vertreten durch</dt>
+  <dd>{{ legal.value(imprint.represented_by, "Vertretungsberechtigte Personen", "represented_by") }}</dd>
+  <dt>Registereintrag</dt>
+  <dd>{{ legal.value(imprint.register, "Registergericht und Registernummer", "register") }}</dd>
+  <dt>E-Mail</dt>
+  <dd>{% if imprint.email %}<a href="mailto:{{ imprint.email }}">{{ imprint.email }}</a>{% else %}{{ legal.value(none, "E-Mail-Adresse", "email") }}{% endif %}</dd>
+  {% if imprint.phone %}
+  <dt>Telefon</dt>
+  <dd>{{ imprint.phone }}</dd>
+  {% endif %}
+  {% if imprint.vat_id %}
+  <dt>Umsatzsteuer-Identifikationsnummer</dt>
+  <dd>{{ imprint.vat_id }}</dd>
+  {% endif %}
+  {% if imprint.responsible_content %}
+  <dt>Verantwortlich für den Inhalt</dt>
+  <dd>{{ legal.value(imprint.responsible_content, "", "responsible_content") }}</dd>
+  {% endif %}
+</dl>
+{% endcall %}
+{% if imprint.extra %}
+{% call ui.panel(id="weiteres") %}
+{{ legal.paragraphs(imprint.extra) }}
+{% endcall %}
+{% endif %}
+</div>
+{% endblock %}

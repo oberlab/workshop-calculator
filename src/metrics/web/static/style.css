@@ -1153,3 +1153,18 @@ table.mun input[type="number"] { width: 90px; }
 .cal-load { display: block; font: 600 0.78rem var(--heading); color: var(--text-muted); }
 .cal-load.is-over { color: var(--critical-ink); }
 .team-equipment { margin-top: 24px; }
+
+/* Datenschutz and Impressum (WM-153): prose sections, the footer links on every page. */
+.legal { display: grid; gap: 20px; min-width: 0; }
+.legal .panel > h3 { margin: 14px 0 6px; }
+.legal .panel p + p, .legal .panel p + ul, .legal .panel ul + p { margin-top: 8px; }
+.legal ul { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.legal-facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
+.legal-facts dt { font-weight: 600; }
+.legal-facts dd { margin: 0; }
+.legal-address { margin-top: 6px; }
+.placeholder { padding: 0 3px; border-radius: 3px; background: var(--warning-tint); color: inherit; font-weight: 600; }
+.page-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 0.85rem; }
+.page-foot a { color: var(--text-muted); }
+.page-foot a[aria-current="page"] { color: var(--text); font-weight: 600; }
+@media (max-width: 860px) { .legal-facts { grid-template-columns: minmax(0, 1fr); } .legal-facts dd { margin-bottom: 6px; } }

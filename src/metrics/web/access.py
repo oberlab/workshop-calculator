@@ -19,10 +19,13 @@ PUBLIC = "public"
 TEAM = "team"
 ADMIN = "admin"
 
-# Reachable without login: the front page and its data, login, health, theme, icon and static files.
+# Reachable without login: the front page and its data, the privacy notice and the imprint (WM-153),
+# login, health, theme, icon and static files.
 PUBLIC_ROUTES = {
     "GET /",
     "GET /api/sessions-over-time",
+    "GET /datenschutz",
+    "GET /impressum",
     "GET /login",
     "POST /login",
     "GET /login/callback",

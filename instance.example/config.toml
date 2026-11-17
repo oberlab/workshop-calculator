@@ -85,6 +85,51 @@ weekly_status = false
 # The team channel's ID (Slack: channel details, at the bottom); the bot must be a member.
 # channel = "C0000000000"
 
+[privacy]
+# The organisation's part of the privacy notice (/datenschutz). Everything the app does itself (what it
+# stores, how long, where data goes, cookies) is written from the code. Missing values show a marked
+# placeholder on the page and a notice for admins; without `updated` the page is marked "Entwurf".
+# Multi-line values keep their line breaks. Have the texts checked before setting `updated`.
+# Every key is commented out here, so the example shows the placeholders; uncomment and fill in.
+# responsible = """
+# Musterverein e. V.
+# Beispielstraße 1
+# 12345 Musterstadt
+# """
+# contact_email = "datenschutz@example.org"
+# Who runs the server and where, and how long its own logs and server backups are kept.
+# hosting = "Der Server wird von [Hoster] in [Land] betrieben. [Aufbewahrung der Server-Protokolle und Server-Sicherungen]"
+# The legal basis for each group of people (team, contact persons), as the organisation words it.
+# legal_basis = "[Rechtsgrundlage je Personengruppe, von der verantwortlichen Stelle geprüft]"
+# supervisory_authority = """
+# [Name der zuständigen Datenschutz-Aufsichtsbehörde]
+# [Anschrift]
+# """
+# Optional: the data protection officer, if the organisation has one.
+# dpo = "[Name, E-Mail-Adresse]"
+# The date the checked text applies from; until it is set the page says "Entwurf".
+# updated = 2026-12-01
+
+[imprint]
+# The Impressum (/impressum, "Angaben gemäß § 5 DDG"). name, address, represented_by, register and
+# email are required (else a marked placeholder); phone, vat_id, responsible_content and extra are
+# optional. extra is free text (paragraphs separated by an empty line) for anything else the
+# organisation wants on the page. Every key is commented out here, so the example shows the placeholders.
+# name = "Musterverein e. V."
+# address = """
+# Beispielstraße 1
+# 12345 Musterstadt
+# """
+# represented_by = "[Vorstand: Namen der vertretungsberechtigten Personen]"
+# register = "[Registergericht], [Registernummer]"
+# email = "kontakt@example.org"
+# phone = "+49 000 000000"
+# vat_id = "DE000000000"
+# responsible_content = "[Name, Anschrift]"
+# extra = """
+# [Weitere Angaben der Organisation]
+# """
+
 [features]
 # Internal ranking of sessions per instructor with Slack profile pictures (needs users:read).
 # Shown only on the analysis page (team login).
