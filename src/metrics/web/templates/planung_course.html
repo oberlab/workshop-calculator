@@ -488,7 +488,7 @@
         <ul class="problems warn">{% for w in warnings %}<li>{{ w.text }}</li>{% endfor %}</ul>
         <label class="check"><input type="checkbox" name="checked" value="1" form="course-form"> Hinweise geprüft</label>
         {% endif %}
-        <p class="help">„Final bestätigen“ übernimmt den Termin in die Kennzahlen; danach ist nur noch „Abgerechnet“ änderbar.</p>
+        <p class="help">„Final bestätigen“ übernimmt den Termin in die Kennzahlen; danach sind nur noch „Abgerechnet“ und die Arbeitszeit-Werte des Kurses änderbar.</p>
         {% if t.date and t.date >= today %}
         <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="undone"><input type="hidden" name="termin" value="{{ t.id }}">
