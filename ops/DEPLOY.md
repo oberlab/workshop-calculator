@@ -54,12 +54,19 @@ The `scheduler` service runs from the app's image (`metrics scheduler`, code in 
 | Job | When (Europe/Berlin) | What | Overdue on `/healthz` |
 | --- | --- | --- | --- |
 | `stage-moves` | daily 00:15 | Termine in stage Bestätigt with a past date move to Durchgeführt (recorded in the Verlauf as `scheduler`); Geplant ones are not moved | no success for 26 h |
+| `hints` | daily 00:30 | recomputes every hint (some depend on the date, e.g. "Geplant, Datum vorbei"); same as `metrics hints` | no success for 26 h |
 | `backup` | daily 03:30 | `pg_dump` into `backups/nightly/`, see below | no success for 26 h |
 | `login-sessions` | daily 04:00 | deletes login session rows 30 days after they expired | no success for 26 h |
+| `slack-after-course` | daily 09:00 | DM to the Kursleitung 1, 2, 3 and 7 days after a Termin (from Bestätigt on) while participants or Herkunft are missing, with the link to the phone form | no success for 26 h |
+| `slack-weekly-status` | daily 09:00, sends on Monday | status to the team channel: this year's Einsätze and Teilnehmende and this week's Termine; a missed Monday is caught up on a later day of the same week, one message per week | no success for 26 h |
+| `slack-reminders` | daily 15:00 | DM to everyone on the team of a Bestätigt Termin of tomorrow: time, place, team, equipment | no success for 26 h |
+| `calendar` | every 15 minutes | the calendar check: pushes pending and failed event updates, marks missing or changed events, reads the answers to invitations, lists events without a Termin on "Prüfen"; never creates or deletes an event | no success for 45 min |
 
-A job that never ran also counts as overdue. A failed daily job is tried again an hour later. Every run is a row in `job_runs` (with the error message on failure); `/healthz` shows each job's state (`ok`, `failed`, `overdue`) and its last success, and `"status": "degraded"` (still HTTP 200) when one is not ok. Its log: `docker compose logs scheduler`. A job can be run by hand: `docker compose run --rm scheduler metrics scheduler --run backup`.
+A job that never ran also counts as overdue; on the first start every job runs once. A failed daily job is tried again an hour later. Every run is a row in `job_runs` (with the error message on failure); `/healthz` shows each job's state (`ok`, `failed`, `overdue`) and its last success, and `"status": "degraded"` (still HTTP 200) when one is not ok. Its log: `docker compose logs scheduler`. A job can be run by hand: `docker compose run --rm scheduler metrics scheduler --run backup`.
 
-**Backups.** Each night writes `metrics-daily-<date>.dump` (pg_dump custom format); the first dump of a month is also kept as `metrics-monthly-<month>.dump`. The newest 14 daily and 12 monthly dumps are kept, older ones with these exact names are deleted. Besides the `login-sessions` job, this is the only automatic deletion in the application: other files in the directory (such as the `before-*.dump` files of `ops/update.sh`) are never touched, and nothing is deleted when the dump fails. The dumps sit on the same server as the database; the PBS snapshots of the VM take them off it (confirmed by Alex, 2026-11-13).
+The Slack jobs send only with `SLACK_BOT_TOKEN` (scope `chat:write`) and with their switch on in `[messages]` of the instance `config.toml`; otherwise they succeed with "messaging off" or "switched off" in `job_runs`. A message goes only to a person with a Slack ID on the Personen page, and the weekly status needs `channel` with the bot as a member of that channel. Each message is sent at most once (recorded in `slack_messages`); a message Slack refused is tried again with the job's retry, but only until 21:00 of the day its slot belongs to, so nothing goes out at night and a late retry never sends the next day's messages early. A permanent error for one recipient (e.g. an outdated Slack ID) is recorded as `undeliverable` and does not fail the job. Without `CALDAV_URL` the `calendar` job succeeds with "no calendar configured".
+
+**Backups.** Each night writes `metrics-daily-<date>.dump` (pg_dump custom format); the first dump of a month is also kept as `metrics-monthly-<month>.dump`. The newest 14 daily and 12 monthly dumps are kept, older ones with these exact names are deleted. Besides the `login-sessions` job, this is the only automatic deletion in the application: other files in the directory (such as the `before-*.dump` files of `ops/update.sh`) are never touched, and nothing is deleted when the dump fails. The dumps sit on the same server as the database; the PBS snapshots of the VM take them off it.
 
 The directory is a bind mount and the only place the scheduler writes to. Create it once, owned by the image's user (uid 10001) and readable by your group:
 
@@ -127,7 +134,7 @@ ops/update.sh v0.9.0
 
 ### 1. Server prerequisites
 
-Debian with Docker Engine, the Compose plugin and Git (Docker's own apt repository, <https://docs.docker.com/engine/install/debian/>). The user running the app is in the `docker` group. Outbound HTTPS to github.com, pypi.org, files.pythonhosted.org, Docker Hub and ghcr.io (image build) and to the Keycloak server (login).
+Debian with Docker Engine, the Compose plugin and Git (Docker's own apt repository, <https://docs.docker.com/engine/install/debian/>). The user running the app is in the `docker` group. Outbound HTTPS to github.com, pypi.org, files.pythonhosted.org, Docker Hub and ghcr.io (image build), to the Keycloak server (login), to slack.com (messages) and to the Nextcloud server (course calendar).
 
 ```sh
 sudo apt install git qemu-guest-agent
@@ -151,7 +158,13 @@ rsync -av --delete instance/ server:/opt/workshop-calculator/instance/
 rsync -av old_data/einsaetze_baseline_2026-09-30.csv server:/opt/workshop-calculator/old_data/
 ```
 
-Later changes to `instance/` are copied the same way, then `docker compose restart app`.
+Later changes to `instance/` are copied the same way, then `docker compose restart app scheduler` (the scheduler reads `[messages]` and `[workload]` from it too).
+
+Settings in the server's `instance/config.toml` that the PC copy may not have yet:
+
+- `[messages]`: switch on `after_course`, `reminder` and `weekly_status` one by one, and set `channel` to the team channel's ID; invite the bot into that channel.
+- `[workload]`: the factors and overhead hours of the workload estimate (Team page, Mein Bereich); the defaults are in `instance.example/config.toml`.
+- `[slack.project_list]`: only for the one-time transfer of a project's own Slack List, together with `SLACK_PROJECT_LIST_ID`.
 
 ### 4. `.env` on the server
 
@@ -164,9 +177,17 @@ COMPOSE_PROJECT_NAME=workshop-calculator
 POSTGRES_PASSWORD=<new: openssl rand -hex 32>
 SESSION_SECRET=<new: openssl rand -hex 32>
 
-SLACK_BOT_TOKEN=<same as on the PC>
+# The server's own Slack app: chat:write for the messages ([messages] in the instance config),
+# users:read for sync-instructors, lists:read only until the one-time transfer is done.
+SLACK_BOT_TOKEN=<token of the server's Slack app>
 SLACK_LIST_ID=<same as on the PC>
 SLACK_PROJECT_LIST_ID=<same as on the PC>
+
+# Course calendar: the Nextcloud calendar of the app's own account and an app password.
+CALDAV_URL=https://<nextcloud>/remote.php/dav/calendars/<user>/<calendar>/
+CALDAV_USERNAME=<app account>
+CALDAV_PASSWORD=<app password>
+CALDAV_ORGANIZER=<app account's e-mail address>
 
 AUTH_MODE=oidc
 # The shared team password stays off on the server.
@@ -189,7 +210,9 @@ APP_PORT=8000
 FORWARDED_ALLOW_IPS=<proxy IP>
 ```
 
-`chmod 600 .env`. `APP_VERSION` is added by `ops/update.sh`.
+`chmod 600 .env`. `APP_VERSION` is added by `ops/update.sh`. After a change to `.env`, run `docker compose up -d` (it recreates the app and the scheduler).
+
+`PUBLIC_URL` is more than the login's return address: the links in Slack messages and calendar events are built from it (without it a DM only names Mein Bereich, and events written by the scheduler's calendar check carry no link), and an `https://` address makes the app send HSTS and mark its cookies `Secure`. Lead and support are invited to calendar events only if they have an e-mail address on the Personen page, and get Slack messages only with a Slack ID there.
 
 The containers run hardened (`compose.yaml`): read-only root file system with `/tmp` as tmpfs, `no-new-privileges`, all capabilities dropped, non-root users (the database runs as the image's `postgres` user). The database publishes no port. The access log leaves out client addresses and query strings; Caddy keeps its own log.
 
@@ -217,10 +240,12 @@ cd /opt/workshop-calculator
 ops/update.sh v1.0.0
 docker compose run --rm app metrics load-baseline /legacy/einsaetze_baseline_2026-09-30.csv \
   --version 2026-09-30 --sha256 553482b364f6caf944faa776f111e06db685fd52846bf57a3f7bc8e346267242
-docker compose run --rm app metrics sync-instructors
+docker compose run --rm app metrics sync-instructors   # only with [features] instructor_ranking
 ```
 
 Check the numbers against the PC: the overview's key figures for "Gesamter Zeitraum" must match the PC.
+
+Then an admin enters the team on the Personen page: per person the e-mail address of their login (links the login to the person at the first login, and is the address for calendar invitations), the Slack ID (for the Slack messages) and optionally the weekly hours.
 
 An existing database (revision 0002, baseline in `sessions`) is moved into the new tables by the migration that runs at start-up (`alembic upgrade head`, revision 0003). It reads the reference data from the instance directory, so `INSTANCE_DIR` must point to the real instance. It checks that held sessions, participants and places match before it drops `sessions` and `instructors`; synced Slack rows are not migrated (the transfer from Slack, WM-120, brings them in). Take a dump first (`ops/update.sh` does).
 
@@ -240,6 +265,8 @@ Use the address from `PUBLIC_URL`. `remote_ip` only works if Caddy sees the real
 
 ### 8. Check
 
-- `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version. A minute after the first start both scheduler jobs show `"state": "ok"` and `backups/nightly/` holds the first dump.
-- Logging in through Keycloak works and lands on the analysis page; an admin sees "Review" in the sidebar.
+- `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version. A few minutes after the first start every scheduler job shows `"state": "ok"` and `backups/nightly/` holds the first dump.
+- Logging in through Keycloak works and lands on Mein Bereich; an admin sees "Prüfen" and "Personen" in the sidebar.
+- Behind https: `curl -sI https://<address>/login` shows `strict-transport-security` and cookies with `Secure` (see the security scan section).
+- With the calendar: "Kalender jetzt prüfen" on "Prüfen" runs without an error. With Slack messages switched on: the `slack-*` jobs in `job_runs` report what they sent (`docker compose logs scheduler`).
 - From outside the internal network the app is not reachable (with Caddy: answers 403).
