@@ -358,6 +358,84 @@ def test_kimai_check_reads_only_and_prints_the_matching(team, fake, capsys, monk
     assert state.writes == [] and all(r.startswith("GET ") for r in state.requests)
     db.expire_all()
     assert {t: db.scalar(sa.select(sa.func.count()).select_from(sa.table(t))) for t in counts} == counts
+    # A name suggestion for Mira, whose e-mail differs; never applied.
+    assert (
+        "Vorschlag: Mira Testfeld → Mira Testfeld (Kimai-ID 5, mira@privat.example.net) [gleicher Name]"
+        in out
+    )
+    assert _people(db)["Mira Testfeld"].kimai_user_id is None
+    # Preference names with the number of users, never their values.
+    assert (
+        "Einstellungen (Namen, Anzahl Nutzer): hours_per_month (1), hours_per_week (4), timezone (7)" in out
+    )
+    assert "Europe/Berlin" not in out and "108000" not in out
+    assert "Token-Nutzer: Kimai-ID 7, Rollen: ROLE_TEAMLEAD, ROLE_USER" in out
+    assert "nur beim Token-Nutzer" not in out
+    # Absences per Kimai user, then the three other tries: status, count and field names only.
+    assert (
+        "  Kimai-ID 2: HTTP 200, 3 Einträge; Felder: date, duration, halfDay, id, status, type, user" in out
+    )
+    assert "  Kimai-ID 7: HTTP 200, 0 Einträge" in out
+    assert "Ohne user (eigene des Tokens): HTTP 200, 0 Einträge" in out
+    assert "Ohne user, Datum ohne Uhrzeit (JJJJ-MM-TT): HTTP 200, 0 Einträge" in out
+    assert "GET /absences/calendar: HTTP 200, 0 Einträge" in out
+    assert "2026-11-2" not in out and "Urlaub" not in out  # no dates of absences
+
+
+def test_kimai_check_explains_a_token_with_too_few_permissions(team, fake, capsys, monkeypatch):
+    from metrics import cli
+
+    state, _ = fake
+    state.others_without_contract = state.absences_own_only = True
+    state.add(kimai_fake.ME, TODAY, "holiday")
+    monkeypatch.setattr("sys.argv", ["metrics", "kimai-check", "--today", TODAY.isoformat()])
+    cli.main()
+    out = capsys.readouterr().out
+    assert (
+        "Arbeitsvertrag in den Einstellungen: work_contract_type (1), hours_per_week (1), work_days_week (1)"
+        in out
+    )
+    assert "nur beim Token-Nutzer sichtbar: hours_per_week, work_contract_type, work_days_week" in out
+    assert "vermutlich fehlt eine Berechtigung" in out
+    assert "  Kimai-ID 2: HTTP 403 (Zugriff verweigert: dem Token fehlt die Berechtigung" in out
+    assert "  Kimai-ID 7: HTTP 200, 1 Einträge" in out
+    fields = "date, duration, halfDay, id, status, type, user"
+    assert f"Ohne user (eigene des Tokens): HTTP 200, 1 Einträge; Felder: {fields}" in out
+    assert f"Ohne user, Datum ohne Uhrzeit (JJJJ-MM-TT): HTTP 200, 1 Einträge; Felder: {fields}" in out
+    assert (
+        "GET /absences/calendar: HTTP 200, 1 Einträge; Felder: allDay, color, end, start, textColor, title"
+        in out
+    )
+    assert TODAY.isoformat() not in out
+    assert state.writes == []
+
+
+def test_name_suggestions_are_unique_and_only_for_unmatched_people():
+    sarah = Person(id=1, name="Sarah", active=True)
+    jo = Person(id=2, name="Jo", active=True)
+    mira = Person(id=3, name="  mira   TESTFELD ", active=True)
+    users = [
+        {"id": 11, "alias": "Sarah Kühn", "email": "s@example.net"},
+        {"id": 12, "alias": "Jonas Alt", "email": "j@example.net"},
+        {"id": 13, "alias": "Johanna Berg", "email": "jb@example.net"},
+        {"id": 14, "alias": "Mira Testfeld", "email": "m@example.net"},
+    ]
+    m = kimai.match([sarah, jo, mira], users)
+    found = [(p.id, u["id"], why) for p, u, why in kimai.suggestions(m)]
+    assert found == [(1, 11, "Vorname"), (3, 14, "gleicher Name")]  # "Jo" fits two: no suggestion
+
+
+def test_the_sync_reads_emails_from_the_list(team, fake):
+    """The list carries the e-mail (Kimai 2.72): only matched users are read singly, for their
+    contract; a list without e-mails still works, reading every user singly."""
+    state, _ = fake
+    _run()
+    singles = [r for r in state.requests if r.startswith("GET /api/users/")]
+    assert len(singles) == 5  # the five matched people
+    state.requests.clear()
+    state.list_email = False
+    assert "5 people matched" in _run()
+    assert len([r for r in state.requests if r.startswith("GET /api/users/")]) == 7  # every enabled user
 
 
 def test_kimai_check_without_configuration(db, monkeypatch):
@@ -439,3 +517,15 @@ def test_the_token_never_follows_a_redirect():
     finally:
         other.shutdown()
         first.shutdown()
+
+
+def test_kimai_check_lists_the_absence_types_plainly(team, fake, capsys, monkeypatch):
+    from metrics import cli
+
+    monkeypatch.setattr("sys.argv", ["metrics", "kimai-check", "--today", TODAY.isoformat()])
+    cli.main()
+    out = capsys.readouterr().out
+    assert (
+        "GET /absences/types: holiday, other, parental, sickness, sickness_child, time_off, unpaid_vacation\n"
+        in out
+    )

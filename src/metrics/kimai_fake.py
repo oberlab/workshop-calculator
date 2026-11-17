@@ -8,8 +8,13 @@ the app matches. Their contracts give the demo's weekly hours in each contract t
 no contract. A few absences lie around the start day (one of them only requested).
 
 - `GET /api/users`, `/api/users/{id}`, `/api/users/me`, `/api/absences?user=&begin=&end=`,
-  `/api/absences/types`, `/api/version`: as Kimai answers them, with `Authorization: Bearer <token>`.
-  The list of users has no e-mail on purpose (the generated client does not show one there).
+  `/api/absences/calendar`, `/api/absences/types`, `/api/version`: as Kimai answers them, with
+  `Authorization: Bearer <token>`. The token's own user is "Buchhaltung" (`ME`). The list carries
+  the e-mail as Kimai 2.72 does (`list_email=False` leaves it out); only the single user has
+  `preferences` and `roles`.
+- Two switches play a token with too few permissions (`--eingeschraenkt`): `others_without_contract`
+  hides the contract preferences of everyone but the token's own user, `absences_own_only` answers
+  403 to absences of other users.
 - Anything but GET on `/api/…` is refused with 405 and counted: the app never writes to Kimai.
 - For trying it out (no token): `POST /_abwesenheit?email=…&date=2026-11-20&type=holiday&days=1`
   adds an approved absence (one per day, weekends skipped); `POST /_entfernen?id=…` removes one
@@ -28,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 from metrics import kimai_map as km
 
 DEFAULT_TOKEN = "fake-kimai-token"
+ME = 7  # the token's own user ("Buchhaltung")
 
 
 def _contract(kind: str, hours: int) -> list[dict]:
@@ -56,7 +62,7 @@ USERS = (
     ("jo.probe", "Jo Probe", "jo.probe@example.org", True, ("month", 20)),
     ("mira", "Mira Testfeld", "mira@privat.example.net", True, ("week", 15)),
     ("ben.vorlage", "Ben Vorlage", "ben.vorlage@example.org", True, None),
-    ("buchhaltung", "Buchhaltung", "buchhaltung@example.org", True, None),
+    ("buchhaltung", "Buchhaltung", "buchhaltung@example.org", True, ("week", 40)),
     ("ute.ehemalig", "Ute Ehemalig", "ute.ehemalig@example.org", False, None),
 )
 
@@ -80,6 +86,9 @@ class FakeKimai:
     writes: list[str] = field(default_factory=list)
     requests: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    list_email: bool = True  # the user list carries the e-mail (Kimai 2.72)
+    others_without_contract: bool = False  # a token that may not see other users' contracts
+    absences_own_only: bool = False  # a token that may not read other users' absences (403)
     _next: int = 100
 
     @classmethod
@@ -94,6 +103,7 @@ class FakeKimai:
                 "enabled": enabled,
                 "preferences": [{"name": "timezone", "value": "Europe/Berlin"}]
                 + (_contract(*contract) if contract else []),
+                "roles": ["ROLE_TEAMLEAD", "ROLE_USER"] if i == ME else ["ROLE_USER"],
             }
         lea, sam, jo, kim = 2, 3, 4, 1
         next_monday = today + dt.timedelta(days=7 - today.weekday())
@@ -139,14 +149,25 @@ class FakeKimai:
     def _user_json(self, user: dict, full: bool) -> dict:
         found = {k: user[k] for k in ("id", "username", "alias", "enabled")}
         found |= {"title": None, "color": None, "accountNumber": None, "initials": user["alias"][:2].upper()}
+        if full or self.list_email:
+            found["email"] = user["email"]
         if full:
-            found |= {
-                "email": user["email"],
-                "preferences": user["preferences"],
-                "teams": [],
-                "roles": ["ROLE_USER"],
-            }
+            prefs = user["preferences"]
+            if self.others_without_contract and user["id"] != ME:
+                prefs = [p for p in prefs if p["name"] not in km.CONTRACT_PREFERENCES]
+            found |= {"preferences": prefs, "teams": [], "roles": user.get("roles", ["ROLE_USER"])}
         return found
+
+    def _event_json(self, absence: dict) -> dict:
+        """[assumed] Kimai's CalendarEvent: title, start, end, allDay, colors."""
+        return {
+            "title": absence["type"],
+            "start": absence["date"],
+            "end": absence["date"],
+            "allDay": not absence["halfDay"],
+            "color": "#aaaaaa",
+            "textColor": "#000000",
+        }
 
     def _absence_json(self, absence: dict) -> dict:
         user = self.users[absence["user"]]
@@ -161,23 +182,27 @@ class FakeKimai:
             visible = query.get("visible", "1")
             users = [u for u in self.users.values() if visible == "3" or u["enabled"] == (visible == "1")]
             return 200, [self._user_json(u, False) for u in users]
-        if path == "/users/me":
-            return 200, self._user_json(self.users[7], True)
+        if path == km.ME:
+            return 200, self._user_json(self.users[ME], True)
         if path.startswith("/users/"):
             user = self.users.get(int(path.rsplit("/", 1)[1])) if path.rsplit("/", 1)[1].isdigit() else None
             return (200, self._user_json(user, True)) if user else (404, {"message": "Not found"})
         if path == km.ABSENCE_TYPES:
             return 200, {k: k.replace("_", " ").title() for k in km.KINDS}
-        if path == km.ABSENCES:
-            user = int(query["user"]) if query.get("user", "").isdigit() else 7
+        if path in (km.ABSENCES, km.ABSENCES_CALENDAR):
+            user = int(query["user"]) if query.get("user", "").isdigit() else ME
+            if self.absences_own_only and user != ME:
+                return 403, {"message": "Access denied."}
             begin = dt.date.fromisoformat(query["begin"][:10]) if query.get("begin") else dt.date.min
             end = dt.date.fromisoformat(query["end"][:10]) if query.get("end") else dt.date.max
             found = [
-                self._absence_json(a)
+                a
                 for a in sorted(self.absences.values(), key=lambda a: (a["date"], a["id"]))
                 if a["user"] == user and begin <= dt.date.fromisoformat(a["date"]) <= end
             ]
-            return 200, found
+            if path == km.ABSENCES_CALENDAR:
+                return 200, [self._event_json(a) for a in found]
+            return 200, [self._absence_json(a) for a in found]
         return 404, {"message": "Not found"}
 
     def state(self) -> dict:
@@ -275,9 +300,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--today", type=dt.date.fromisoformat, help="day the absences lie around")
     parser.add_argument("--token", help="the token to expect (default: a fixed one for tries)")
+    parser.add_argument(
+        "--eingeschraenkt",
+        action="store_true",
+        help="play a token without the permissions for other users' contracts and absences",
+    )
     args = parser.parse_args(argv)
     token = args.token or DEFAULT_TOKEN
-    server, _, url = serve(args.host, args.port, args.today, token)
+    server, fake, url = serve(args.host, args.port, args.today, token)
+    fake.others_without_contract = fake.absences_own_only = args.eingeschraenkt
     print(f"Fake Kimai at {url}: KIMAI_URL={url} KIMAI_TOKEN={token}", flush=True)
     print(f"State: http://{args.host}:{args.port}/_state; Ctrl+C stops it.")
     try:

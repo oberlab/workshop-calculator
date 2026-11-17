@@ -19,9 +19,16 @@ Unmatched Kimai users and unmatched active people are counted in the job message
 log. If any request fails the job fails as a whole and changes nothing, so a Kimai outage never
 withdraws absences. Without KIMAI_URL and KIMAI_TOKEN the job only says "Kimai is off".
 
-`metrics kimai-check` (`check`) prints the matching with names and e-mails to the terminal, and
-what the absences and user endpoints answer, field by field; it sends GET requests only and writes
-nothing. Paths and field names live in `metrics.kimai_map`; the token is never printed or logged.
+Requests per run: the user list (it carries the e-mail), one single user per matched person (only
+it has the preferences with the contract) and one absences request per matched person.
+
+`metrics kimai-check` (`check`) prints to the terminal: the matching with names and e-mails, name
+suggestions for unmatched people (never applied), the preference names over all users with counts
+(never values) against those of the token's own user and its roles, and per Kimai user the status
+and count of the absences request, plus one try each without `user`, with date-only `begin`/`end`
+and of the calendar endpoint (field names only, no dates or names). It sends GET requests only and
+writes nothing. Paths and field names live in `metrics.kimai_map`; the token is never printed or
+logged.
 """
 
 import datetime as dt
@@ -81,6 +88,14 @@ class Client:
         return url if url.endswith(km.API) else url + km.API
 
     def get(self, path: str, params: dict[str, str] | None = None):
+        status, body = self.try_get(path, params)
+        if status != 200:
+            raise KimaiError(f"GET {path}: HTTP {status}")
+        return body
+
+    def try_get(self, path: str, params: dict[str, str] | None = None) -> tuple[int, object]:
+        """(HTTP status, JSON) of a GET; an HTTP error is a status here, not an exception (for
+        `kimai-check`). A missing connection or an answer without JSON still raises."""
         url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
         request = urllib.request.Request(
             url,
@@ -89,9 +104,9 @@ class Client:
         )
         try:
             with _OPENER.open(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode() or "null")
+                return response.status, json.loads(response.read().decode() or "null")
         except urllib.error.HTTPError as error:
-            raise KimaiError(f"GET {path}: HTTP {error.code}") from None
+            return error.code, None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             reason = getattr(error, "reason", error)
             raise KimaiError(f"GET {path}: Kimai not reachable ({type(reason).__name__})") from None
@@ -111,8 +126,14 @@ class Client:
         return found
 
     def users(self) -> list[dict]:
-        """Every enabled Kimai user, read singly (the single user carries e-mail and preferences)."""
-        return [self.user(u[km.USER_ID]) for u in self.user_list() if u.get(km.USER_ENABLED) is not False]
+        """Every enabled Kimai user from the list, which carries the e-mail (Kimai 2.72); a user
+        listed without one is read singly."""
+        listed = [u for u in self.user_list() if u.get(km.USER_ENABLED) is not False]
+        return [u if km.USER_EMAIL in u else self.user(u[km.USER_ID]) for u in listed]
+
+    def with_preferences(self, user: dict) -> dict:
+        """The user with its preferences (only the single user has them)."""
+        return user if km.USER_PREFERENCES in user else self.user(user[km.USER_ID])
 
     def absences(self, user_id: int, begin: dt.date, end: dt.date) -> list[dict]:
         params = {
@@ -273,7 +294,7 @@ def sync(session: Session, kimai: Client, today: dt.date, now: dt.datetime) -> R
 
     hours_people = set()
     for person, user, _ in matching.pairs:
-        hours = km.weekly_hours(user)
+        hours = km.weekly_hours(kimai.with_preferences(user))
         if hours is None or (person.weekly_hours is not None and Decimal(person.weekly_hours) == hours):
             continue
         session.add(
@@ -318,9 +339,72 @@ def _who(user: dict) -> str:
     return f"{name} (Kimai-ID {user.get(km.USER_ID)}, {user.get(km.USER_EMAIL) or 'ohne E-Mail'})"
 
 
+def _norm(text: object) -> str:
+    return " ".join(str(text or "").split()).casefold()
+
+
+def _kimai_name(user: dict) -> str:
+    return str(user.get(km.USER_ALIAS) or user.get(km.USER_NAME) or "")
+
+
+def suggestions(matching: Matching) -> list[tuple[Person, dict, str]]:
+    """For active people without a match: a Kimai user without a person whose full name is the
+    person's name (case and spaces ignored), or, for a single name such as "Sarah", the only one
+    whose first name starts with it ("Sarah Kühn"). Only shown; an admin assigns on the Personen page."""
+    found = []
+    for person in matching.people_without:
+        name = _norm(person.name)
+        if not name:
+            continue
+        same = [u for u in matching.users_without if _norm(_kimai_name(u)) == name]
+        if len(same) == 1:
+            found.append((person, same[0], "gleicher Name"))
+            continue
+        if " " in name:
+            continue
+        starts = [
+            u for u in matching.users_without if (_norm(_kimai_name(u)).split() or [""])[0].startswith(name)
+        ]
+        if len(starts) == 1:
+            found.append((person, starts[0], "Vorname"))
+    return found
+
+
+# What a status of the absences endpoint means, in German (`kimai-check`).
+STATUS_TEXT = {
+    200: "",
+    400: "Anfrage abgelehnt: ein Parameter passt nicht",
+    401: "Token ungültig oder abgelaufen",
+    403: (
+        "Zugriff verweigert: dem Token fehlt die Berechtigung "
+        "(für Abwesenheiten anderer: contract_other_profile)"
+    ),
+    404: "nicht gefunden: Endpunkt oder Funktion (Arbeitszeit/Abwesenheiten) fehlt",
+}
+
+
+def _answer(kimai: Client, path: str, params: dict[str, str] | None) -> tuple[str, list[dict]]:
+    """Status, count and the field names of the first entry (never values, dates or names), and the
+    entries."""
+    status, body = kimai.try_get(path, params)
+    entries = [a for a in body if isinstance(a, dict)] if status == 200 and isinstance(body, list) else []
+    text = f"HTTP {status}"
+    if STATUS_TEXT.get(status):
+        text += f" ({STATUS_TEXT[status]})"
+    if status == 200:
+        if isinstance(body, list):
+            text += f", {len(body)} Einträge"
+            if body and isinstance(body[0], dict):
+                text += f"; Felder: {', '.join(sorted(body[0]))}"
+        else:
+            text += f", Antwort ist {type(body).__name__}, keine Liste"
+    return text, entries
+
+
 def check(session: Session, kimai: Client, today: dt.date) -> list[str]:
-    """What `metrics kimai-check` prints: the matching (with names, on screen only) and what the
-    endpoints answer. GET requests only; reads the database, writes nothing."""
+    """What `metrics kimai-check` prints: the matching (with names, on screen only), name
+    suggestions, the preference names (never values) and what the absence endpoints answer.
+    GET requests only; reads the database, writes nothing."""
     lines = [f"Kimai: {kimai.base}"]
     try:
         version = kimai.get(km.VERSION)
@@ -330,7 +414,7 @@ def check(session: Session, kimai: Client, today: dt.date) -> list[str]:
         lines.append(f"Version: nicht lesbar ({error})")
     listed = kimai.user_list()
     lines.append(f"GET {km.USERS}: {len(listed)} Nutzer; Felder der Liste: {_fields(listed)}")
-    users = kimai.users()
+    users = [kimai.with_preferences(u) for u in kimai.users()]
     lines.append(f"GET {km.USER}: Felder: {_fields(users)}")
     matching = match(candidates(session), users)
     lines.append("")
@@ -349,39 +433,81 @@ def check(session: Session, kimai: Client, today: dt.date) -> list[str]:
     if matching.unknown_ids:
         lines.append("Von Hand zugeordnete Kimai-IDs, die es (aktiv) nicht gibt:")
         lines += [f"  {p.name}: {p.kimai_user_id}" for p in matching.unknown_ids]
+    proposals = suggestions(matching)
+    if proposals:
+        lines.append("Vorschläge (nichts wird automatisch zugeordnet; ein Admin trägt die Kimai-Nutzer-ID")
+        lines.append("auf der Personen-Seite ein):")
+        for person, user, why in proposals:
+            lines.append(f"  Vorschlag: {person.name} → {_who(user)} [{why}]")
+
     lines.append("")
-    prefs = Counter(
-        name for _, u, _ in matching.pairs for name in km.preferences(u) if name in km.CONTRACT_PREFERENCES
-    )
-    lines.append(
+    lines += _preference_lines(kimai, users)
+    lines.append("")
+    lines += _absence_lines(kimai, users, today)
+    return lines
+
+
+def _preference_lines(kimai: Client, users: list[dict]) -> list[str]:
+    """The preference names over all users (how many users have each), never their values, and
+    whether the token's own user shows more of them (a permission limit)."""
+    names = Counter(name for u in users for name in km.preferences(u))
+    contract = [n for n in km.CONTRACT_PREFERENCES if n in names]
+    lines = [
+        "Einstellungen (Namen, Anzahl Nutzer): "
+        + (", ".join(f"{n} ({c})" for n, c in sorted(names.items())) or "keine"),
         "Arbeitsvertrag in den Einstellungen: "
-        + (", ".join(f"{n} ({c}×)" for n, c in sorted(prefs.items())) or "keine der erwarteten Einstellungen")
-    )
+        + (", ".join(f"{n} ({names[n]})" for n in contract) or "keine der erwarteten Einstellungen"),
+    ]
+    status, me = kimai.try_get(km.ME)
+    if status != 200 or not isinstance(me, dict):
+        lines.append(f"GET {km.ME}: HTTP {status}")
+        return lines
+    roles = [str(r) for r in me.get(km.USER_ROLES) or []]
+    lines.append(f"Token-Nutzer: Kimai-ID {me.get(km.USER_ID)}, Rollen: {', '.join(roles) or 'keine'}")
+    own = set(km.preferences(me))
+    others = [set(km.preferences(u)) for u in users if u.get(km.USER_ID) != me.get(km.USER_ID)]
+    most = max((len(o) for o in others), default=0)
+    extra = sorted(own - set().union(*others)) if others else sorted(own)
+    lines.append(f"  eigene Einstellungen: {len(own)}, bei anderen Nutzern höchstens {most}")
+    if extra:
+        lines.append(f"  nur beim Token-Nutzer sichtbar: {', '.join(extra)}")
+        lines.append(
+            "  Hinweis: Der Token sieht bei anderen Nutzern weniger Einstellungen; vermutlich fehlt eine "
+            "Berechtigung (z. B. contract_other_profile)."
+        )
+    return lines
+
+
+def _absence_lines(kimai: Client, users: list[dict], today: dt.date) -> list[str]:
+    """What the absence endpoints answer: per Kimai user, then once without `user`, once with
+    date-only `begin`/`end` and once the calendar endpoint. Counts and field names only."""
     begin, end = today - PAST, today + AHEAD
+    window = {km.ABSENCE_BEGIN: km.day_param(begin), km.ABSENCE_END: km.day_param(end)}
+    lines = [f"GET {km.ABSENCES} ({begin:%d.%m.%Y}–{end:%d.%m.%Y}) je Kimai-Nutzer:"]
     found: list[dict] = []
-    errors = []
-    for _, user, _ in matching.pairs:
-        try:
-            found += kimai.absences(user[km.USER_ID], begin, end)
-        except KimaiError as error:
-            errors.append(str(error))
-    lines.append(
-        f"GET {km.ABSENCES} ({begin:%d.%m.%Y}–{end:%d.%m.%Y}): {len(found)} Abwesenheiten"
-        + (f", {len(errors)} Fehler ({errors[0]})" if errors else "")
-    )
+    for user in sorted(users, key=lambda u: u[km.USER_ID]):
+        params = {km.ABSENCE_USER: str(user[km.USER_ID]), **window}
+        text, entries = _answer(kimai, km.ABSENCES, params)
+        lines.append(f"  Kimai-ID {user[km.USER_ID]}: {text}")
+        found += entries
+    dates = {km.ABSENCE_BEGIN: begin.isoformat(), km.ABSENCE_END: end.isoformat()}
+    for label, path, params in (
+        ("Ohne user (eigene des Tokens)", km.ABSENCES, window),
+        ("Ohne user, Datum ohne Uhrzeit (JJJJ-MM-TT)", km.ABSENCES, dates),
+        (f"GET {km.ABSENCES_CALENDAR}", km.ABSENCES_CALENDAR, window),
+    ):
+        lines.append(f"{label}: {_answer(kimai, path, params)[0]}")
     if found:
-        lines.append(f"  Felder: {_fields(found)}")
+        lines.append(f"Alle Abwesenheiten zusammen: {len(found)}")
         lines.append(f"  type: {_values(found, km.ABSENCE_TYPE)}")
         lines.append(f"  status: {_values(found, km.ABSENCE_STATUS)}")
         unreadable = sum(1 for a in found if km.day_of(a) is None)
-        example = found[0].get(km.ABSENCE_DATE)
-        lines.append(f"  Datum lesbar: {len(found) - unreadable} von {len(found)} (z. B. {example!r})")
+        lines.append(f"  Datum lesbar: {len(found) - unreadable} von {len(found)}")
         lines.append(f"  würden zählen: {sum(1 for a in found if km.counts(a) and km.day_of(a))}")
     try:
         types = kimai.get(km.ABSENCE_TYPES)
-        lines.append(
-            f"GET {km.ABSENCE_TYPES}: {', '.join(sorted(types)) if isinstance(types, dict) else types!r}"
-        )
+        shown = ", ".join(sorted(types)) if isinstance(types, dict) else type(types).__name__
+        lines.append(f"GET {km.ABSENCE_TYPES}: {shown}")
     except KimaiError as error:
         lines.append(f"GET {km.ABSENCE_TYPES}: {error}")
     return lines
