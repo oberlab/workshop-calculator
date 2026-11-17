@@ -230,15 +230,12 @@ def test_values_the_database_refuses_are_a_bad_request(db, monkeypatch):
     client = _client(monkeypatch)
     client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
     too_big = "9" * 40
-    for path in (
-        f"/planung?kontext={too_big}",
-        f"/planung?ort={too_big}",
-        f"/kalender?person={too_big}",
-        "/planung?kategorie=%00",
-    ):
-        response = client.get(path)
-        assert (response.status_code, response.json()) == (400, {"detail": "Ungültige Eingabe"}), path
-        assert response.headers["cache-control"] == "no-store"
+    # IDs longer than nine digits are ignored like any other bad filter value (`lists.is_whole`).
+    for path in (f"/planung?kontext={too_big}", f"/planung?ort={too_big}", f"/kalender?person={too_big}"):
+        assert client.get(path).status_code == 200, path
+    response = client.get("/planung?kategorie=%00")
+    assert (response.status_code, response.json()) == (400, {"detail": "Ungültige Eingabe"})
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_filter_errors_do_not_echo_the_input(monkeypatch):
