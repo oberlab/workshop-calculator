@@ -40,3 +40,6 @@ instance/
 # Database dumps written by ops/update.sh on the server
 backups/
 
+
+# OWASP ZAP reports written by ops/zap-scan.sh
+zap-report/

@@ -68,6 +68,28 @@ def test_security_headers_everywhere(monkeypatch):
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "same-origin"
         assert "camera=()" in headers["permissions-policy"]
+        assert headers["cross-origin-resource-policy"] == "same-origin"
+        assert headers["cross-origin-embedder-policy"] == "require-corp"
+
+
+def test_hsts_only_over_https(monkeypatch):
+    assert "strict-transport-security" not in _client(monkeypatch).get("/login").headers
+    direct = _client(monkeypatch).get("https://testserver/static/style.css")  # TLS at the app itself
+    behind_proxy = _client(monkeypatch, public_url="https://zahlen.example.org").get("/login")
+    for response in (direct, behind_proxy):
+        assert response.headers["strict-transport-security"] == "max-age=31536000"
+
+
+def test_pages_are_not_stored_but_static_files_are_cacheable(db, monkeypatch):
+    client = _client(monkeypatch)
+    for path in ("/", "/login", "/analyse", "/gibt-es-nicht", "/healthz"):
+        assert client.get(path, follow_redirects=False).headers["cache-control"] == "no-store", path
+    client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
+    for path in ("/mein-bereich", "/planung", "/api/analyse/key-figures"):
+        response = client.get(path, follow_redirects=False)
+        assert (response.status_code, response.headers["cache-control"]) == (200, "no-store"), path
+    for path in ("/static/style.css", "/theme.css"):
+        assert "cache-control" not in client.get(path).headers, path
 
 
 def test_no_inline_scripts_or_handlers():
@@ -113,7 +135,9 @@ def test_public_data_is_cached_and_rate_limited(monkeypatch):
     monkeypatch.setattr(public, "sessions_over_time", fake)
     client = _client(monkeypatch)
     first = client.get("/api/sessions-over-time?bin=year")
-    assert json.loads(first.text) == {"bin": "year"} and "max-age=300" in first.headers["cache-control"]
+    assert (
+        json.loads(first.text) == {"bin": "year"} and first.headers["cache-control"] == "public, max-age=300"
+    )
     client.get("/api/sessions-over-time?bin=year&category=Code")  # ignored filter, same answer
     client.get("/api/sessions-over-time?bin=quarter")
     assert calls == ["year", "quarter"]
@@ -176,3 +200,49 @@ def test_every_post_form_in_the_templates_has_the_token():
         for form in re.finditer(r"<form\b[^>]*>(.*?)</form>", html, re.S | re.I):
             if re.search(r'method="post"', form.group(0)[:300], re.I):
                 assert 'name="csrf_token" value="{{ csrf_token }}"' in form.group(1), template.name
+
+
+def test_database_pool_outlasts_the_route_threads(monkeypatch):
+    """A route thread may hold two connections at once (its session and the sidebar's): with one
+    connection per thread and one more, parallel requests cannot starve the pool (ZAP, WM-153)."""
+    import anyio
+    import anyio.to_thread
+
+    from metrics import db
+    from metrics.web import app as web_app
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://unused@localhost/unused")
+    db.get_sessionmaker.cache_clear()
+    pool = db.get_sessionmaker().kw["bind"].pool
+    db.get_sessionmaker.cache_clear()
+    threads_and_loop = db.WEB_THREADS + 1
+    assert pool.size() + pool._max_overflow >= threads_and_loop + 1
+
+    async def tokens_after_start():
+        async with web_app.lifespan(web_app.app):
+            return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    assert anyio.run(tokens_after_start) == db.WEB_THREADS
+
+
+def test_values_the_database_refuses_are_a_bad_request(db, monkeypatch):
+    """Numbers out of range and NUL bytes in filters answered 500 in the ZAP active scan (WM-153)."""
+    client = _client(monkeypatch)
+    client.post("/login", data={"password": "richtiges-passwort"}, follow_redirects=False)
+    too_big = "9" * 40
+    for path in (
+        f"/planung?kontext={too_big}",
+        f"/planung?ort={too_big}",
+        f"/kalender?person={too_big}",
+        "/planung?kategorie=%00",
+    ):
+        response = client.get(path)
+        assert (response.status_code, response.json()) == (400, {"detail": "Ungültige Eingabe"}), path
+        assert response.headers["cache-control"] == "no-store"
+
+
+def test_filter_errors_do_not_echo_the_input(monkeypatch):
+    client = _client(monkeypatch)
+    for query in ("bin=analyse", "period=analyse", "period=custom&from=analyse"):
+        response = client.get(f"/?{query}")
+        assert response.status_code == 400 and "analyse" not in response.text, query

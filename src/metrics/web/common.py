@@ -58,7 +58,7 @@ def _date_param(value: str | None, name: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError as error:
-        raise HTTPException(400, f"Ungültiges Datum für {name}: {value}") from error
+        raise HTTPException(400, f"Ungültiges Datum für {name}") from error
 
 
 def parse_filters(params: QueryParams, detailed: bool = True) -> metrics.Filters:
@@ -66,9 +66,9 @@ def parse_filters(params: QueryParams, detailed: bool = True) -> metrics.Filters
     bin_name = params.get("bin") or "month"
     preset = params.get("period") or "all"
     if bin_name not in analytics.BINS:
-        raise HTTPException(400, f"Unbekanntes Zeitraster: {bin_name}")
+        raise HTTPException(400, "Unbekanntes Zeitraster")
     if preset not in analytics.PRESETS:
-        raise HTTPException(400, f"Unbekannter Zeitraum: {preset}")
+        raise HTTPException(400, "Unbekannter Zeitraum")
     return metrics.Filters(
         bin=bin_name,
         preset=preset,

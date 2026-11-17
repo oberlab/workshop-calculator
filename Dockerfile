@@ -35,5 +35,5 @@ ENV APP_VERSION=$APP_VERSION
 EXPOSE 8000
 # Forwarded headers (scheme, client address) are only trusted from FORWARDED_ALLOW_IPS,
 # the reverse proxy's address; the default trusts nobody but the container itself.
-# The log config leaves client addresses and query strings out of the access log.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn metrics.web.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-127.0.0.1}\" --log-config /app/src/metrics/web/uvicorn-log.json"]
+# The log config leaves client addresses and query strings out of the access log; no Server header.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn metrics.web.app:app --host 0.0.0.0 --port 8000 --no-server-header --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-127.0.0.1}\" --log-config /app/src/metrics/web/uvicorn-log.json"]

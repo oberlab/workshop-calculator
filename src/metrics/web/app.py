@@ -8,10 +8,15 @@ and, for admins only, `/pruefen` and the Personen page.
 A sidebar on every page holds the login and the navigation.
 """
 
-from fastapi import Depends, FastAPI, Request
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
+import anyio.to_thread
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import DataError
+
+from metrics.db import WEB_THREADS
 from metrics.web import (
     analyse,
     health,
@@ -33,8 +38,17 @@ from metrics.web.access import PageRefused, check_access
 from metrics.web.common import HERE, page
 from metrics.web.security import SecurityHeaders, check_csrf
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Routes run in this many threads at most; the database pool is sized to match (`metrics.db`).
+    anyio.to_thread.current_default_thread_limiter().total_tokens = WEB_THREADS
+    yield
+
+
 app = FastAPI(
     title="Einsätze",
+    lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -71,3 +85,10 @@ def page_refused(request: Request, refused: PageRefused):
     if refused.login_needed:
         return RedirectResponse("/login", status_code=303)
     return page(request, "forbidden.html", {}, status_code=403)
+
+
+@app.exception_handler(DataError)
+def invalid_value(request: Request, error: DataError):
+    """A value the database cannot take (a number out of range, a NUL byte) is the client's error,
+    not a server error: 400 without details. Found by the ZAP active scan (WM-153)."""
+    return JSONResponse({"detail": "Ungültige Eingabe"}, status_code=400)
