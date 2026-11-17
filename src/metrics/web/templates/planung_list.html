@@ -78,8 +78,8 @@
         <tr>
           <td class="nowrap mono">{{ t.date|day }}{% if t.alternatives %}<div class="muted small">+ {{ t.alternatives|length }} Alternative{{ "n" if t.alternatives|length > 1 }}</div>{% endif %}</td>
           <td class="nowrap mono">{{ when(t) }}</td>
-          <td><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{{ titles[t.id] }}</a>{% if t.course.context %}<div class="muted small">{{ t.course.context.name }}{% if t.course.class_age_text %} · {{ t.course.class_age_text }}{% endif %}</div>{% endif %}</td>
-          <td>{{ t.course.place.name if t.course.place else "–" }}</td>
+          <td><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{{ titles[t.id] }}</a>{% if t.context %}<div class="muted small">{{ t.context.name }}{% if t.class_age_text %} · {{ t.class_age_text }}{% endif %}</div>{% endif %}</td>
+          <td>{{ t.place.name if t.place else "–" }}</td>
           <td>{{ team(t) }}</td>
           <td>{{ ui.stage_pill(t.stage|stage_key, t.stage) }}{% if t.billed %} <span class="muted small">abgerechnet</span>{% endif %}</td>
           <td>{{ hint(row) }}</td>
@@ -89,7 +89,7 @@
       </div>
       <div class="course-cards cards">
         {% for row in rows %}{% set t = row.t %}
-        {% call ui.card(t.date, titles[t.id], [when(t), t.course.place.name if t.course.place else none, t.course.context.name if t.course.context else none], stage=t.stage|stage_key, href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) %}{{ ui.stage_pill(t.stage|stage_key, t.stage) }}{{ team(t) }}{{ hint(row) }}{% endcall %}
+        {% call ui.card(t.date, titles[t.id], [when(t), t.place.name if t.place else none, t.context.name if t.context else none], stage=t.stage|stage_key, href="/planung/" ~ t.course_id ~ "?termin=" ~ t.id) %}{{ ui.stage_pill(t.stage|stage_key, t.stage) }}{{ team(t) }}{{ hint(row) }}{% endcall %}
         {% endfor %}
       </div>
     </section>

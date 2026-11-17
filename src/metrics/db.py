@@ -36,10 +36,12 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    case,
     create_engine,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from metrics.config import get_settings
@@ -331,6 +333,21 @@ appointment_support = Table(
 )
 
 
+def _course_value(name: str) -> hybrid_property:
+    """A Termin's effective value of a course field: its frozen value once `frozen_at` is set (even
+    when that is empty), else the course's. In SQL it needs the course joined
+    (`Appointment.course_id == Course.id`), as every query over Termine with their course has."""
+    frozen = f"frozen_{name}"
+
+    def value(self):
+        return getattr(self, frozen) if self.frozen_at is not None else getattr(self.course, name)
+
+    def expression(cls):
+        return case((cls.frozen_at.is_not(None), getattr(cls, frozen)), else_=getattr(Course, name))
+
+    return hybrid_property(value, expr=expression)
+
+
 class Appointment(Base):
     """Termin: one date of a course, the counting unit (an Einsatz is a held Termin).
 
@@ -338,6 +355,13 @@ class Appointment(Base):
     recorded total (legacy before 2024-07-29 has nothing else); new Termine record the four
     counts and keep the total as their sum. `source` and `source_key` say where an imported
     row came from (e.g. `baseline`, `baseline:123`), `source_data` keeps its recorded values.
+
+    Frozen course values (WM-135): the course's format, context, place and class/age apply to all its
+    Termine, until the course changes while some of them are Abgeschlossen or Abgesagt. Then those
+    Termine first keep the values they had (`frozen_*`, `frozen_at`; `courses.keep_values`), so the
+    figures of the past do not move. Read a Termin's values through the effective attributes
+    (`t.place`, `t.place_id`, `t.target_group`, ...; in SQL `Appointment.place_id` and so on), never
+    through `t.course` directly: they give the frozen value if there is one, else the course's.
     """
 
     __tablename__ = "appointments"
@@ -371,12 +395,26 @@ class Appointment(Base):
     source: Mapped[str] = mapped_column(String(32), default="app", server_default="app", index=True)
     source_key: Mapped[str | None] = mapped_column(String(128), unique=True)
     source_data: Mapped[dict | None] = mapped_column(JSONB)
+    # Frozen course values (WM-135): set together, only when the course changes after this Termin was
+    # Abgeschlossen or Abgesagt; NULL in `frozen_at` means the Termin follows its course.
+    frozen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    frozen_format_id: Mapped[int | None] = mapped_column(ForeignKey("formats.id"), index=True)
+    frozen_context_id: Mapped[int | None] = mapped_column(ForeignKey("contexts.id"), index=True)
+    frozen_place_id: Mapped[int | None] = mapped_column(ForeignKey("places.id"), index=True)
+    frozen_class_age_text: Mapped[str | None] = mapped_column(Text)
+    frozen_class_level: Mapped[int | None] = mapped_column(Integer)
+    frozen_age: Mapped[int | None] = mapped_column(Integer)
+    frozen_age_band: Mapped[str | None] = mapped_column(String(32))
+    frozen_target_group: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[dt.datetime] = _created_at()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
     course: Mapped[Course] = relationship(back_populates="appointments")
+    frozen_format: Mapped[Format | None] = relationship(foreign_keys=[frozen_format_id])
+    frozen_context: Mapped[Context | None] = relationship(foreign_keys=[frozen_context_id])
+    frozen_place: Mapped[Place | None] = relationship(foreign_keys=[frozen_place_id])
     lead: Mapped[Person | None] = relationship(foreign_keys=[lead_id])
     support: Mapped[list[Person]] = relationship(secondary=appointment_support)
     origins: Mapped[list["AppointmentOrigin"]] = relationship(cascade="all, delete-orphan")
@@ -389,6 +427,32 @@ class Appointment(Base):
     equipment: Mapped[list["AppointmentEquipment"]] = relationship(
         cascade="all, delete-orphan", order_by="AppointmentEquipment.equipment_id"
     )
+
+    # The effective course values (see the class docstring).
+    format_id = _course_value("format_id")
+    context_id = _course_value("context_id")
+    place_id = _course_value("place_id")
+    class_age_text = _course_value("class_age_text")
+    class_level = _course_value("class_level")
+    age = _course_value("age")
+    age_band = _course_value("age_band")
+    target_group = _course_value("target_group")
+
+    @property
+    def has_frozen_values(self) -> bool:
+        return self.frozen_at is not None
+
+    @property
+    def format(self) -> Format | None:
+        return self.frozen_format if self.has_frozen_values else self.course.format
+
+    @property
+    def context(self) -> Context | None:
+        return self.frozen_context if self.has_frozen_values else self.course.context
+
+    @property
+    def place(self) -> Place | None:
+        return self.frozen_place if self.has_frozen_values else self.course.place
 
 
 class AppointmentEquipment(Base):

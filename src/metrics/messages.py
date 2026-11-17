@@ -262,7 +262,7 @@ def title(t: Appointment) -> str:
 
 
 def place_label(t: Appointment, with_address: bool = False) -> str:
-    place = t.course.place
+    place = t.place
     if place is None:
         return "Ort noch offen"
     if with_address and place.address:
@@ -299,20 +299,18 @@ def after_course_text(t: Appointment, days: int) -> str:
 
 
 def reminder_text(t: Appointment) -> str:
-    course = t.course
     lines = [
-        f"Morgen, {day_label(t.date)}: *{title(t)}*"
-        + (f" ({escape(course.context.name)})" if course.context else ""),
+        f"Morgen, {day_label(t.date)}: *{title(t)}*" + (f" ({escape(t.context.name)})" if t.context else ""),
         f"• Zeit: {time_label(t)}",
         f"• Ort: {place_label(t, with_address=True)}",
         f"• Team: {team_label(t)}",
     ]
-    if course.class_age_text:
-        lines.append(f"• Klasse/Alter: {escape(course.class_age_text)}")
+    if t.class_age_text:
+        lines.append(f"• Klasse/Alter: {escape(t.class_age_text)}")
     if t.equipment:
         lines.append(f"• Material: {escape(equipment.text(t.equipment))}")
     if base := _base():
-        lines.append(link(f"{base}/planung/{course.id}?termin={t.id}", "Termin ansehen"))
+        lines.append(link(f"{base}/planung/{t.course_id}?termin={t.id}", "Termin ansehen"))
     return "\n".join(lines)
 
 

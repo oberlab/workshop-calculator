@@ -5,6 +5,13 @@
 Termin to Abgeschlossen (what the charts count), but only once all its list entries are confirmed
 (`lists.pending_entries`) and no blocking hint is open (`hints.open_blocking`). Both refresh the
 stored hints of the Termin (`hints.refresh`).
+
+Kept course values (WM-135): a course's format, context, place and class/age stay editable while it
+has open Termine, and a change applies only to the Termine that are not Abgeschlossen or Abgesagt.
+Before the course changes, those Termine keep the values they had (`keep_values`): they are copied
+into the Termin's `frozen_*` columns, once, with a Verlauf row. A Termin becoming Abgeschlossen needs
+nothing: it follows its course until the course changes. Every reader takes a Termin's effective
+values (`Appointment.place` and so on, see `metrics.db`).
 """
 
 import datetime as dt
@@ -41,6 +48,73 @@ def _log(
     session: Session, table: str, row_id: int, field: str | None, old, new, by: str, reason=None
 ) -> None:
     lists._log(session, table, row_id, field, old, new, by, reason)
+
+
+# --- Kept course values (WM-135) -------------------------------------------------------------------
+
+# The course values a Termin keeps (`Appointment.frozen_<name>`), and the stages whose Termine keep
+# them when their course changes: Abgeschlossen ones are counted, Abgesagt ones are history.
+VALUES = ("format", "context", "place", "class_age_text", "class_level", "age", "age_band", "target_group")
+KEEP_STAGES = (ABGESCHLOSSEN, ABGESAGT)
+KEPT_FIELD = "kept_values"  # the Verlauf field of the row that records it
+KEPT_REASON = "Kurs geändert: gilt nur für die offenen Termine; der Termin {day} behält seine Angaben"
+
+
+def course_values(course: Course) -> dict:
+    """The course's values a Termin can keep (list entries as objects)."""
+    return {name: getattr(course, name) for name in VALUES}
+
+
+def describe(values: dict) -> str:
+    """Kept values (as `course_values`) in one line for the Verlauf."""
+    parts = [
+        ("Format", lists.label(values["format"]) if values["format"] is not None else ""),
+        ("Kontext", lists.label(values["context"]) if values["context"] is not None else ""),
+        ("Ort", lists.label(values["place"]) if values["place"] is not None else ""),
+        ("Klasse/Alter", values["class_age_text"] or ""),
+        ("Zielgruppe", values["target_group"] or ""),
+    ]
+    return "; ".join(f"{label} {value or 'leer'}" for label, value in parts)
+
+
+def keep(session: Session, t: Appointment, values: dict, by: str, reason: str | None = None) -> bool:
+    """The Termin keeps these course values from now on; False if it keeps its own already."""
+    if t.frozen_at is not None:
+        return False
+    for name in VALUES:
+        setattr(t, f"frozen_{name}", values[name])
+    t.frozen_at = dt.datetime.now(dt.UTC)
+    day = f"am {t.date:%d.%m.%Y}" if t.date else "ohne Datum"
+    _log(
+        session,
+        "appointments",
+        t.id,
+        KEPT_FIELD,
+        None,
+        describe(values),
+        by,
+        reason or KEPT_REASON.format(day=day),
+    )
+    return True
+
+
+def keep_values(session: Session, course: Course, before: dict, by: str) -> list[Appointment]:
+    """After a change of the course (`before`: its `course_values` beforehand): its Abgeschlossen and
+    Abgesagt Termine that still followed the course keep the values they had. Returns those Termine."""
+    if course_values(course) == before:
+        return []
+    return [t for t in course.appointments if t.stage in KEEP_STAGES and keep(session, t, before, by)]
+
+
+def has_open(course: Course) -> bool:
+    """Whether the course has a Termin that is neither Abgeschlossen nor Abgesagt: its values can be
+    changed then (on the page of such a Termin)."""
+    return any(t.stage not in KEEP_STAGES for t in course.appointments)
+
+
+def has_closed(course: Course) -> bool:
+    """Whether some of the course's Termine are Abgeschlossen (a change leaves them as they are)."""
+    return any(t.stage == ABGESCHLOSSEN for t in course.appointments)
 
 
 def create_course(

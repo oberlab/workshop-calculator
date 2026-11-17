@@ -45,6 +45,8 @@
 {% set team_on = "team" in editable %}
 {% set held_on = "held" in editable %}
 {% set equipment_on = "equipment" in editable %}
+{# The values shown: the course's where they can be changed, else the Termin's own (WM-135). #}
+{% set cv = course if course_on else t %}
 
 <div class="course-layout">
   <div class="course-main">
@@ -60,13 +62,15 @@
           {{ lists.picker(pickers.place_id) }}
         </div>
         <p class="help">Kontext und Ort sind Pflicht ab „Bestätigt“; Kursname und Kategorie kommen aus dem Format und sind Pflicht für den Abschluss.</p>
+        {% if closed_termine %}<p class="help">Änderungen gelten für die offenen Termine; abgeschlossene behalten ihre Angaben.</p>{% endif %}
         {% else %}
         <dl class="facts">
-          <div><dt>Format</dt><dd>{% if course.format %}{{ course.format.name or "(ohne Kursname)" }}{% if course.format.category %} ({{ course.format.category }}){% endif %}{% else %}–{% endif %}</dd></div>
-          <div><dt>Kontext</dt><dd>{{ course.context.name if course.context else "–" }}</dd></div>
-          <div><dt>Ort</dt><dd>{{ course.place.name if course.place else "–" }}</dd></div>
+          <div><dt>Format</dt><dd>{% if t.format %}{{ t.format.name or "(ohne Kursname)" }}{% if t.format.category %} ({{ t.format.category }}){% endif %}{% else %}–{% endif %}</dd></div>
+          <div><dt>Kontext</dt><dd>{{ t.context.name if t.context else "–" }}</dd></div>
+          <div><dt>Ort</dt><dd>{{ t.place.name if t.place else "–" }}</dd></div>
         </dl>
-        {% if locked_course %}<p class="help">Gesperrt: ein Termin dieses Kurses ist abgeschlossen und zählt in den Kennzahlen.</p>{% endif %}
+        {% if kept %}<p class="help">Dieser Termin behält seine Angaben. Der Kurs hat inzwischen: {% for label, own, now in kept %}{{ label }} „{{ now or "–" }}“{{ ", " if not loop.last }}{% endfor %}.</p>{% endif %}
+        {% if course_open and not new %}<p class="help">Die Eckdaten des Kurses lassen sich bei einem offenen Termin ändern; dieser Termin behält seine Angaben.</p>{% endif %}
         {% endif %}
         {{ ui.field("Notiz", "note", course.note, type="textarea", attrs={"rows": 2, "disabled": none if course_on else true}) }}
       </section>
@@ -80,14 +84,14 @@
             {% endfor %}
           </div>
           <p class="help" data-school-hint hidden>Der Ort ist eine Schule: nur Schulklasse oder Lehrkräfte.</p>
-          <div class="fields" data-kind="klasse">{{ ui.field("Klassenstufe", "class_level", course.class_level, type="number", attrs={"min": 1, "max": 13}) }}</div>
-          <div class="fields" data-kind="alter">{{ ui.field("Durchschnittsalter", "child_age", course.age if class_kind == "alter" else none, type="number", attrs={"min": 1, "max": 18}) }}</div>
+          <div class="fields" data-kind="klasse">{{ ui.field("Klassenstufe", "class_level", cv.class_level, type="number", attrs={"min": 1, "max": 13}) }}</div>
+          <div class="fields" data-kind="alter">{{ ui.field("Durchschnittsalter", "child_age", cv.age if class_kind == "alter" else none, type="number", attrs={"min": 1, "max": 18}) }}</div>
           <div class="fields" data-kind="band">
             <label class="field"><span>Altersgruppe</span>
-              <select name="age_band"><option value=""></option>{% for b in age_bands %}<option{% if course.age_band == b %} selected{% endif %}>{{ b }}</option>{% endfor %}</select>
+              <select name="age_band"><option value=""></option>{% for b in age_bands %}<option{% if cv.age_band == b %} selected{% endif %}>{{ b }}</option>{% endfor %}</select>
             </label>
           </div>
-          {% if course.class_age_text and not class_kind %}<p class="help">Erfasst als „{{ course.class_age_text }}“.</p>{% endif %}
+          {% if cv.class_age_text and not class_kind %}<p class="help">Erfasst als „{{ cv.class_age_text }}“.</p>{% endif %}
         </fieldset>
       </section>
 
@@ -285,13 +289,13 @@
         <td class="nowrap mono"><a href="/planung/{{ course.id }}?termin={{ a.id }}">{{ a.date|day }}</a></td>
         <td class="nowrap mono">{% if a.start_time %}{{ a.start_time.strftime("%H:%M") }}–{{ a.end_time.strftime("%H:%M") if a.end_time else "?" }}{% else %}–{% endif %}</td>
         <td>{% if a.lead %}{{ ui.avatar(a.lead.name, "sm", label=true) }}{% endif %}{% for p in a.support %}{{ ui.avatar(p.name, "sm", label=true) }}{% endfor %}{% if not a.lead and not a.support %}<span class="muted">–</span>{% endif %}</td>
-        <td>{{ ui.stage_pill(a.stage|stage_key, a.stage) }}</td>
+        <td>{{ ui.stage_pill(a.stage|stage_key, a.stage) }}{% if kept_by_termin.get(a.id) %} <span class="muted small" title="{% for label, own, now in kept_by_termin[a.id] %}{{ label }} „{{ own or '–' }}“{{ ', ' if not loop.last }}{% endfor %}">eigene Angaben</span>{% endif %}</td>
         <td class="mono">{{ a.participants_total if a.participants_total is not none else "–" }}</td>
         <td>{% if top %}{{ ui.hint_badge(badge[top.level], top.text|truncate(40)) }}{% endif %}</td>
       </tr>
       {% endfor %}
       {% endcall %}
-      <p class="help">Die Nummer zählt die Termine nach Datum, abgesagte nicht mit. Teilnehmende zählen beim ersten Termin.</p>
+      <p class="help">Die Nummer zählt die Termine nach Datum, abgesagte nicht mit. Teilnehmende zählen beim ersten Termin.{% if kept_by_termin.values()|select|first %} „Eigene Angaben“: der Termin behält Eckdaten, die der Kurs inzwischen nicht mehr hat.{% endif %}</p>
 
       {% set add = add_form or {} %}
       <details class="add-termine" id="termine-hinzufuegen"{% if add %} open{% endif %}>
@@ -361,16 +365,16 @@
         <summary class="btn btn-secondary btn-sm">Korrektur vorschlagen …</summary>
         <form method="post" action="/planung/{{ course.id }}/korrektur" class="add-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="termin" value="{{ t.id }}">
-          <h3 class="field-label">Kurs{% if c.shared %} <span class="section-note">gilt für alle Termine des Kurses</span>{% endif %}</h3>
+          <h3 class="field-label">Eckdaten <span class="section-note">gelten nur für diesen Termin</span></h3>
           <div class="fields">
             {% for name, label, entries, selected in c.entries %}
             <label class="field"><span>{{ label }}</span>
               <select name="{{ name }}"><option value="">–</option>{% for id, text in entries %}<option value="{{ id }}"{% if id == selected %} selected{% endif %}>{{ text }}</option>{% endfor %}</select>
             </label>
             {% endfor %}
-            {{ ui.field("Klasse/Alter", "class_age_text", course.class_age_text, help="z. B. Kl. 3, Kl. 3 / 8 Jahre, 10 Jahre, 25 - 34 Jahre, Lehrkräfte") }}
+            {{ ui.field("Klasse/Alter", "class_age_text", t.class_age_text, help="z. B. Kl. 3, Kl. 3 / 8 Jahre, 10 Jahre, 25 - 34 Jahre, Lehrkräfte") }}
           </div>
-          {{ ui.field("Notiz", "note", course.note, type="textarea", attrs={"rows": 2}) }}
+          {{ ui.field("Notiz des Kurses", "note", course.note, type="textarea", help="gilt für alle Termine des Kurses" if c.shared else none, attrs={"rows": 2}) }}
           <h3 class="field-label">Termin</h3>
           <div class="fields">
             {{ ui.field("Datum", "date", t.date.isoformat() if t.date else none, type="date", required=true, attrs={"required": true}) }}
@@ -488,7 +492,7 @@
         <ul class="problems warn">{% for w in warnings %}<li>{{ w.text }}</li>{% endfor %}</ul>
         <label class="check"><input type="checkbox" name="checked" value="1" form="course-form"> Hinweise geprüft</label>
         {% endif %}
-        <p class="help">„Final bestätigen“ übernimmt den Termin in die Kennzahlen; danach sind nur noch „Abgerechnet“ und die Arbeitszeit-Werte des Kurses änderbar.</p>
+        <p class="help">„Final bestätigen“ übernimmt den Termin in die Kennzahlen; danach sind an ihm nur noch „Abgerechnet“ und die Arbeitszeit-Werte des Kurses änderbar. Ändern sich später die Eckdaten des Kurses, behält er seine Angaben.</p>
         {% if t.date and t.date >= today %}
         <form method="post" action="/planung/{{ course.id }}/aktion" class="action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="action" value="undone"><input type="hidden" name="termin" value="{{ t.id }}">

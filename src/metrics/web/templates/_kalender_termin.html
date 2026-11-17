@@ -9,9 +9,9 @@
 <dl class="facts">
   <div><dt>Datum</dt><dd class="mono">{{ t.date|day }}</dd></div>
   <div><dt>Zeit</dt><dd class="mono">{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% else %}ohne Uhrzeit{% endif %}</dd></div>
-  <div><dt>Ort</dt><dd>{{ course.place.name if course.place else "–" }}</dd></div>
-  <div><dt>Kontext</dt><dd>{{ course.context.name if course.context else "–" }}</dd></div>
-  <div><dt>Klasse/Alter</dt><dd>{{ course.class_age_text or "–" }}</dd></div>
+  <div><dt>Ort</dt><dd>{{ t.place.name if t.place else "–" }}</dd></div>
+  <div><dt>Kontext</dt><dd>{{ t.context.name if t.context else "–" }}</dd></div>
+  <div><dt>Klasse/Alter</dt><dd>{{ t.class_age_text or "–" }}</dd></div>
   <div><dt>Kursleitung</dt><dd>{% if t.lead %}{{ ui.avatar(t.lead.name, "sm") }} {{ t.lead.name }}{% else %}–{% endif %}</dd></div>
   <div><dt>Unterstützung</dt><dd>{{ t.support|map(attribute="name")|join(", ") or "–" }}</dd></div>
   {% if t.equipment %}<div><dt>Material</dt><dd>{% for e in t.equipment %}{{ e.quantity }} {{ e.equipment.name }}{{ ", " if not loop.last }}{% endfor %}</dd></div>{% endif %}

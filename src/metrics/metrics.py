@@ -16,6 +16,9 @@ so a figure means the same everywhere.
   add nothing. Not the team's estimated working hours (`metrics.planning.workload`).
 - **Schulen:** distinct places marked as a school (`Place.is_school`) with at least one held Termin.
 
+Format, context, place and class/age of a Termin are its effective values (WM-135): those it kept when
+its course changed after it was Abgeschlossen, else its course's (`joined`, `TARGET_GROUP`, ...).
+
 The comparison period (`previous_period`) of a KPI tile has the same length and ends the day before
 the selected period starts: the previous school or calendar year for those presets, the 12 months
 before for "Letzte 12 Monate", the same number of days before for a custom range. "Gesamter
@@ -124,23 +127,29 @@ class Filters:
     municipalities: list[str] = field(default_factory=list)  # of the place (WM-151: a click on the map)
 
 
-# The columns the analysis filters and groups by, from the Termin and its course.
+# The columns the analysis filters and groups by, from the Termin and its course. Format, context,
+# place and class/age are the Termin's effective values (WM-135): what it kept when its course changed
+# after it was Abgeschlossen, else its course's (`db.Appointment`, `_course_value`).
 DATE = Appointment.date
 CATEGORY = Format.category
 CONTEXT = Context.name
-TARGET_GROUP = Course.target_group
+TARGET_GROUP = Appointment.target_group
+CLASS_AGE_TEXT = Appointment.class_age_text
+CLASS_LEVEL = Appointment.class_level
+AGE = Appointment.age
+AGE_BAND = Appointment.age_band
 PLACE = Place.name
 MUNICIPALITY = Place.municipality
 
 
 def joined(query):
-    """A query over Termine with their course, format, context and place."""
+    """A query over Termine with their course and their (effective) format, context and place."""
     return (
         query.select_from(Appointment)
         .join(Course, Appointment.course_id == Course.id)
-        .outerjoin(Format, Course.format_id == Format.id)
-        .outerjoin(Context, Course.context_id == Context.id)
-        .outerjoin(Place, Course.place_id == Place.id)
+        .outerjoin(Format, Appointment.format_id == Format.id)
+        .outerjoin(Context, Appointment.context_id == Context.id)
+        .outerjoin(Place, Appointment.place_id == Place.id)
     )
 
 

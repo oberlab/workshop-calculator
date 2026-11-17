@@ -5,7 +5,7 @@
 {# One Termin in a lane or the day list: opens the side panel; without JavaScript the course page. #}
 {% macro item(t, role=none, long=false) -%}
 {% set flag = top.get(t.id) %}
-{% set place = t.course.place.name if t.course.place else none %}
+{% set place = t.place.name if t.place else none %}
 {% set team = ([t.lead.name] if t.lead else []) + (t.support|map(attribute="name")|list) %}
 <a class="cal-item stage-{{ t.stage|stage_key }}{{ ' is-support' if role == 'support' }}{{ ' is-flagged' if flag and flag.level == 'Kritisch' }}" href="/planung/termin/{{ t.id }}" hx-get="/kalender/termin/{{ t.id }}" hx-target="#termin-panel-body" data-side-panel="termin-panel" title="{{ titles[t.id] }}{% if t.start_time %}, {{ t.start_time.strftime('%H:%M') }}–{{ t.end_time.strftime('%H:%M') if t.end_time else '?' }}{% endif %}{% if place %}, {{ place }}{% endif %}">
   <span class="cal-time mono">{% if t.start_time %}{{ t.start_time.strftime("%H:%M") }}{% if long %}–{{ t.end_time.strftime("%H:%M") if t.end_time else "?" }}{% endif %}{% else %}ohne Uhrzeit{% endif %}</span>

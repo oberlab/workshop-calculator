@@ -38,7 +38,7 @@
     <li>
       <span class="status-tag status-proposed">Korrektur</span>
       <div class="queue-body">
-        <p class="queue-title"><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{{ c.title }}</a>, {{ t.date.strftime("%d.%m.%Y") if t.date else "ohne Datum" }}{% if t.course.place %}, {{ t.course.place.name }}{% endif %}</p>
+        <p class="queue-title"><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{{ c.title }}</a>, {{ t.date.strftime("%d.%m.%Y") if t.date else "ohne Datum" }}{% if t.place %}, {{ t.place.name }}{% endif %}</p>
         <p class="queue-meta"><span>von {{ c.proposal.proposed_by }} am {{ when(c.proposal.proposed_at) }}</span><span>{% if t.number %}Termin {{ t.number }}{% else %}Termin ohne Nummer{% endif %}{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span><span>„{{ c.proposal.reason }}“</span></p>
         {% call ui.table(["Angabe", "bisher", "neu"], caption="Vorgeschlagene Änderungen") %}
         {% for label, old, new in c.changes %}<tr><th scope="row">{{ label }}</th><td><del>{{ old or "leer" }}</del></td><td>{{ new or "leer" }}</td></tr>{% endfor %}
@@ -129,7 +129,7 @@
         <p class="queue-meta">
           <span class="mono">{{ t.date.strftime("%d.%m.%Y") if t.date else "ohne Datum" }}</span>
           <span>{{ titles[t.id] }}</span>
-          {% if t.course.place %}<span>{{ t.course.place.name }}</span>{% endif %}
+          {% if t.place %}<span>{{ t.place.name }}</span>{% endif %}
           {{ ui.stage_pill(stage_pills[t.stage], t.stage) }}
           <span><a href="/planung/{{ t.course_id }}?termin={{ t.id }}">{% if t.number %}Termin {{ t.number }}{% else %}Termin öffnen{% endif %}</a>{% if t.source in sources %} · {{ sources[t.source] }}{% endif %}</span>
           <span>{{ rules[h.rule].title if h.rule in rules else h.rule }}</span>

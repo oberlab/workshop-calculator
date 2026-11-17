@@ -7,8 +7,8 @@ context asks for it and none is entered or the numbers do not add up. A note is 
 
 Saving goes through `workflow.save` limited to participants and Herkunft (`workflow.HELD`), so the
 stage rules, the Verlauf and the hints are the same as on the course page. The note goes into the
-Termin's Verlauf ("Notiz nach dem Kurs"): the course's own note is shared by all Termine of a series
-and locked once one of them is Abgeschlossen, so the phone form never overwrites it.
+Termin's Verlauf ("Notiz nach dem Kurs"): the course's own note is shared by all Termine of a series,
+so the phone form never overwrites it.
 """
 
 from collections import Counter
@@ -62,12 +62,12 @@ def suggested_municipalities(session: Session, t: Appointment) -> list[str]:
     names = [o.municipality for o in t.origins]
     course = Counter(o.municipality for other in t.course.appointments for o in other.origins)
     names += [m for m, _ in course.most_common()]
-    if t.course.context_id is not None:
+    if t.context_id is not None:
         rows = session.execute(
             select(AppointmentOrigin.municipality, func.count())
             .join(Appointment, Appointment.id == AppointmentOrigin.appointment_id)
             .join(Course, Course.id == Appointment.course_id)
-            .where(Course.context_id == t.course.context_id)
+            .where(Appointment.context_id == t.context_id)
             .group_by(AppointmentOrigin.municipality)
             .order_by(func.count().desc(), AppointmentOrigin.municipality)
             .limit(SUGGESTED)

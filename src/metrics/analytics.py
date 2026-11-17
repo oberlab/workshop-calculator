@@ -12,11 +12,14 @@ from typing import NamedTuple
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics.db import Appointment, AppointmentOrigin, Course, Format, Person, Place, SchoolType
+from metrics.db import Appointment, AppointmentOrigin, Format, Person, Place, SchoolType
 from metrics.ingest.records import TEACHERS
 from metrics.instance import Instance
 from metrics.metrics import (
+    AGE,
+    AGE_BAND,
     CATEGORY,
+    CLASS_LEVEL,
     CONTEXT,
     COUNTS_PARTICIPANTS,
     DATE,
@@ -391,7 +394,7 @@ def _age_key(label: str) -> tuple:
 
 def by_age(session: Session, filters: Filters, today: date, school_year_start_month: int):
     """Held Termine per class level or age of the course (`age_label`) and category."""
-    group = (Course.class_level, Course.age, Course.age_band, TARGET_GROUP)
+    group = (CLASS_LEVEL, AGE, AGE_BAND, TARGET_GROUP)
     query, _ = select_held(
         select(*group, CATEGORY, func.count()).group_by(*group, CATEGORY),
         filters,

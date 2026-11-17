@@ -207,13 +207,8 @@ def participants(t: Appointment) -> int | None:
     return t.participants_total
 
 
-def _has_class_age(course: Course) -> bool:
-    return bool(
-        clean_name(course.class_age_text)
-        or course.class_level is not None
-        or course.age is not None
-        or course.age_band
-    )
+def _has_class_age(t: Appointment) -> bool:
+    return bool(clean_name(t.class_age_text) or t.class_level is not None or t.age is not None or t.age_band)
 
 
 def _team(t: Appointment) -> dict[int, str]:
@@ -223,11 +218,10 @@ def _team(t: Appointment) -> dict[int, str]:
 
 def _title(t: Appointment, *, by_id: bool = False) -> str:
     """The course name for a hint text; `by_id`: the fallback of the older keys ("Termin <ID>")."""
-    course = t.course
-    if course.format and course.format.name:
-        return course.format.name
-    if course.context:
-        return course.context.name
+    if t.format and t.format.name:
+        return t.format.name
+    if t.context:
+        return t.context.name
     return f"Termin {t.id}" if by_id else "Kurs ohne Namen"
 
 
@@ -242,20 +236,20 @@ CONFIRM_FIELDS: dict[str, Callable[[Appointment], bool]] = {
     "Datum": lambda t: t.date is not None,
     "Beginn": lambda t: t.start_time is not None,
     "Ende": lambda t: t.end_time is not None,
-    "Kontext": lambda t: t.course.context is not None,
-    "Klasse/Alter": lambda t: _has_class_age(t.course),
-    "Ort": lambda t: t.course.place is not None,
+    "Kontext": lambda t: t.context is not None,
+    "Klasse/Alter": lambda t: _has_class_age(t),
+    "Ort": lambda t: t.place is not None,
 }
 FINAL_FIELDS: dict[str, Callable[[Appointment], bool]] = {
     **CONFIRM_FIELDS,
-    "Kursname": lambda t: bool(t.course.format and t.course.format.name),
-    "Kurskategorie": lambda t: bool(t.course.format and t.course.format.category),
+    "Kursname": lambda t: bool(t.format and t.format.name),
+    "Kurskategorie": lambda t: bool(t.format and t.format.category),
     "Dauer": lambda t: duration(t) is not None,
     "Terminnummer": lambda t: t.number is not None,
     "TN weiblich": lambda t: t.participants_female is not None,
     "TN männlich": lambda t: t.participants_male is not None,
     "Kursleitung": lambda t: t.lead is not None,
-    "Herkunft": lambda t: not (t.course.context and t.course.context.asks_municipalities) or bool(t.origins),
+    "Herkunft": lambda t: not (t.context and t.context.asks_municipalities) or bool(t.origins),
 }
 
 
@@ -324,7 +318,7 @@ def duplicate_number(t: Appointment, facts: Facts):
     """Two Termine of a course with the same number would both count (WM-111): this happens only
     when a Termin is dated before one that is already counted, whose number is frozen. A course of
     a continuous format counts every Termin anyway (WM-114), so a shared number does no harm."""
-    if t.number is None or t.course is None or (t.course.format is not None and t.course.format.continuous):
+    if t.number is None or t.course is None or (t.format is not None and t.format.continuous):
         return []
     return [
         Finding(
@@ -340,18 +334,16 @@ def duplicate_number(t: Appointment, facts: Facts):
 
 @rule("klasse-unlesbar", KRITISCH, "Klasse/Alter nicht lesbar", stages=ALL, blocking=True)
 def class_age_unreadable(t: Appointment, facts: Facts):
-    course = t.course
-    text = clean_name(course.class_age_text)
-    if text and not parse_class_age(text).parsed and course.class_level is None and course.age is None:
+    text = clean_name(t.class_age_text)
+    if text and not parse_class_age(text).parsed and t.class_level is None and t.age is None:
         return [f"Klasse/Alter „{text}“ ist weder Klassenstufe, Alter, Altersgruppe noch Lehrkräfte"]
     return []
 
 
 @rule("alter-erwachsen", KRITISCH, "Durchschnittsalter 19 oder mehr", stages=ALL, blocking=True)
 def adult_average_age(t: Appointment, facts: Facts):
-    course = t.course
-    if course.age is not None and course.age >= ADULT_MIN_AGE and course.class_level is None:
-        return [f"Durchschnittsalter (Kinder) {course.age} Jahre: für Erwachsene eine Altersgruppe wählen"]
+    if t.age is not None and t.age >= ADULT_MIN_AGE and t.class_level is None:
+        return [f"Durchschnittsalter (Kinder) {t.age} Jahre: für Erwachsene eine Altersgruppe wählen"]
     return []
 
 
@@ -375,16 +367,15 @@ def held_in_future(t: Appointment, facts: Facts):
 
 @rule("schule-mit-alter", INFO, "Schule, aber Alter statt Klasse", stages=ALL)
 def school_with_age(t: Appointment, facts: Facts):
-    course = t.course
-    teachers = clean_name(course.class_age_text) == TEACHERS
+    teachers = clean_name(t.class_age_text) == TEACHERS
     if (
-        course.place
-        and course.place.is_school
-        and course.class_level is None
+        t.place
+        and t.place.is_school
+        and t.class_level is None
         and not teachers
-        and (course.age is not None or course.age_band)
+        and (t.age is not None or t.age_band)
     ):
-        return [f"„{course.place.name}“ ist eine Schule: Schulklasse oder Lehrkräfte wählen"]
+        return [f"„{t.place.name}“ ist eine Schule: Schulklasse oder Lehrkräfte wählen"]
     return []
 
 
@@ -433,7 +424,7 @@ def _conflicts(t: Appointment, facts: Facts) -> Iterable[tuple[str, Finding]]:
             yield "person-doppelt", Finding(f"{shared} gleichzeitig eingeplant mit {title}", other.id)
         elif shared and overlap is None:
             yield "person-uhrzeit", Finding(f"{shared} am selben Tag mit {title}, Uhrzeit fehlt", other.id)
-        elif overlap and t.course.place_id and t.course.place_id == other.course.place_id:
+        elif overlap and t.place_id and t.place_id == other.place_id:
             yield "gleichzeitig", Finding(f"Gleichzeitig am selben Ort mit {title}", other.id)
         elif overlap:
             yield "gleichzeitig", Finding(f"Zur selben Zeit wie {title}", other.id)
@@ -570,7 +561,7 @@ def equipment_short(t: Appointment, facts: Facts):
 
 @rule("ort-angaben", WICHTIG, "Ort ohne Adresse oder Schulangabe", stages=ACTIVE)
 def place_details(t: Appointment, facts: Facts):
-    place = t.course.place
+    place = t.place
     if place is None:
         return []
     if place.address is None:  # "" is a deliberate "no address" (online, private places)
@@ -640,13 +631,12 @@ def invitation_declined(t: Appointment, facts: Facts):
 
 
 def _same_record(a: Appointment, b: Appointment) -> bool:
-    ca, cb = a.course, b.course
-    same_course = (ca.format_id, ca.context_id, ca.place_id) == (cb.format_id, cb.context_id, cb.place_id)
-    same_class = (ca.class_level, ca.age, ca.age_band, clean_name(ca.class_age_text)) == (
-        cb.class_level,
-        cb.age,
-        cb.age_band,
-        clean_name(cb.class_age_text),
+    same_course = (a.format_id, a.context_id, a.place_id) == (b.format_id, b.context_id, b.place_id)
+    same_class = (a.class_level, a.age, a.age_band, clean_name(a.class_age_text)) == (
+        b.class_level,
+        b.age,
+        b.age_band,
+        clean_name(b.class_age_text),
     )
     na, nb = participants(a), participants(b)
     return (
@@ -707,6 +697,9 @@ def _load(session: Session, where) -> list[Appointment]:
             selectinload(Appointment.course).selectinload(Course.format),
             selectinload(Appointment.course).selectinload(Course.context),
             selectinload(Appointment.course).selectinload(Course.place),
+            selectinload(Appointment.frozen_format),
+            selectinload(Appointment.frozen_context),
+            selectinload(Appointment.frozen_place),
             selectinload(Appointment.lead),
             selectinload(Appointment.support),
             selectinload(Appointment.origins),
@@ -932,10 +925,10 @@ def appointments_using(session: Session, kind: lists.Kind, entry_ids: Iterable[i
         lead = select(Appointment.id).where(Appointment.lead_id.in_(ids))
         support = select(appointment_support.c.appointment_id).where(appointment_support.c.person_id.in_(ids))
         return set(session.scalars(lead)) | set(session.scalars(support))
-    column = {
-        lists.PLACES: Course.place_id,
-        lists.CONTEXTS: Course.context_id,
-        lists.FORMATS: Course.format_id,
+    column = {  # the Termin's effective entry (WM-135)
+        lists.PLACES: Appointment.place_id,
+        lists.CONTEXTS: Appointment.context_id,
+        lists.FORMATS: Appointment.format_id,
     }[kind]
     return set(session.scalars(select(Appointment.id).join(Course).where(column.in_(ids))))
 
@@ -1066,7 +1059,9 @@ def queue(session: Session, f: QueueFilter, limit: int = 200) -> tuple[list[Queu
     if f.rule:
         stmt = stmt.where(StoredHint.rule == f.rule)
     if f.context_id:
-        stmt = stmt.join(Course, Course.id == Appointment.course_id).where(Course.context_id == f.context_id)
+        stmt = stmt.join(Course, Course.id == Appointment.course_id).where(
+            Appointment.context_id == f.context_id
+        )
     if f.date_from:
         stmt = stmt.where(Appointment.date >= f.date_from)
     if f.date_to:

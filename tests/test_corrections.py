@@ -271,7 +271,7 @@ def test_confirm_refuses_stale_values_and_unconfirmed_entries(legacy):
         corrections.confirm(db, proposal.id, "Admin")
     place.status = CONFIRMED
     corrections.confirm(db, proposal.id, "Admin")
-    assert t.course.place is place
+    assert t.place is place and t.course.place is not place  # the Termin only (WM-135)
 
 
 def test_course_fields_team_and_legacy_totals(legacy):
@@ -303,7 +303,7 @@ def test_course_fields_team_and_legacy_totals(legacy):
     labels = [row[0] for row in corrections.changes(p)]
     assert "Kursleitung" in labels and "Klasse/Alter" in labels
     corrections.confirm(db, p.id, "Admin")
-    assert t.lead is kim and t.support == [] and t.course.target_group == "Lehrkräfte"
+    assert t.lead is kim and t.support == [] and t.target_group == "Lehrkräfte" != t.course.target_group
     assert str(t.duration_hours) in ("1.50", "1.5")
     with pytest.raises(CorrectionError, match="Ende: muss nach dem Beginn"):
         corrections.propose(db, t, form(end_time="08:00"), "zu früh", "Kim")
