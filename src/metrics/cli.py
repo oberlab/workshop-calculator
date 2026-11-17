@@ -147,7 +147,9 @@ def transfer_slack(args: argparse.Namespace) -> None:
 
 
 def sync_instructor_profiles(args: argparse.Namespace) -> None:
-    token, _ = _slack_credentials()
+    token = get_settings().slack_bot_token
+    if not token:
+        sys.exit("SLACK_BOT_TOKEN must be set.")
     with get_sessionmaker()() as session, session.begin():
         people, pictures = sync_instructors(session, token)
     print(f"{people} instructors updated, {pictures} with a profile picture.")
