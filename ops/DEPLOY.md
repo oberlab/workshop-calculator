@@ -97,6 +97,20 @@ docker compose start app scheduler
 
 `metrics_old` stays until someone drops it by hand (`dropdb --username metrics metrics_old`).
 
+## Security scan (OWASP ZAP)
+
+Before going public and before a release that changes pages, headers or login, run the ZAP scan on the PC. It never touches the server or the shared dev database: it builds the image from the checkout, starts a throwaway PostgreSQL (data in memory) and the app with demo data only (example instance, the baseline from `tests/fixtures`, a random team password per run) on its own Docker network, and removes everything afterwards.
+
+```sh
+ops/zap-scan.sh                 # baseline scan without login and with a team login, about 5 minutes
+ops/zap-scan.sh --active        # plus an active scan with the login, up to 30 minutes more
+KEEP=1 ops/zap-scan.sh          # leave the app running on http://127.0.0.1:8021 for a look (ZAP_PORT changes the port)
+```
+
+Reports land in `zap-report/` (gitignored): `public.*` (front page, login), `team.*` (from `/mein-bereich`, with the session cookie on every request) and `active.*`, each as HTML, JSON and Markdown. The goal is no medium or high finding. The app runs over plain HTTP here, so ZAP cannot check HSTS or the `Secure` cookie flag. Both depend on the `https://` in `PUBLIC_URL` (or a request that reached the app over https): the app then sends `Strict-Transport-Security` and marks its cookies `Secure`. Check both once on the server with `curl -sI https://<address>/login`.
+
+The script ends with the alerts of each report by risk and exits with 1 when one is medium or high. False positives checked by hand are listed in the script (`ACCEPTED`) with the reason and do not count; so far only "Bypassing 403" (the 403 is the refused CSRF check of a POST route, ZAP then gets 200 for a GET of the same path, and the app ignores `X-Original-URL`). Expected low and informational alerts: "Dangerous JS Functions" and "Suspicious Comments" (vendored Vega and htmx, comments in our scripts), "Storable and Cacheable Content" (static files and the theme, cacheable on purpose), "Session Management Response Identified" (the CSRF cookie), "User Controllable HTML Element Attribute" (filter values put back into the forms, escaped), "Cookie Slack Detector" and "User Agent Fuzzer".
+
 ## Rollback
 
 Run the script with the previous tag: `ops/update.sh v0.9.0`. Its image is still on the server, so this is quick.
