@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 import sqlalchemy as sa
 
-from metrics import courses, hints, lists, scheduler
+from metrics import absences, courses, hints, lists, scheduler
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -372,6 +372,26 @@ def test_above_capacity_from_the_week_sums():
     facts.week_hours[(5, monday)] = Decimal(50)
     assert "ueber-kapazitaet" not in rules_of(hints.evaluate(held, facts))
     assert "ueber-kapazitaet" in rules_of(hints.evaluate(termin(stage=GEPLANT, date=TODAY, lead=full), facts))
+
+
+def test_rule_abwesend():
+    """WM-142: a person of the team is away that day in Kimai (`Facts.absent`); the text never
+    names the kind of absence."""
+    t = termin(stage=BESTAETIGT, date=TODAY, lead=KIM, support=(LEA,))
+    facts = hints.Facts(TODAY, absent={2: {TODAY: absences.Away("Krank")}})
+    hit = only(hints.evaluate(t, facts), "abwesend")
+    assert (hit.level, hit.blocking) == (hints.KRITISCH, False)
+    assert hit.text == "Lea ist am 13.11.2026 abwesend (Kimai)" and "Krank" not in hit.text
+    facts.absent[1] = {TODAY: absences.Away("Urlaub", half_day=True)}
+    texts = [f.text for f in hints.evaluate(t, facts) if f.rule == "abwesend"]
+    assert texts == [
+        "Kim ist am 13.11.2026 halbtags abwesend (Kimai)",
+        "Lea ist am 13.11.2026 abwesend (Kimai)",
+    ]
+    # Another day, or a Termin no longer in planning: nothing.
+    other_day = termin(stage=GEPLANT, date=TODAY + dt.timedelta(days=1), lead=KIM, support=(LEA,))
+    assert "abwesend" not in rules_of(hints.evaluate(other_day, facts))
+    assert "abwesend" not in rules_of(hints.evaluate(termin(date=TODAY, lead=KIM), facts))  # Durchgeführt
 
 
 CALLIOPE = Equipment(id=1, name="Calliope mini", quantity=30, status=CONFIRMED)

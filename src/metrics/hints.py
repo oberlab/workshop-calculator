@@ -6,11 +6,11 @@ Termin and the `Facts` of the run (today, the other Termine on the same day, the
 names) and returns the German texts of its findings (or `Finding`s naming another Termin), nothing
 when all is well. The rules and their cases are listed in `PLANUNG_REGELN.md`.
 
-Adding a rule (absences WM-142; see "material-knapp" of WM-140 and "ueber-kapazitaet" of WM-131):
+Adding a rule (see "abwesend" of WM-142, "material-knapp" of WM-140, "ueber-kapazitaet" of WM-131):
 
-    @rule("abwesend", KRITISCH, "Person abwesend", stages=PLANNED)
+    @rule("abwesend", KRITISCH, "Person laut Kimai abwesend", stages=PLANNED)
     def person_absent(t: Appointment, facts: Facts):
-        ...  # return [] or ["Mia ist am 17.11. im Urlaub"]
+        ...  # return [] or ["Mia ist am 17.11.2026 abwesend (Kimai)"]
 
 plus one test in `tests/test_hints.py`. If the rule needs more than the Termin and its same-day
 neighbours, add the data to `Facts` (loaded once per run in `facts_for`). Nothing else changes:
@@ -44,7 +44,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from metrics import lists
+from metrics import absences, lists
 from metrics.config import get_settings
 from metrics.db import (
     ABGESAGT,
@@ -151,6 +151,9 @@ class Facts:
     # (person ID, Monday) -> estimated working hours that week (`metrics.planning.workload`), for
     # the people of the Termine evaluated
     week_hours: dict[tuple[int, dt.date], Decimal] = field(default_factory=dict)
+    # person ID -> day -> absence from Kimai (`metrics.absences`, WM-142), for the people and days
+    # of the Termine evaluated
+    absent: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -504,6 +507,25 @@ def above_capacity(t: Appointment, facts: Facts):
     return found
 
 
+# --- Absences (WM-142) ------------------------------------------------------------------------
+
+
+@rule("abwesend", KRITISCH, "Person laut Kimai abwesend", stages=PLANNED)
+def person_absent(t: Appointment, facts: Facts):
+    """A person of the team is away that day in Kimai. The text never names the kind of absence
+    (every team member sees the hint); a half day says so, and the hint can be accepted."""
+    if t.date is None:
+        return []
+    found = []
+    people = ([t.lead] if t.lead else []) + list(t.support)
+    for person in sorted({p.id: p for p in people}.values(), key=lambda p: p.name.casefold()):
+        away = facts.absent.get(person.id, {}).get(t.date)
+        if away is not None:
+            half = "halbtags " if away.half_day else ""
+            found.append(f"{person.name} ist am {t.date:%d.%m.%Y} {half}abwesend (Kimai)")
+    return found
+
+
 # --- Equipment (WM-140) ------------------------------------------------------------------------
 
 
@@ -733,7 +755,17 @@ def facts_for(session: Session, appointments: list[Appointment], day: dt.date) -
             numbers[course_id].append((number, appointment_id, date))
     facts = Facts(day, dict(same_day), _confirmed_names(session), _calendar_on(), dict(numbers))
     facts.week_hours = _week_hours(session, appointments)
+    facts.absent = _absent(session, appointments)
     return facts
+
+
+def _absent(session: Session, appointments: list[Appointment]) -> dict:
+    """The absences of the people of these Termine on the days of these Termine."""
+    people = team_of(appointments)
+    dates = [t.date for t in appointments if t.date]
+    if not people or not dates:
+        return {}
+    return absences.by_person(session, min(dates), max(dates), people)
 
 
 def _week_hours(session: Session, appointments: list[Appointment]) -> dict[tuple[int, dt.date], Decimal]:
@@ -881,6 +913,9 @@ def refresh_all(session: Session, day: dt.date | None = None) -> list[Found]:
     from metrics.planning import workload  # it reads `duration` from this module
 
     facts.week_hours = {key: cell.total for key, cell in workload.loads(appointments).items()}
+    dates = [t.date for t in appointments if t.date]
+    if dates:
+        facts.absent = absences.by_person(session, min(dates), max(dates))
     found = [f for t in appointments for f in evaluate(t, facts)]
     session.execute(delete(StoredHint))
     _store(session, found, set())

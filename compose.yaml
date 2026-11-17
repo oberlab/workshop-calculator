@@ -57,6 +57,9 @@ services:
       CALDAV_USERNAME: ${CALDAV_USERNAME:-}
       CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
       CALDAV_ORGANIZER: ${CALDAV_ORGANIZER:-}
+      # Kimai (WM-142), for `metrics kimai-check`; the scheduler reads it every hour.
+      KIMAI_URL: ${KIMAI_URL:-}
+      KIMAI_TOKEN: ${KIMAI_TOKEN:-}
     volumes:
       # Private, organisation-specific config and theme (see instance.example/).
       - ${INSTANCE_DIR:-./instance.example}:/instance:ro
@@ -66,7 +69,7 @@ services:
       # Bound to localhost by default; set APP_BIND to expose it on another interface.
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
 
-  # Stage moves, hints, the calendar check, Slack messages and the nightly pg_dump (metrics/scheduler.py). It writes only to the backup
+  # Stage moves, hints, the calendar check, Kimai, Slack messages and the nightly pg_dump (metrics/scheduler.py). It writes only to the backup
   # directory, which must exist and be writable by the image's user (uid 10001), see ops/DEPLOY.md.
   scheduler:
     build: .
@@ -88,6 +91,9 @@ services:
       CALDAV_USERNAME: ${CALDAV_USERNAME:-}
       CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
       CALDAV_ORGANIZER: ${CALDAV_ORGANIZER:-}
+      # Absences and weekly hours from Kimai (WM-142): off without both.
+      KIMAI_URL: ${KIMAI_URL:-}
+      KIMAI_TOKEN: ${KIMAI_TOKEN:-}
     volumes:
       - ${BACKUP_DIR:-./backups/nightly}:/backups
       - ${INSTANCE_DIR:-./instance.example}:/instance:ro

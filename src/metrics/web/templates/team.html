@@ -53,7 +53,7 @@
   <tr><td colspan="{{ week_labels|length + 2 }}">{{ ui.empty_state("Noch niemand im Team.", "Personen kommen aus den Stammdaten.") }}</td></tr>
   {% endfor %}
   {% endcall %}
-  <p class="help">Geschätzte Arbeitsstunden aller Termine außer abgesagten, Leitung kräftig, Unterstützung blass. Gemessen an den Wochenstunden der Person (bis Kimai angebunden ist, von Hand bei den Personen eingetragen); gelb über 80 %, magenta über 100 %.</p>
+  <p class="help">Geschätzte Arbeitsstunden aller Termine außer abgesagten, Leitung kräftig, Unterstützung blass. Gemessen an den Wochenstunden der Person (aus dem Arbeitsvertrag in Kimai, sonst von Hand bei den Personen eingetragen); gelb über 80 %, magenta über 100 %.</p>
   <details class="formula">
     <summary>So wird gerechnet</summary>
     <ul>{% for line in formula %}<li>{{ line }}</li>{% endfor %}</ul>

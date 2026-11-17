@@ -220,6 +220,9 @@ class Person(Base):
     slack_id: Mapped[str | None] = mapped_column(String(32), unique=True)
     email: Mapped[str | None] = mapped_column(Text, unique=True)
     kimai_user: Mapped[str | None] = mapped_column(Text)
+    # The Kimai user ID, set by an admin when the e-mail in Kimai differs (WM-142); the Kimai job
+    # matches this first, then the e-mail.
+    kimai_user_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     image: Mapped[bytes | None] = mapped_column(LargeBinary)
     image_type: Mapped[str | None] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
@@ -234,6 +237,34 @@ class Person(Base):
     def key(self) -> str:
         """The key the analysis has always used: the Slack user ID, else the recorded name."""
         return self.slack_id or self.name
+
+
+class Absence(Base):
+    """Abwesenheit (WM-142): one day a person is away, read from Kimai and never edited in the app.
+
+    One row per Kimai absence and day. An absence that is no longer in Kimai is not deleted: the
+    Kimai job sets `withdrawn_at`, and only rows without it count; if it comes back, the mark goes.
+    `kind` is the German kind (Urlaub, Krank, …); only the person themselves sees it, everyone else
+    sees "abwesend" (`metrics.absences.label`). Kimai's comment or reason is never stored.
+    """
+
+    __tablename__ = "absences"
+    __table_args__ = (
+        UniqueConstraint("kimai_key", "day", name="uq_absences_kimai_key_day"),
+        Index("ix_absences_person_day", "person_id", "day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"))
+    day: Mapped[dt.date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(Text)
+    half_day: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    kimai_key: Mapped[str] = mapped_column(Text)  # Kimai's absence ID
+    first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    withdrawn_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    person: Mapped[Person] = relationship()
 
 
 class Contact(Base):

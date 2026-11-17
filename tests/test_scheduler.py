@@ -217,6 +217,7 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "slack-after-course": {"state": "overdue", "last_ok": None},
         "slack-weekly-status": {"state": "overdue", "last_ok": None},
         "slack-reminders": {"state": "overdue", "last_ok": None},
+        "kimai": {"state": "overdue", "last_ok": None},
         "calendar": {"state": "overdue", "last_ok": None},
     }
 
@@ -225,6 +226,7 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
     record(db, "backup", now - timedelta(hours=3), True)
     record(db, "login-sessions", now - timedelta(hours=3), True)
     record(db, "calendar", now - timedelta(minutes=10), True)
+    record(db, "kimai", now - timedelta(minutes=30), True)
     for name in ("slack-after-course", "slack-weekly-status", "slack-reminders"):
         record(db, name, now - timedelta(hours=4), True)
     body = healthz()
@@ -237,6 +239,7 @@ def test_healthz_reports_failed_and_overdue_jobs(db):
         "slack-after-course": "ok",
         "slack-weekly-status": "ok",
         "slack-reminders": "ok",
+        "kimai": "ok",
         "calendar": "ok",
     }
 

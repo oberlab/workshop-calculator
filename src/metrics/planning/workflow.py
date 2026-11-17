@@ -40,7 +40,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from metrics import contacts, courses, equipment, hints, lists
+from metrics import absences, contacts, courses, equipment, hints, lists
 from metrics.db import (
     ABGESAGT,
     ABGESCHLOSSEN,
@@ -676,9 +676,12 @@ def busy_people(
     """person ID -> the Termin that keeps them busy at that time (for the team pickers).
 
     Termine in planning on that day (Geplant, Bestätigt, Durchgeführt); with times on both sides only
-    the overlapping ones count, without a time every Termin of the day does.
+    the overlapping ones count, without a time every Termin of the day does. A person away that day
+    in Kimai (WM-142) is "abwesend (Kimai)", whatever else is planned; never the kind of absence.
     """
-    busy: dict[int, str] = {}
+    busy: dict[int, str] = {
+        pid: f"{absences.ABSENT} (Kimai)" for pid in absences.by_person(session, day, day)
+    }
     stmt = (
         select(Appointment)
         .where(Appointment.date == day, Appointment.stage.in_(OPEN_STAGES))

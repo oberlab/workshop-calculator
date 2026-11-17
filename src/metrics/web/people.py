@@ -1,7 +1,9 @@
 """The Personen page (admins only, WM-105): the list page of `web/lists.py` for the team.
 
 Admins keep every detail of a person by hand (name, e-mail, Slack ID, Kimai user, active, weekly
-hours); the edit form checks the e-mail and the Slack ID for format and uniqueness and writes every
+hours). The Kimai-Nutzer-ID assigns a Kimai user by hand when the e-mail in Kimai differs (WM-142;
+the Kimai job matches it before the e-mail); the weekly hours come from Kimai when it has a
+contract. The edit form checks the e-mail and the Slack ID for format and uniqueness and writes every
 change to the Verlauf. The filters "ohne Slack-ID" and "ohne Anmeldung" show what is still missing;
 neither blocks a confirmation. The login is linked at the first login by verified e-mail (WM-101).
 

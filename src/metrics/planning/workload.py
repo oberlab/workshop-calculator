@@ -16,12 +16,12 @@ Each value comes from the first of (`values`, Alex 2026-11-16):
 Every stage but Abgesagt counts: a held Termin of this week was still work.
 
 `loads` adds the estimates up per person and calendar week (lead and support apart); `table` is
-the Team page's table and Mein Bereich's bars, `capacity` the Person's weekly hours (from Kimai
-with WM-142, until then entered by hand). The hint "ueber-kapazitaet" (`metrics.hints`) reads the
-same sums.
+the Team page's table and Mein Bereich's bars, `capacity` the Person's weekly hours (from Kimai's
+working contract, WM-142; entered by hand for people without one). The hint "ueber-kapazitaet"
+(`metrics.hints`) reads the same sums.
 
-Absences: `absences` is the hook for WM-142 (Kimai). It returns nothing yet; the calendar lanes,
-"Wer ist frei?" and the table already read it, so WM-142 only has to fill it.
+Absences (WM-142): `absences` reads the absences from Kimai (`metrics.absences`) for the calendar
+lanes, "Wer ist frei?" and the table; only the viewer sees their own kind, everyone else "abwesend".
 
 "Wer ist frei?" (`who_is_free`) uses the team pickers' own check (`workflow.busy_people`) on the
 pickers' own people (`lists.choices`), so both always agree.
@@ -35,6 +35,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from metrics import absences as away
 from metrics import hints, lists
 from metrics.db import ABGESAGT, Appointment, Course, Person
 from metrics.instance import WorkloadRule, get_instance
@@ -246,12 +247,12 @@ def termine(session: Session, start: dt.date, end: dt.date) -> list[Appointment]
     return list(session.scalars(load_stmt(stmt).order_by(Appointment.date, Appointment.id)))
 
 
-def absences(session: Session, start: dt.date, end: dt.date) -> dict[int, dict[dt.date, str]]:
-    """person ID -> day -> kind of absence (Urlaub, krank, …) from `start` to `end`.
-
-    The hook for WM-142, which reads the absences from Kimai; until then nobody is absent.
-    """
-    return {}
+def absences(
+    session: Session, start: dt.date, end: dt.date, own: int | None = None
+) -> dict[int, dict[dt.date, str]]:
+    """person ID -> day -> what the page shows of the absence from `start` to `end`: the kind
+    (Urlaub, Krank, …) for the person `own` (the viewer), "abwesend" for everyone else (WM-142)."""
+    return away.labels(away.by_person(session, start, end), own)
 
 
 @dataclass
@@ -285,11 +286,13 @@ def table(
     start: dt.date,
     weeks: int = WEEKS,
     appointments: list[Appointment] | None = None,
+    own: int | None = None,
 ) -> list[Row]:
     """Per person and calendar week from the week of `start`: Termine and estimated hours.
 
     `people` get a row each (the active team), plus anyone else with a Termin in those weeks.
-    `appointments` may pass the Termine of those weeks when the caller has them already.
+    `appointments` may pass the Termine of those weeks when the caller has them already; `own` is
+    the viewer, who sees the kind of their own absences.
     """
     days = mondays(start, weeks)
     end = days[-1] + dt.timedelta(days=6)
@@ -300,14 +303,14 @@ def table(
     for t in counted(shown):
         for person, _ in team_of(t):
             everyone.setdefault(person.id, person)
-    away = absences(session, days[0], end)
+    absent = absences(session, days[0], end, own)
     rows = []
     for person in sorted(everyone.values(), key=lambda p: p.name.casefold()):
         cells = [found.get((person.id, monday)) or Cell(monday) for monday in days]
         for cell in cells:
             kinds = {
                 k
-                for d, k in away.get(person.id, {}).items()
+                for d, k in absent.get(person.id, {}).items()
                 if cell.monday <= d <= cell.monday + dt.timedelta(days=6)
             }
             cell.absent = sorted(kinds)
@@ -364,15 +367,17 @@ class Free:
     absent: list[tuple[Person, str]]  # with the kind of absence
 
 
-def who_is_free(session: Session, day: dt.date, start: dt.time | None, end: dt.time | None) -> Free:
+def who_is_free(
+    session: Session, day: dt.date, start: dt.time | None, end: dt.time | None, own: int | None = None
+) -> Free:
     """The team pickers' people (`lists.choices`) without a Termin then (`workflow.busy_people`,
-    the pickers' own check) and without an absence that day."""
+    the pickers' own check) and without an absence that day (`own`: the viewer, see `absences`)."""
     team = lists.choices(session, lists.PEOPLE)
     busy = workflow.busy_people(session, day, start, end)
-    away = absences(session, day, day)
+    absent = absences(session, day, day, own)
     result = Free(day, start, end, [], [], [])
     for person in team:
-        if kind := away.get(person.id, {}).get(day):
+        if kind := absent.get(person.id, {}).get(day):
             result.absent.append((person, kind))
         elif person.id in busy:
             result.busy.append((person, busy[person.id]))

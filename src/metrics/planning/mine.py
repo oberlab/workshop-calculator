@@ -213,5 +213,9 @@ def workload(session: Session, person: Person, today: dt.date, weeks: int = WEEK
         Appointment.date <= end,
     )
     mine = list(session.scalars(team_load.load_stmt(stmt)))
-    (row,) = [r for r in team_load.table(session, [person], start, weeks, mine) if r.person.id == person.id]
+    (row,) = [
+        r
+        for r in team_load.table(session, [person], start, weeks, mine, person.id)
+        if r.person.id == person.id
+    ]
     return Workload(row.cells, row.capacity)

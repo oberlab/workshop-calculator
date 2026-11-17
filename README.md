@@ -109,6 +109,20 @@ uv run metrics fake-calendar --port 5232     # outbox of would-be e-mails: http:
 CALDAV_URL=http://127.0.0.1:5232/cal/ CALDAV_ORGANIZER=planung@example.org ...
 ```
 
+## Absences and weekly hours from Kimai
+
+With `KIMAI_URL` and `KIMAI_TOKEN` (a read-only Kimai Cloud account) the scheduler reads every hour each person's approved absences and the weekly hours of their working contract; people are matched by the Kimai user an admin assigned on the Personen page, else by e-mail. Absences show on the Team page and in the calendar, mark people in the team pickers, and a Termin with an absent person gets a Kritisch hint. The app never writes to Kimai and never deletes an absence: one that disappears from Kimai is marked as withdrawn. Every assumption about Kimai's API is in `src/metrics/kimai_map.py`; `metrics kimai-check` prints the matching and what the endpoints answer (read only).
+
+To try it without Kimai, run the fake with invented users matching `metrics demo-data`:
+
+```sh
+uv run metrics fake-kimai --port 8765        # prints KIMAI_URL and KIMAI_TOKEN; state: http://127.0.0.1:8765/_state
+KIMAI_URL=http://127.0.0.1:8765/api KIMAI_TOKEN=fake-kimai-token uv run metrics kimai-check
+KIMAI_URL=... KIMAI_TOKEN=... uv run metrics scheduler --run kimai
+curl -X POST 'http://127.0.0.1:8765/_abwesenheit?email=kim.beispiel@example.org&date=2026-11-20'
+curl -X POST 'http://127.0.0.1:8765/_wochenstunden?email=kim.beispiel@example.org&hours=10'
+```
+
 ## Server deployment
 
 Releases are Git tags on `main`; the server checks out a tag and builds the image itself with `ops/update.sh vX.Y.Z` (database dump first, then build, restart and a health check). First installation, releases and rollback: [ops/DEPLOY.md](ops/DEPLOY.md).
