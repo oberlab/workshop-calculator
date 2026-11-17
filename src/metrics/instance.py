@@ -4,7 +4,8 @@ The instance directory is private (never in the public repository). Everything i
 it is optional: without it the app runs with the neutral defaults in this package.
 
     instance/
-    ├── config.toml          calendar, target groups, Slack column mapping, workload estimate, Slack messages
+    ├── config.toml          calendar, target groups, Slack column mapping, workload estimate, Slack messages,
+    │                        privacy notice and imprint
     ├── theme/tokens.toml    colours and inks, fonts, category colours, chart palette, map gradient
     ├── theme/fonts/         font files referenced by tokens.toml
     ├── seeds/locations.csv  lookup per location: school?, school type, address, coordinates, municipality
@@ -15,6 +16,7 @@ it is optional: without it the app runs with the neutral defaults in this packag
 """
 
 import csv
+import datetime as dt
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -187,6 +189,112 @@ def load_messages(config: dict) -> Messages:
     )
 
 
+def _text(entry: dict, key: str, section: str) -> str | None:
+    """A text value of a config section, stripped; None when missing or empty. Keeps line breaks."""
+    value = entry.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"[{section}] {key}: must be text")
+    lines = [line.strip() for line in value.strip().splitlines()]
+    return "\n".join(lines) or None
+
+
+def _check_keys(entry: dict, allowed: tuple[str, ...], section: str) -> None:
+    unknown = sorted(set(entry) - set(allowed))
+    if unknown:
+        raise ValueError(f"[{section}]: unknown setting(s) {', '.join(unknown)}")
+
+
+@dataclass(frozen=True)
+class Privacy:
+    """`[privacy]`: the organisation's part of the privacy notice (`/datenschutz`, WM-153).
+
+    Everything the app itself does (what it stores, how long, where data goes) is described from the
+    code (`metrics.privacy`); only who is responsible and the legal wording come from here. A missing
+    value shows a marked placeholder on the page and a notice for admins; without `updated` the page
+    is marked as a draft.
+    """
+
+    responsible: str | None = None  # name and address, several lines
+    contact_email: str | None = None
+    hosting: str | None = None  # who runs the server and where
+    legal_basis: str | None = None  # the legal basis wording, checked by the organisation
+    supervisory_authority: str | None = None  # name and address, several lines
+    dpo: str | None = None  # data protection officer (optional), several lines
+    updated: dt.date | None = None
+
+    REQUIRED = ("responsible", "contact_email", "hosting", "legal_basis", "supervisory_authority")
+
+    @property
+    def missing(self) -> list[str]:
+        return [key for key in self.REQUIRED if getattr(self, key) is None]
+
+    @property
+    def draft(self) -> bool:
+        return self.updated is None
+
+
+PRIVACY_TEXT_KEYS = ("responsible", "contact_email", "hosting", "legal_basis", "supervisory_authority", "dpo")
+
+
+def load_privacy(config: dict) -> Privacy:
+    entry = config.get("privacy") or {}
+    _check_keys(entry, (*PRIVACY_TEXT_KEYS, "updated"), "privacy")
+    updated = entry.get("updated")
+    if isinstance(updated, str):
+        try:
+            updated = dt.date.fromisoformat(updated.strip()) if updated.strip() else None
+        except ValueError as error:
+            raise ValueError("[privacy] updated: a date such as 2026-12-01") from error
+    elif isinstance(updated, dt.datetime):
+        updated = updated.date()
+    elif updated is not None and not isinstance(updated, dt.date):
+        raise ValueError("[privacy] updated: a date such as 2026-12-01")
+    return Privacy(**{key: _text(entry, key, "privacy") for key in PRIVACY_TEXT_KEYS}, updated=updated)
+
+
+@dataclass(frozen=True)
+class Imprint:
+    """`[imprint]`: the Impressum (`/impressum`, § 5 DDG). Missing required values show a marked
+    placeholder on the page and a notice for admins."""
+
+    name: str | None = None  # legal name and form
+    address: str | None = None  # several lines
+    represented_by: str | None = None  # several lines
+    register: str | None = None  # register court and number
+    email: str | None = None
+    phone: str | None = None
+    vat_id: str | None = None
+    responsible_content: str | None = None  # several lines
+    extra: str | None = None  # any further text the organisation wants
+
+    REQUIRED = ("name", "address", "represented_by", "register", "email")
+
+    @property
+    def missing(self) -> list[str]:
+        return [key for key in self.REQUIRED if getattr(self, key) is None]
+
+
+IMPRINT_KEYS = (
+    "name",
+    "address",
+    "represented_by",
+    "register",
+    "email",
+    "phone",
+    "vat_id",
+    "responsible_content",
+    "extra",
+)
+
+
+def load_imprint(config: dict) -> Imprint:
+    entry = config.get("imprint") or {}
+    _check_keys(entry, IMPRINT_KEYS, "imprint")
+    return Imprint(**{key: _text(entry, key, "imprint") for key in IMPRINT_KEYS})
+
+
 @dataclass(frozen=True)
 class ProjectList:
     """A project's own Slack List (e.g. JugendLab), transferred once with `metrics transfer-slack`.
@@ -309,6 +417,8 @@ class Instance:
     slack_stages: dict[str, str] = field(default_factory=dict)
     workload: WorkloadRule = field(default_factory=WorkloadRule)
     messages: Messages = field(default_factory=Messages)
+    privacy: Privacy = field(default_factory=Privacy)
+    imprint: Imprint = field(default_factory=Imprint)
 
     def project(self, slug: str) -> Project | None:
         return next((p for p in self.projects if p.slug == slug), None)
@@ -447,6 +557,8 @@ def load_instance(instance_dir: Path) -> Instance:
         slack_stages={str(k): str(v) for k, v in (slack.get("stages") or {}).items()},
         workload=load_workload(config),
         messages=load_messages(config),
+        privacy=load_privacy(config),
+        imprint=load_imprint(config),
     )
 
 

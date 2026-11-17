@@ -1,0 +1,20 @@
+{# Values from the instance config for the Datenschutz and Impressum pages (WM-153). #}
+
+{# A configured text with its line breaks, or a marked placeholder naming the config key. #}
+{% macro value(text, placeholder, key) -%}
+{% if text %}{% for line in text.splitlines() %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}<mark class="placeholder" data-placeholder="{{ key }}">[{{ placeholder }} in der Instanz-Konfiguration eintragen]</mark>{% endif %}
+{%- endmacro %}
+
+{# Free text: paragraphs separated by an empty line, line breaks kept. #}
+{% macro paragraphs(text) -%}
+{% for block in text.split("\n\n") if block.strip() %}<p>{{ value(block.strip(), "", "") }}</p>{% endfor %}
+{%- endmacro %}
+
+{# For admins only: the keys of a section that are not set yet. #}
+{% macro missing_notice(login, section, missing) -%}
+{% if login and login.admin and missing %}
+<div class="alert alert-warning" role="note" data-admin-notice>
+  <p><strong>Nur für Admins sichtbar:</strong> In der Instanz-Konfiguration (<code>config.toml</code>) fehlen im Abschnitt <code>[{{ section }}]</code>: {% for key in missing %}<code>{{ key }}</code>{% if not loop.last %}, {% endif %}{% endfor %}. Bis dahin zeigt die Seite Platzhalter (siehe <code>instance.example/README.md</code>).</p>
+</div>
+{% endif %}
+{%- endmacro %}

@@ -65,6 +65,10 @@
       {% block subheading %}{% endblock %}
     </header>
     {% block content %}{% endblock %}
+    <footer class="page-foot" aria-label="Rechtliches">
+      <a href="/datenschutz"{% if path == "/datenschutz" %} aria-current="page"{% endif %}>Datenschutz</a>
+      <a href="/impressum"{% if path == "/impressum" %} aria-current="page"{% endif %}>Impressum</a>
+    </footer>
   </main>
 </div>
 <div class="toasts" data-toasts>{% block toasts %}{% if message %}{{ ui.toast(message) }}{% endif %}{% endblock %}</div>

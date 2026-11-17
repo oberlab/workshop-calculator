@@ -27,6 +27,7 @@ from metrics.web import (
     mine,
     people,
     planning,
+    privacy,
     pruefen,
     public,
     sessions,
@@ -61,6 +62,7 @@ app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 # `people` before `lists`: its fixed /stammdaten/personen routes must match before /stammdaten/{kind}.
 AREAS = (
     public,
+    privacy,
     mine,
     analyse,
     tabelle,
