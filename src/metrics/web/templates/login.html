@@ -2,6 +2,7 @@
 
 {% block title %}Anmelden{% endblock %}
 {% block heading %}Anmelden{% endblock %}
+{% block subheading %}<p class="subheading">Kursplanung, Kalender und Auswertung für das Team.</p>{% endblock %}
 
 {% block content %}
 {% if mode == "password" and configured and allowed %}
@@ -16,7 +17,8 @@
 {% elif mode == "oidc" and configured %}
 <div class="login panel">
   {% if error %}<p class="field-error" role="alert">{{ error }}</p>{% endif %}
-  <a class="btn" href="/login">Erneut anmelden</a>
+  <p>Die Anmeldung läuft über den Anmeldedienst, mit demselben Konto wie für die anderen Dienste.</p>
+  <a class="btn" href="/login/start">{% if error %}Erneut anmelden{% else %}Anmelden{% endif %}</a>
 </div>
 {% elif mode == "oidc" %}
 <p class="panel help">Die Anmeldung über den Anmeldedienst ist nicht vollständig eingerichtet (<code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>). Die Analyse-Seite bleibt gesperrt (siehe README).</p>
@@ -25,5 +27,6 @@
 {% else %}
 <p class="panel help">Für diese Instanz ist kein Teampasswort eingerichtet. Die Analyse-Seite bleibt gesperrt, bis <code>TEAM_PASSWORD_HASH</code> gesetzt ist (siehe README).</p>
 {% endif %}
+<p class="help"><a href="{{ front_href }}">Öffentliche Übersicht</a>: die wichtigsten Zahlen, ohne Anmeldung.</p>
 <p class="help login-legal">Bei der Anmeldung setzt die App ein Cookie für die Sitzung. Mehr dazu unter <a href="/datenschutz">Datenschutz</a>; Anbieter: <a href="/impressum">Impressum</a>.</p>
 {% endblock %}

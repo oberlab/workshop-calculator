@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{# After the logout (WM-154): the app's own page instead of the provider's or the front page. #}
+{% block title %}Abgemeldet{% endblock %}
+{% block heading %}Abgemeldet{% endblock %}
+
+{% block content %}
+<section class="panel">
+  {% call ui.empty_state("Du bist abgemeldet.", "Die Sitzung in dieser App ist beendet und ihr Cookie gelöscht.") %}
+  {% if mode == "oidc" %}<p class="help">Beim Anmeldedienst selbst kann die Anmeldung noch bestehen; „Wieder anmelden“ geht dann ohne Passwort. An einem geteilten Gerät meldest du dich deshalb auch dort ab.</p>{% endif %}
+  <div class="page-actions">
+    {{ ui.button("Wieder anmelden", href="/login") }}
+    {{ ui.button("Öffentliche Übersicht", href=front_href, kind="secondary") }}
+  </div>
+  {% endcall %}
+</section>
+{% endblock %}

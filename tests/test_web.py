@@ -305,7 +305,7 @@ def _fake_provider(monkeypatch, claims_override=None, groups=("/team",)):
 def _oidc_login(client, seen):
     from urllib.parse import parse_qs, urlsplit
 
-    start = client.get("/login", follow_redirects=False)
+    start = client.get("/login/start", follow_redirects=False)
     assert start.status_code == 303
     query = {k: v[0] for k, v in parse_qs(urlsplit(start.headers["location"]).query).items()}
     assert query["client_id"] == "metrics" and query["code_challenge_method"] == "S256"

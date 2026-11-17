@@ -1,7 +1,9 @@
 """Login and logout: OpenID Connect or the shared team password (see `metrics.auth`, `metrics.oidc`).
 
 A login opens a server-side session (`metrics.logins`); the groups are read from the provider at
-every login. Both login steps are rate-limited per client address.
+every login. Both login steps are rate-limited per client address. With OpenID Connect the app shows
+its own login page first and goes to the provider only from its button (`/login/start`); a logout ends
+on the app's "Abgemeldet" page (WM-154).
 """
 
 import asyncio
@@ -68,8 +70,16 @@ def login_form(request: Request):
         return RedirectResponse(HOME, status_code=303)
     if auth.mode() == "password":
         return _login_page(request, configured=auth.password_configured())
-    if not oidc.configured():
-        return _login_page(request)
+    return _login_page(request, configured=auth.mode() == "oidc" and oidc.configured())
+
+
+@router.get("/login/start", response_class=HTMLResponse)
+def login_start(request: Request):
+    """The button on the login page: off to the provider."""
+    if current_login(request) is not None:
+        return RedirectResponse(HOME, status_code=303)
+    if auth.mode() != "oidc" or not oidc.configured():
+        return RedirectResponse("/login", status_code=303)
     try:
         url, flow = oidc.start(_callback_url(request))
     except OSError:
@@ -119,8 +129,15 @@ async def login(request: Request):
 @router.post("/logout")
 def logout(request: Request) -> RedirectResponse:
     logins.end(request.cookies.get(auth.COOKIE_NAME))
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse("/abgemeldet", status_code=303)
     response.delete_cookie(
         auth.COOKIE_NAME, httponly=True, samesite="lax", secure=security.is_secure(request)
     )
     return response
+
+
+@router.get("/abgemeldet", response_class=HTMLResponse)
+def logged_out(request: Request):
+    if current_login(request) is not None:
+        return RedirectResponse(HOME, status_code=303)
+    return page(request, "abgemeldet.html", {"mode": auth.mode()})

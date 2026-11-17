@@ -204,6 +204,8 @@ OIDC_ALLOWED_GROUP=<same as on the PC>
 OIDC_ADMIN_GROUP=<same as on the PC>
 OIDC_GROUPS_CLAIM=<same as on the PC>
 PUBLIC_URL=https://<address the team opens>
+# Optional: the public front page on its own address (see section 7); empty: one address for all.
+FRONT_URL=
 
 INSTANCE_DIR=./instance
 LEGACY_DATA_DIR=./old_data
@@ -266,12 +268,29 @@ metrics.example.internal {
 }
 ```
 
-Use the address from `PUBLIC_URL`. `remote_ip` only works if Caddy sees the real client address: if outside requests reach Caddy through a NAT or another proxy that hides it, check what Caddy sees before relying on this rule. If the server has a firewall, allow port 8000 only from the proxy.
+Use the address from `PUBLIC_URL`.
+
+**Two addresses** (`FRONT_URL`): the public front page on one host name, the team part with the login on another, both served by the same app. The app decides by the host name what answers: on the `FRONT_URL` host only the front page, its data, the privacy notice, the imprint and their files (everything else 404); on the `PUBLIC_URL` host "/" leads to the login or Mein Bereich. Caddy passes the host name on unchanged, so both sites only proxy:
+
+```caddyfile
+zahlen.example.org {
+	reverse_proxy <server IP>:8000
+}
+
+kurse.example.org {
+	reverse_proxy <server IP>:8000
+}
+```
+
+Set `PUBLIC_URL=https://kurse.example.org` and `FRONT_URL=https://zahlen.example.org`. The Keycloak client needs only `<PUBLIC_URL>/login/callback`: no login happens on the front address. The login cookie is bound to the team host name and never reaches the front address.
+
+`remote_ip` only works if Caddy sees the real client address: if outside requests reach Caddy through a NAT or another proxy that hides it, check what Caddy sees before relying on this rule. If the server has a firewall, allow port 8000 only from the proxy.
 
 ### 8. Check
 
 - `<address>/healthz` (each address people use) answers with `"status": "ok"` and the version. A few minutes after the first start every scheduler job shows `"state": "ok"` and `backups/nightly/` holds the first dump.
-- Logging in through Keycloak works and lands on Mein Bereich; an admin sees "Prüfen" and "Personen" in the sidebar.
+- Logging in through Keycloak works and lands on Mein Bereich; an admin sees "Prüfen" and "Personen" in the sidebar. "Abmelden" ends on the "Abgemeldet" page.
+- With `FRONT_URL`: the front address shows the figures, its "Anmelden" leads to the team address, and `<FRONT_URL>/login` answers 404.
 - Behind https: `curl -sI https://<address>/login` shows `strict-transport-security` and cookies with `Secure` (see the security scan section).
 - With the calendar: "Kalender jetzt prüfen" on "Prüfen" runs without an error. With Slack messages switched on: the `slack-*` jobs in `job_runs` report what they sent (`docker compose logs scheduler`).
 - From outside the internal network the app is not reachable (with Caddy: answers 403).

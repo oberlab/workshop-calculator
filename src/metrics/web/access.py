@@ -13,6 +13,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRoute, iter_route_contexts
 
+from metrics.web import hosts
 from metrics.web.common import current_login
 
 PUBLIC = "public"
@@ -28,13 +29,29 @@ PUBLIC_ROUTES = {
     "GET /impressum",
     "GET /login",
     "POST /login",
+    "GET /login/start",
     "GET /login/callback",
     "POST /logout",
+    "GET /abgemeldet",
     "GET /healthz",
     "GET /theme.css",
     "GET /theme/fonts/{name}",
     "GET /favicon.ico",
     "MOUNT /static",  # mounted apps bypass route dependencies, so only public ones may be mounted
+}
+
+# What answers on the front address when the front page has one of its own (FRONT_URL, WM-154): the
+# front page and what it needs. Login and logout only work on the team address (PUBLIC_URL).
+FRONT_ROUTES = {
+    "GET /",
+    "GET /api/sessions-over-time",
+    "GET /datenschutz",
+    "GET /impressum",
+    "GET /healthz",
+    "GET /theme.css",
+    "GET /theme/fonts/{name}",
+    "GET /favicon.ico",
+    "MOUNT /static",
 }
 
 ADMIN_ROUTES = {
@@ -175,7 +192,10 @@ def check_access(request: Request) -> None:
     # The matched route as declared in its router; routers are included without a prefix, so its path
     # is the full path. A prefixed router would not match its listing and fall back to Team.
     route = request.scope["route"]
-    required = level(f"{request.method} {route.path}")
+    key = f"{request.method} {route.path}"
+    if hosts.on_front_host(request) and key not in FRONT_ROUTES:
+        raise HTTPException(404)
+    required = level(key)
     if required == PUBLIC:
         return
     login = current_login(request)

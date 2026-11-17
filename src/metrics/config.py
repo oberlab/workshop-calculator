@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,9 @@ class Settings:
     oidc_admin_group: str | None = None
     oidc_groups_claim: str = "groups"
     public_url: str | None = None
+    # The public front page on an address of its own (WM-154), e.g. https://zahlen.example.org; the
+    # team part stays on PUBLIC_URL. Without it the app serves everything on one address.
+    front_url: str | None = None
     # The course calendar (WM-110): a CalDAV collection, e.g. a Nextcloud calendar of the app's own
     # account; without CALDAV_URL planning works without a calendar. CALDAV_ORGANIZER is the e-mail
     # address of that account: with it, lead and support are invited as attendees.
@@ -64,6 +68,7 @@ def get_settings() -> Settings:
         oidc_admin_group=os.environ.get("OIDC_ADMIN_GROUP") or None,
         oidc_groups_claim=os.environ.get("OIDC_GROUPS_CLAIM") or "groups",
         public_url=(os.environ.get("PUBLIC_URL") or "").rstrip("/") or None,
+        front_url=_front_url(),
         caldav_url=os.environ.get("CALDAV_URL") or None,
         caldav_username=os.environ.get("CALDAV_USERNAME") or None,
         caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
@@ -80,3 +85,16 @@ def _auth_mode() -> str:
         # Fail loudly instead of guessing: a typo must never open the analysis page.
         raise ValueError(f"AUTH_MODE must be one of {', '.join(AUTH_MODES)}, not {value!r}")
     return value
+
+
+def _front_url() -> str | None:
+    front = (os.environ.get("FRONT_URL") or "").strip().rstrip("/") or None
+    if front is None:
+        return None
+    public = (os.environ.get("PUBLIC_URL") or "").strip().rstrip("/")
+    # Fail loudly: on the front address only the public pages answer, so the team part needs its own.
+    if not public:
+        raise ValueError("FRONT_URL needs PUBLIC_URL, the address of the team part")
+    if urlsplit(front).hostname == urlsplit(public).hostname:
+        raise ValueError("FRONT_URL and PUBLIC_URL must have different host names")
+    return front

@@ -109,8 +109,11 @@ def _matches(href: str, path: str) -> bool:
     return path == href or (href != "/" and path.startswith(href + "/"))
 
 
-def sidebar(login, path: str, counts: dict[str, int], projects) -> list[tuple[str | None, list[Link]]]:
-    """The visible entries in groups, in order; the longest matching address is the active one."""
+def sidebar(
+    login, path: str, counts: dict[str, int], projects, front: str = "/"
+) -> list[tuple[str | None, list[Link]]]:
+    """The visible entries in groups, in order; the longest matching address is the active one.
+    `front` is where the public front page is (another address with FRONT_URL, WM-154)."""
     entries: list[Entry] = []
     for entry in ENTRIES:
         if entry == PROJECTS:
@@ -124,7 +127,7 @@ def sidebar(login, path: str, counts: dict[str, int], projects) -> list[tuple[st
     for entry in entries:
         link = Link(
             entry.label,
-            entry.href,
+            front if entry.href == "/" else entry.href,
             entry.href == active,
             [(counts[c.key], c.tone, c.title) for c in entry.counts if counts.get(c.key)],
             entry.note if login is not None else None,

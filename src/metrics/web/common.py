@@ -17,7 +17,7 @@ from metrics import analytics, auth, charts, hints, lists, logins, metrics
 from metrics.db import ImportRun, Proposal, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import mine, workflow
-from metrics.web import nav, security
+from metrics.web import hosts, nav, security
 
 HERE = Path(__file__).parent
 TIMEZONE = ZoneInfo("Europe/Berlin")
@@ -111,7 +111,9 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
         projects = reference.projects
     sidebar = {
         "login": login,
-        "nav": nav.sidebar(login, request.url.path, counts, projects),
+        "nav": nav.sidebar(login, request.url.path, counts, projects, front=hosts.front_href(request)),
+        "front_href": hosts.front_href(request),
+        "login_href": hosts.login_href(request),
         "auth_off": auth.mode() == "off",
         "path": request.url.path,
         "csrf_token": security.csrf_token(request),
