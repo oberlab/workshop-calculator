@@ -132,6 +132,15 @@ def test_logout_ends_on_the_logged_out_page(monkeypatch):
     assert "Anmeldedienst" not in html  # the note about the provider only with OpenID Connect
 
 
+def test_login_and_logged_out_pages_have_no_sidebar(monkeypatch):
+    client = _client(monkeypatch)
+    for path in ("/login", "/abgemeldet"):
+        html = client.get(path).text
+        assert 'class="shell shell-bare"' in html and 'id="sidebar"' not in html, path
+        assert "data-menu-toggle" not in html and 'class="account"' not in html, path
+    assert 'id="sidebar"' in client.get("/").text
+
+
 def test_logged_out_page_mentions_the_provider_session(monkeypatch):
     html = _client(monkeypatch, **OIDC).get("/abgemeldet").text
     assert "Beim Anmeldedienst selbst" in html

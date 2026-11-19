@@ -51,6 +51,20 @@ def test_theme_css(instance):
     assert "--color-success-ink: #134b1c;" in css
 
 
+def test_theme_font_metric_overrides(tmp_path):
+    (tmp_path / "theme").mkdir()
+    font = '{ family = "Hind", weight = 400, file = "fonts/Hind-Regular.ttf"'
+    tokens = tmp_path / "theme" / "tokens.toml"
+    tokens.write_text(f'[font]\nfiles = [{font}, ascent_override = "114%", descent_override = "46.1%" }}]\n')
+    css = theme.theme_css_text(load_theme(tmp_path))
+    assert "ascent-override: 114%; descent-override: 46.1%; }" in css
+    tokens.write_text(f"[font]\nfiles = [{font} }}]\n")
+    assert "override" not in theme.theme_css_text(load_theme(tmp_path))
+    tokens.write_text(f'[font]\nfiles = [{font}, ascent_override = "1; }} body {{ x" }}]\n')
+    with pytest.raises(ValueError, match="percentage"):
+        theme.theme_css_text(load_theme(tmp_path))
+
+
 def test_theme_without_inks_leaves_them_to_the_stylesheet(tmp_path):
     (tmp_path / "theme").mkdir()
     (tmp_path / "theme" / "tokens.toml").write_text('[color]\naccent = "#00a4c4"\n')

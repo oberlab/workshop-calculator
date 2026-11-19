@@ -54,6 +54,7 @@ def _login_page(request: Request, status_code: int = 200, **context) -> HTMLResp
         "allowed": auth.password_login_allowed(),
         "failed": False,
         "error": None,
+        "bare": True,
     }
     return page(request, "login.html", {**defaults, **context}, status_code=status_code)
 
@@ -140,4 +141,4 @@ def logout(request: Request) -> RedirectResponse:
 def logged_out(request: Request):
     if current_login(request) is not None:
         return RedirectResponse(HOME, status_code=303)
-    return page(request, "abgemeldet.html", {"mode": auth.mode()})
+    return page(request, "abgemeldet.html", {"mode": auth.mode(), "bare": True})

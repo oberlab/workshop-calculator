@@ -163,10 +163,12 @@ def test_legal_basis_for_visitors(monkeypatch, tmp_path):
     assert "Testgrundlage für alle" in team_basis and "Nur für Besuch" not in team_basis
 
 
-def test_login_page_links_both_in_its_text(monkeypatch):
+def test_login_page_names_and_links_both(monkeypatch):
+    """The login page has no sidebar (WM-154): its text names both pages, the footer links them once."""
     html = _client(monkeypatch).get("/login").text
-    text = html[html.index('class="help login-legal"') :]
-    assert 'href="/datenschutz"' in text.split("</p>")[0] and 'href="/impressum"' in text.split("</p>")[0]
+    text = html[html.index('class="help login-legal"') :].split("</p>")[0]
+    assert "Datenschutz" in text and "Impressum" in text
+    assert html.count('href="/datenschutz"') == 1 and html.count('href="/impressum"') == 1
 
 
 def test_privacy_placeholders_when_section_missing(monkeypatch, tmp_path):

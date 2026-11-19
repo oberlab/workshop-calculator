@@ -6,6 +6,9 @@ heading = "ui-monospace, monospace"
 body = "system-ui, sans-serif"
 files = [
   # { family = "My Font", weight = 400, file = "fonts/MyFont-Regular.ttf" },
+  # A font whose letters sit high or low in buttons can get its vertical metrics overridden, e.g.
+  # { family = "Hind", weight = 400, file = "fonts/Hind-Regular.ttf", ascent_override = "114%", descent_override = "46.1%" },
+  # (ascent + descent unchanged, ascent - descent = cap height; read them from the font's OS/2 table).
 ]
 
 [color]
