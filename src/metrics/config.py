@@ -36,6 +36,9 @@ class Settings:
     caldav_username: str | None = None
     caldav_password: str | None = None
     caldav_organizer: str | None = None
+    # The public calendar (WM-110), same account and login: Termine of contexts marked "Im
+    # öffentlichen Kalender" also appear there, without names. Without it there is only the internal one.
+    caldav_public_url: str | None = None
     # Kimai Cloud (WM-142): absences and weekly hours, read hourly by the scheduler with the API token
     # of a read-only account. Without both the Kimai job does nothing. Never log the token.
     kimai_url: str | None = None
@@ -73,6 +76,7 @@ def get_settings() -> Settings:
         caldav_username=os.environ.get("CALDAV_USERNAME") or None,
         caldav_password=os.environ.get("CALDAV_PASSWORD") or None,
         caldav_organizer=os.environ.get("CALDAV_ORGANIZER") or None,
+        caldav_public_url=_public_calendar_url(),
         kimai_url=(os.environ.get("KIMAI_URL") or "").strip().rstrip("/") or None,
         kimai_token=(os.environ.get("KIMAI_TOKEN") or "").strip() or None,
         backup_dir=Path(os.environ.get("BACKUP_DIR") or "backups/nightly"),
@@ -98,3 +102,12 @@ def _front_url() -> str | None:
     if urlsplit(front).hostname == urlsplit(public).hostname:
         raise ValueError("FRONT_URL and PUBLIC_URL must have different host names")
     return front
+
+
+def _public_calendar_url() -> str | None:
+    public = (os.environ.get("CALDAV_PUBLIC_URL") or "").strip() or None
+    internal = (os.environ.get("CALDAV_URL") or "").strip()
+    # Fail loudly: in one calendar the public events would show up as events without a Termin.
+    if public and public.rstrip("/") == internal.rstrip("/"):
+        raise ValueError("CALDAV_PUBLIC_URL must be another calendar than CALDAV_URL")
+    return public

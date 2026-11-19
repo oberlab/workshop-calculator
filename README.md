@@ -97,7 +97,7 @@ A login is linked to its person in the team at the first login, through the e-ma
 | `AUTH_MODE`, `ALLOW_PASSWORD_LOGIN`, `TEAM_PASSWORD_HASH`, `OIDC_*`, `SESSION_SECRET` | Login, see above. |
 | `PUBLIC_URL` | The address people use to open the app. Needed behind a reverse proxy, for https detection, and for the links in Slack messages and calendar events (without it a DM names Mein Bereich instead of linking). |
 | `FRONT_URL` | Optional: the public front page on an address of its own. Only the front page, its data, the privacy notice and the imprint answer there (everything else is 404); the front address has no sidebar and links the team login in its footer. On `PUBLIC_URL` the team part starts with the login; logged in, "Übersicht" (under Auswertung) shows the same figures there. Needs `PUBLIC_URL` with a different host name. Without it everything runs on one address. |
-| `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `CALDAV_ORGANIZER` | The course calendar (optional), see below. |
+| `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `CALDAV_ORGANIZER`, `CALDAV_PUBLIC_URL` | The internal course calendar and the public one (both optional), see below. |
 | `SLACK_BOT_TOKEN` | Slack messages (scope `chat:write`) and the profile pictures of the instructor ranking (`users:read`). Without it nothing is sent. |
 | `SLACK_LIST_ID`, `SLACK_PROJECT_LIST_ID` | Only for the one-time transfer from the Slack Lists (`lists:read`). |
 | `INSTANCE_DIR`, `LEGACY_DATA_DIR`, `BACKUP_DIR` | Instance directory, legacy CSV directory (mounted at `/legacy`), nightly dumps (default `./backups/nightly`). |
@@ -122,6 +122,8 @@ Sections of `config.toml`:
 ### Course calendar
 
 With `CALDAV_URL` (a CalDAV calendar such as a Nextcloud calendar of the app's own account, with an app password in `CALDAV_USERNAME`/`CALDAV_PASSWORD`) a Bestätigt Termin can be entered as one event ("In Kalender eintragen"); with `CALDAV_ORGANIZER` (that account's e-mail address) lead and support are invited as attendees, and the calendar server sends invitations, updates and cancellations. Geplant Termine have no event; a Termin that goes back to Geplant or is cancelled gets its event cancelled, never deleted. The scheduler checks the calendar every 15 minutes: it pushes pending changes, reads the answers to invitations (a decline becomes a hint) and lists events without a Termin on "Prüfen".
+
+With `CALDAV_PUBLIC_URL` (another calendar of the same account) the Termine of contexts marked "Im öffentlichen Kalender" on the Kontexte page (e.g. Ferienprogramm) also get an event there, with only the format, time, place with address and the context's name: no organizer, no attendees (nobody is mailed), no link or notes. It follows the internal event: created with it, updated with it, cancelled (never deleted) when the Termin is cancelled, goes back to Geplant, or its context is no longer marked. A public calendar that is down never stops the internal one; the 15-minute check catches up.
 
 To try it locally without a real calendar and without e-mail, run the fake calendar and point the app at it:
 

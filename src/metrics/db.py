@@ -128,6 +128,7 @@ class Context(Base):
 
     Contexts with the same `page_slug` share one project page titled `page_title`.
     `teacher_training`: every course in it counts as Lehrkräfte.
+    `public_calendar`: its Termine also go into the public calendar, without names (WM-110).
     """
 
     __tablename__ = "contexts"
@@ -140,6 +141,7 @@ class Context(Base):
     page_title: Mapped[str | None] = mapped_column(Text)
     asks_municipalities: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     teacher_training: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    public_calendar: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     status: Mapped[str] = _status_column()
     merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("contexts.id"))
     created_at: Mapped[dt.datetime] = _created_at()

@@ -59,6 +59,7 @@ services:
       CALDAV_USERNAME: ${CALDAV_USERNAME:-}
       CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
       CALDAV_ORGANIZER: ${CALDAV_ORGANIZER:-}
+      CALDAV_PUBLIC_URL: ${CALDAV_PUBLIC_URL:-}
       # Kimai (WM-142), for `metrics kimai-check`; the scheduler reads it every hour.
       KIMAI_URL: ${KIMAI_URL:-}
       KIMAI_TOKEN: ${KIMAI_TOKEN:-}
@@ -93,6 +94,7 @@ services:
       CALDAV_USERNAME: ${CALDAV_USERNAME:-}
       CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
       CALDAV_ORGANIZER: ${CALDAV_ORGANIZER:-}
+      CALDAV_PUBLIC_URL: ${CALDAV_PUBLIC_URL:-}
       # Absences and weekly hours from Kimai (WM-142): off without both.
       KIMAI_URL: ${KIMAI_URL:-}
       KIMAI_TOKEN: ${KIMAI_TOKEN:-}

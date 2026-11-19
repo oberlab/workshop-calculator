@@ -479,3 +479,116 @@ def test_pruefen_lists_events_without_termin(world, fake, monkeypatch):
     html = client.get("/pruefen").text
     assert "Nicht mehr gemeldet: Teamtreffen" in html and "Ferienkurs · Makerspace" not in html
     assert fake.event("extern-1").summary == "Ferienkurs · Makerspace"  # the event itself is untouched
+
+
+# --- The public calendar (option a, Alex 2026-11-19) -------------------------------------------
+
+
+@pytest.fixture
+def public(fake, monkeypatch):
+    """A second fake calendar as the public one (same login, its own address)."""
+    server, calendar, url = caldav_fake.serve()
+    monkeypatch.setenv("CALDAV_PUBLIC_URL", url)
+    get_settings.cache_clear()
+    yield calendar
+    server.shutdown()
+    get_settings.cache_clear()
+
+
+def test_public_calendar_follows_the_internal_event_without_names(world, fake, public):
+    db = world.db
+    calendar = caldav.get_calendar()
+    world.context.public_calendar = True  # e.g. Ferienprogramm
+    t = _confirmed(world)
+    note = caldav.enter(db, calendar, t, "https://kurse.example", "Kim")
+    assert note.endswith("Im öffentlichen Kalender eingetragen.")
+    from metrics.web import planning as planning_web
+
+    assert planning_web.calendar_context(None, t)["public"]  # the course page says so
+    uid = f"{t.calendar_uid}-oeffentlich"
+    shown = public.event(uid)
+    assert (shown.summary, shown.location, shown.description) == (
+        "Löten",
+        "Grundschule Musterstadt, Schulweg 1",
+        "Projekt A",
+    )
+    # Nothing about people or the planning: no organizer, no attendees, no link, no IDs.
+    text = public.objects[f"{uid}.ics"][0]
+    for private in ("Kim", "Lea", "example.org", "ORGANIZER", "ATTENDEE", "Termin-ID", "kurse.example"):
+        assert private not in text, private
+    assert public.outbox == []  # nobody is mailed from the public calendar
+    assert [m.to for m in fake.outbox] == ["kim@example.org", "lea@example.org"]  # the team, as before
+
+    # A new time: both events follow; the public one only once.
+    later = world.basics(support=[str(world.lea.id)], start_time="10:00", end_time="12:00")
+    workflow.save(db, t, later, "Kim")
+    note = caldav.push(db, calendar, t, "", "Kim")
+    assert note == "Kalender aktualisiert: Termin. Öffentlicher Kalender aktualisiert."
+    assert (public.event(uid).start.hour, public.event(uid).sequence) == (10, 1)
+    assert caldav.push(db, calendar, t, "", "Kim") is None
+
+    # The context no longer asks for it: the check cancels the public event (never deletes it).
+    world.context.public_calendar = False
+    result = caldav.check(db, calendar, TODAY)
+    assert result.public == [f"Termin {t.id}: Im öffentlichen Kalender abgesagt."]
+    assert public.event(uid).status == "CANCELLED"
+    # Marked again: it comes back; a second check changes nothing.
+    world.context.public_calendar = True
+    assert caldav.check(db, calendar, TODAY).public == [f"Termin {t.id}: Öffentlicher Kalender aktualisiert."]
+    assert public.event(uid).status == "CONFIRMED" and caldav.check(db, calendar, TODAY).public == []
+
+    # Cancelling the Termin cancels both events; nothing is deleted anywhere.
+    workflow.cancel(db, t, "Schule geschlossen", "Kim")
+    note = caldav.push(db, calendar, t, "", "Kim")
+    assert note == "Kalendereintrag abgesagt. Im öffentlichen Kalender abgesagt."
+    assert public.event(uid).status == "CANCELLED"
+    assert public.deletes == fake.deletes == 0
+    reasons = db.scalars(sa.select(HistoryEntry.reason).where(HistoryEntry.new_value == uid)).all()
+    assert "in den öffentlichen Kalender eingetragen" in reasons
+    assert "im öffentlichen Kalender abgesagt" in reasons
+
+
+def test_public_event_goes_when_the_termin_goes_back_to_geplant(world, fake, public):
+    db = world.db
+    calendar = caldav.get_calendar()
+    world.context.public_calendar = True
+    t = _confirmed(world)
+    caldav.enter(db, calendar, t, "", "Kim")
+    uid = f"{t.calendar_uid}-oeffentlich"
+    workflow.back_to_planned(db, t, "Kim")
+    assert caldav.push(db, calendar, t, "", "Kim") == (
+        "Kalendereintrag abgesagt (wieder geplant). Im öffentlichen Kalender abgesagt."
+    )
+    assert public.event(uid).status == "CANCELLED" and t.calendar_uid is None
+
+
+def test_only_marked_contexts_and_a_down_public_calendar_never_stops_the_internal_one(world, fake, public):
+    db = world.db
+    calendar = caldav.get_calendar()
+    t = _confirmed(world)  # "Projekt A", not marked
+    assert caldav.enter(db, calendar, t, "", "Kim") == "In den Kalender eingetragen. Eingeladen: Kim, Lea."
+    assert public.objects == {}
+    world.context.public_calendar = True
+    get_settings.cache_clear()
+    with pytest.MonkeyPatch.context() as down:
+        down.setenv("CALDAV_PUBLIC_URL", "http://127.0.0.1:9/cal/")  # nothing listens there
+        get_settings.cache_clear()
+        workflow.save(db, t, world.basics(support=[str(world.lea.id)], start_time="10:00"), "Kim")
+        note = caldav.push(db, calendar, t, "", "Kim")
+        assert note.startswith("Kalender aktualisiert: Termin.") and "nicht erreichbar" in note
+        assert fake.event(t.calendar_uid).start.hour == 10  # the internal event was updated
+    get_settings.cache_clear()
+    # Back up: the check catches up.
+    caught_up = caldav.check(db, calendar, TODAY).public
+    assert caught_up == [f"Termin {t.id}: Im öffentlichen Kalender eingetragen."]
+
+
+def test_public_calendar_must_be_another_calendar(monkeypatch):
+    monkeypatch.setenv("CALDAV_URL", "https://cloud.example/cal/kurse/")
+    monkeypatch.setenv("CALDAV_PUBLIC_URL", "https://cloud.example/cal/kurse")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="another calendar"):
+            get_settings()
+    finally:
+        get_settings.cache_clear()

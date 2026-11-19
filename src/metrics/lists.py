@@ -219,6 +219,8 @@ def describe(entry, types: dict[str, str]) -> str:
             parts.append(f"Projektseite {entry.page_title or entry.name}")
         if entry.teacher_training:
             parts.append("zählt als Lehrkräfte")
+        if entry.public_calendar:
+            parts.append("öffentlicher Kalender")
     elif isinstance(entry, Format):
         if entry.duration_hours is not None:
             parts.append(f"Dauer {_number(entry.duration_hours)} Std.")
@@ -519,6 +521,13 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
         Field("page_title", "Titel der Projektseite"),
         Field("asks_municipalities", "Fragt nach den Heimatgemeinden", "bool"),
         Field("teacher_training", "Fortbildung: zählt als Lehrkräfte", "bool"),
+        Field(
+            "public_calendar",
+            "Im öffentlichen Kalender",
+            "bool",
+            help="Bestätigte Termine stehen zusätzlich im öffentlichen Kalender: "
+            "Format, Zeit und Ort, ohne Namen",
+        ),
     ),
     FORMATS: (
         Field("name", "Kursname", required=True),

@@ -583,6 +583,7 @@
       <ul class="responses">{% for name, email, answer in calendar.responses %}<li>{{ name }}: <span class="answer answer-{{ 'no' if answer == 'abgesagt' else ('yes' if answer == 'zugesagt' else 'open') }}">{{ answer }}</span></li>{% endfor %}</ul>
       {% elif calendar.invitations and t.stage in calendar.stages %}<p class="help">Kursleitung und Unterstützung werden mit dem Eintrag eingeladen.</p>{% endif %}
       {% if calendar.uninvited %}<p class="help">Ohne E-Mail-Adresse, nicht eingeladen: {{ calendar.uninvited|join(", ") }}.</p>{% endif %}
+      {% if calendar.public %}<p class="help">Steht ab „Bestätigt“ auch im öffentlichen Kalender: Format, Zeit und Ort, ohne Namen.</p>{% endif %}
       {% if t.calendar_uid %}<p class="help small">Kalender-ID: <code>{{ t.calendar_uid }}</code></p>{% endif %}
       {% endif %}
     </section>

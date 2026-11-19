@@ -879,6 +879,8 @@ def calendar_context(request: Request, t: Appointment) -> dict:
         "error": None,
         "has_times": bool(t.date and t.start_time and t.end_time),
         "stages": caldav.IN_CALENDAR,
+        # The public calendar (WM-110): only when it is set up and the context asks for it.
+        "public": bool(calendar and caldav.get_public_calendar() and t.context and t.context.public_calendar),
     }
     if calendar is not None and t.calendar_uid and t.calendar_state == CAL_OUTDATED:
         try:

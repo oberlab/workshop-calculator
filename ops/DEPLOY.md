@@ -189,6 +189,8 @@ CALDAV_URL=https://<nextcloud>/remote.php/dav/calendars/<user>/<calendar>/
 CALDAV_USERNAME=<app account>
 CALDAV_PASSWORD=<app password>
 CALDAV_ORGANIZER=<app account's e-mail address>
+# The public calendar of the same account (optional): format, time and place of marked contexts.
+CALDAV_PUBLIC_URL=https://<nextcloud>/remote.php/dav/calendars/<user>/<public calendar>/
 
 # Kimai Cloud (WM-142, optional): a read-only account's API token; without both the import is off.
 KIMAI_URL=https://<name>.kimai.cloud

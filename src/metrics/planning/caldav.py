@@ -40,8 +40,17 @@ When the calendar is written:
 Otherwise the check reads: it marks events as missing or outdated, stores the responses and lists
 future events without a Termin.
 
+The public calendar (`CALDAV_PUBLIC_URL`, same account; Alex, 2026-11-19, option a): a Termin with
+an event whose context is marked "Im öffentlichen Kalender" (e.g. Ferienprogramm) also gets a
+second event there, with only the format, time, place and the context's name: no organizer, no
+attendees (so nobody is mailed), no internal link, no notes. It follows the internal event
+(`sync_public`): created with it, updated when it changes, cancelled (never deleted) when the Termin
+is cancelled, goes back to Geplant or is deleted, or when its context no longer asks for it. Its UID
+is the internal UID plus `-oeffentlich`, so it needs no column of its own. A public calendar that is
+down never stops the internal one: the check (every 15 minutes) catches up.
+
 Standard library only. Times inside the app are naive local times (Europe/Berlin); events are
-written in UTC.
+written in that local time with its zone (`VTIMEZONE`), so calendars and e-mails show it as is.
 """
 
 import base64
@@ -407,6 +416,14 @@ def get_calendar() -> CalDavCalendar | None:
     return CalDavCalendar(s.caldav_url, s.caldav_username, s.caldav_password, s.caldav_organizer)
 
 
+def get_public_calendar() -> CalDavCalendar | None:
+    """The public calendar, or None. Same login as the internal one; no organizer: nobody is invited."""
+    s = get_settings()
+    if not (s.caldav_url and s.caldav_public_url):
+        return None
+    return CalDavCalendar(s.caldav_public_url, s.caldav_username, s.caldav_password)
+
+
 def link_base() -> str:
     return get_settings().public_url or ""
 
@@ -526,6 +543,78 @@ def changes(expected: Event, actual: Event) -> list[tuple[str, str, str]]:
     return found
 
 
+# --- The public calendar -------------------------------------------------------------------------
+
+PUBLIC_SUFFIX = "-oeffentlich"
+
+
+def public_uid(t: Appointment) -> str | None:
+    return f"{t.calendar_uid}{PUBLIC_SUFFIX}" if t.calendar_uid else None
+
+
+def public_event(t: Appointment, uid: str) -> Event | None:
+    """What the public sees: format, time, place with address, the context's name. Nothing else."""
+    if not (t.date and t.start_time and t.end_time):
+        return None
+    place = t.place.name if t.place else None
+    where = ", ".join(x for x in (place, t.place.address if t.place else None) if x) or None
+    return Event(
+        uid=uid,
+        summary=t.format.name if t.format else hints.title(t),
+        start=dt.datetime.combine(t.date, t.start_time),
+        end=dt.datetime.combine(t.date, t.end_time),
+        location=where,
+        description=(t.context.page_title or t.context.name) if t.context else None,
+        status="CONFIRMED",
+    )
+
+
+_UNREAD = object()
+
+
+def sync_public(
+    session: Session, t: Appointment, by: str, uid: str | None = None, current=_UNREAD
+) -> str | None:
+    """Bring the Termin's public event in line: there while the Termin is Bestätigt, has an event
+    and its context asks for it; otherwise cancelled (never deleted). Returns what happened, or None.
+    `uid`: the public UID when the internal one is about to be dropped (`withdraw`); `current`: the
+    event as the check already read it (None: there is none). Raises CalendarError."""
+    public = get_public_calendar()
+    uid = uid or public_uid(t)
+    if public is None or uid is None:
+        return None
+    if current is _UNREAD:
+        current = public.get(uid)
+    shown = t.stage in IN_CALENDAR and t.context is not None and t.context.public_calendar
+    if shown and (expected := public_event(t, uid)) is not None:
+        if current is None:
+            public.put(expected, create=True)
+            reason, note = "in den öffentlichen Kalender eingetragen", "Im öffentlichen Kalender eingetragen."
+        else:
+            actual, etag = current
+            if not changes(expected, actual):
+                return None
+            expected.sequence = actual.sequence + 1
+            public.put(expected, etag=etag)
+            reason, note = "öffentlicher Kalender aktualisiert", "Öffentlicher Kalender aktualisiert."
+    elif not shown and current is not None and current[0].status != "CANCELLED":
+        actual, etag = current
+        public.put(replace(actual, status="CANCELLED", sequence=actual.sequence + 1), etag=etag)
+        reason, note = "im öffentlichen Kalender abgesagt", "Im öffentlichen Kalender abgesagt."
+    else:
+        return None
+    _log(session, t, by, reason, uid)
+    return note
+
+
+def _public(session: Session, t: Appointment, by: str, uid: str | None = None) -> str | None:
+    """`sync_public` for the pages: a public calendar that is down only gets a note."""
+    try:
+        return sync_public(session, t, by, uid)
+    except CalendarError:
+        return "Der öffentliche Kalender ist nicht erreichbar; der Abgleich holt es nach."
+
+
 # --- Writing --------------------------------------------------------------------------------------
 
 
@@ -550,10 +639,25 @@ def enter(session: Session, calendar: CalDavCalendar, t: Appointment, base: str,
     _log(session, t, by, "in den Kalender eingetragen" + (f", eingeladen: {invited}" if invited else ""), uid)
     _store_responses(session, t, event)
     hints.refresh(session, [t.id])
-    return "In den Kalender eingetragen." + (f" Eingeladen: {invited}." if invited else "")
+    note = "In den Kalender eingetragen." + (f" Eingeladen: {invited}." if invited else "")
+    return " ".join(x for x in (note, _public(session, t, by)) if x)
 
 
 def push(
+    session: Session,
+    calendar: CalDavCalendar,
+    t: Appointment,
+    base: str,
+    by: str,
+    current: tuple[Event, str | None] | None = None,
+) -> str | None:
+    """`_push` for the internal event, then the public one (`sync_public`); returns what happened."""
+    note = _push(session, calendar, t, base, by, current)
+    public = _public(session, t, by) if t.calendar_uid and t.stage != GEPLANT else None
+    return " ".join(x for x in (note, public) if x) or None
+
+
+def _push(
     session: Session,
     calendar: CalDavCalendar,
     t: Appointment,
@@ -620,17 +724,20 @@ def _cancel(calendar: CalDavCalendar, t: Appointment, note: str) -> bool:
 def cancel_event(
     session: Session, calendar: CalDavCalendar, t: Appointment, base: str, by: str
 ) -> str | None:
-    """Before a Geplant Termin is deleted: its event is cancelled (attendees are told), not deleted."""
+    """Before a Geplant Termin is deleted: its event is cancelled (attendees are told), not deleted;
+    so is its public one."""
+    public = _public(session, t, by)
     if not _cancel(calendar, t, "Termin gelöscht."):
-        return None
+        return public
     _log(session, t, by, "im Kalender abgesagt (Termin gelöscht)", t.calendar_uid)
-    return "Kalendereintrag abgesagt."
+    return " ".join(x for x in ("Kalendereintrag abgesagt.", public) if x)
 
 
 def withdraw(session: Session, calendar: CalDavCalendar, t: Appointment, by: str) -> str | None:
     """A Termin back in Geplant: its event is cancelled with a note (attendees get the cancellation)
     and unlinked, so a later "In Kalender eintragen" sends a fresh invitation under a new UID."""
     uid = t.calendar_uid
+    public = _public(session, t, by, public_uid(t))  # Geplant: the public event is cancelled too
     cancelled = _cancel(calendar, t, "Termin wieder in Planung (nicht bestätigt).")
     lists._log(
         session,
@@ -647,7 +754,8 @@ def withdraw(session: Session, calendar: CalDavCalendar, t: Appointment, by: str
     t.calendar_uid, t.calendar_state = None, None
     t.calendar_responses = []
     hints.refresh(session, [t.id])
-    return "Kalendereintrag abgesagt (wieder geplant)." if cancelled else None
+    note = "Kalendereintrag abgesagt (wieder geplant)." if cancelled else None
+    return " ".join(x for x in (note, public) if x) or None
 
 
 def preview(calendar: CalDavCalendar, t: Appointment, base: str) -> list[tuple[str, str, str]] | None:
@@ -698,6 +806,7 @@ class CheckResult:
     orphans: int = 0
     pushed: list[str] = field(default_factory=list)  # "Termin 12: Kalender aktualisiert: Termin."
     failed: list[str] = field(default_factory=list)
+    public: list[str] = field(default_factory=list)  # changes in the public calendar
 
     def summary(self) -> str:
         text = (
@@ -708,6 +817,8 @@ class CheckResult:
             text += f"; pushed {len(self.pushed)}: " + " | ".join(self.pushed)
         if self.failed:
             text += f"; push failed {len(self.failed)}: " + " | ".join(self.failed)
+        if self.public:
+            text += f"; public calendar {len(self.public)}: " + " | ".join(self.public)
         return text
 
 
@@ -766,9 +877,11 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
         if before != (t.calendar_state, [(r.email, r.partstat) for r in t.calendar_responses]):
             changed_ids.append(t.id)
 
+    pushed_ids = set()
     for t in termine:
         if t.calendar_state != CAL_OUTDATED:
             continue
+        pushed_ids.add(t.id)  # `push` also brings its public event in line
         try:
             note = push(session, calendar, t, base, AUTOMATIC)
         except CalendarError as error:
@@ -776,6 +889,8 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
             continue
         if note and t.calendar_state != CAL_OUTDATED:  # outdated: no times, nothing was written
             result.pushed.append(f"Termin {t.id}: {note}")
+
+    _check_public(session, [t for t in termine if t.id not in pushed_ids], today, result)
 
     seen = {
         uid: e
@@ -799,6 +914,34 @@ def check(session: Session, calendar: CalDavCalendar, today: dt.date, base: str 
     session.flush()
     hints.refresh(session, changed_ids)
     return result
+
+
+def _check_public(session: Session, termine: list[Appointment], today: dt.date, result: CheckResult) -> None:
+    """The public calendar's part of the check: one listing, then `sync_public` per Termin (e.g. a
+    context newly marked, or unmarked, or a change the public calendar missed while it was down)."""
+    public = get_public_calendar()
+    if public is None:
+        return
+    try:
+        listed = public.events(today - dt.timedelta(days=1), today + dt.timedelta(days=LOOKAHEAD_DAYS))
+    except CalendarError as error:
+        result.failed.append(f"öffentlicher Kalender: {error}")
+        return
+    found = {e.uid: e for e in listed}
+    for t in termine:
+        uid = public_uid(t)
+        if uid is None:
+            continue
+        try:
+            # Not listed: none, unless the Termin wants one (then ask, it may lie outside the window).
+            wanted = t.context is not None and t.context.public_calendar
+            current = (found[uid], None) if uid in found else (public.get(uid) if wanted else None)
+            note = sync_public(session, t, AUTOMATIC, current=current)
+        except CalendarError as error:
+            result.failed.append(f"Termin {t.id} (öffentlich): {error}")
+            continue
+        if note:
+            result.public.append(f"Termin {t.id}: {note}")
 
 
 def responses(t: Appointment) -> list[tuple[str, str, str]]:
