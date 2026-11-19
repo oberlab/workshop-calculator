@@ -237,6 +237,8 @@ main:focus { outline: none; }
 .content {
   width: 100%;
   max-width: 1240px;
+  /* Centred in the space next to the sidebar on wide screens; the sidebar stays at the left edge. */
+  margin-inline: auto;
   padding: 26px 32px 56px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
