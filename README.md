@@ -96,7 +96,7 @@ A login is linked to its person in the team at the first login, through the e-ma
 | `POSTGRES_PASSWORD` | The database (required). |
 | `AUTH_MODE`, `ALLOW_PASSWORD_LOGIN`, `TEAM_PASSWORD_HASH`, `OIDC_*`, `SESSION_SECRET` | Login, see above. |
 | `PUBLIC_URL` | The address people use to open the app. Needed behind a reverse proxy, for https detection, and for the links in Slack messages and calendar events (without it a DM names Mein Bereich instead of linking). |
-| `FRONT_URL` | Optional: the public front page on an address of its own. Only the front page, its data, the privacy notice and the imprint answer there (everything else is 404); on `PUBLIC_URL` the team part starts with the login and "/" leads to Mein Bereich or the login page. Needs `PUBLIC_URL` with a different host name. Without it everything runs on one address. |
+| `FRONT_URL` | Optional: the public front page on an address of its own. Only the front page, its data, the privacy notice and the imprint answer there (everything else is 404); the front address has no sidebar and links the team login in its footer. On `PUBLIC_URL` the team part starts with the login; logged in, "Übersicht" (under Auswertung) shows the same figures there. Needs `PUBLIC_URL` with a different host name. Without it everything runs on one address. |
 | `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, `CALDAV_ORGANIZER` | The course calendar (optional), see below. |
 | `SLACK_BOT_TOKEN` | Slack messages (scope `chat:write`) and the profile pictures of the instructor ranking (`users:read`). Without it nothing is sent. |
 | `SLACK_LIST_ID`, `SLACK_PROJECT_LIST_ID` | Only for the one-time transfer from the Slack Lists (`lists:read`). |

@@ -20,7 +20,7 @@
   <button type="button" class="menu-button" aria-expanded="false" aria-controls="sidebar" data-menu-toggle><span class="menu-icon" aria-hidden="true"></span>Menü</button>
 </header>
 {% endif %}
-<div class="shell{% if bare %} shell-bare{% endif %}">
+<div class="shell{% if bare %} shell-bare{% endif %}{% if wide %} shell-wide{% endif %}">
   {% if bare %}
   <a class="brand" href="/">{{ brand }}</a>
   {% else %}
@@ -76,6 +76,7 @@
       <a href="/datenschutz"{% if path == "/datenschutz" %} aria-current="page"{% endif %}>Datenschutz</a>
       {% if login %}<a href="/datenschutz/team"{% if path == "/datenschutz/team" %} aria-current="page"{% endif %}>Datenschutz (Team)</a>{% endif %}
       <a href="/impressum"{% if path == "/impressum" %} aria-current="page"{% endif %}>Impressum</a>
+      {% if team_login %}<a href="{{ login_href }}">Anmelden (Team)</a>{% endif %}
     </footer>
   </main>
 </div>

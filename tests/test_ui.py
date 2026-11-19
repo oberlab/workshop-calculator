@@ -19,12 +19,13 @@ def _links(groups):
 
 def test_public_sees_only_the_overview():
     groups = nav.sidebar(None, "/", {}, PROJECTS)
-    assert [(g, [link.label for link in links]) for g, links in groups] == [(None, ["Übersicht"])]
+    assert [(g, [link.label for link in links]) for g, links in groups] == [(nav.AUSWERTUNG, ["Übersicht"])]
     assert groups[0][1][0].note is None and groups[0][1][0].active
 
 
 def test_team_and_admin_entries_in_their_groups():
     team = _links(nav.sidebar(TEAM, "/analyse", {}, PROJECTS))
+    assert team["Übersicht"][0] == nav.AUSWERTUNG  # with the analysis (WM-154)
     assert team["Kurse"][0] == nav.PLANUNG and team["Projekt A"][0] == nav.AUSWERTUNG
     assert team["Analyse"][1].active and "Prüfen" not in team
     assert team["Übersicht"][1].note == "öffentlich"

@@ -270,7 +270,7 @@ metrics.example.internal {
 
 Use the address from `PUBLIC_URL`.
 
-**Two addresses** (`FRONT_URL`): the public front page on one host name, the team part with the login on another, both served by the same app. The app decides by the host name what answers: on the `FRONT_URL` host only the front page, its data, the privacy notice, the imprint and their files (everything else 404); on the `PUBLIC_URL` host "/" leads to the login or Mein Bereich. Caddy passes the host name on unchanged, so both sites only proxy:
+**Two addresses** (`FRONT_URL`): the public front page on one host name, the team part with the login on another, both served by the same app. The app decides by the host name what answers: on the `FRONT_URL` host only the front page, its data, the privacy notice, the imprint and their files (everything else 404); on the `PUBLIC_URL` host "/" leads to the login, and once logged in it shows the same overview inside the team part. Caddy passes the host name on unchanged, so both sites only proxy:
 
 ```caddyfile
 zahlen.example.org {

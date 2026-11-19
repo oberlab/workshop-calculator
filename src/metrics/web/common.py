@@ -111,10 +111,16 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
         counts |= reference.counts
         projects = reference.projects
         photo = reference.photo
+    front = hosts.on_front_host(request)
     sidebar = {
+        # The front address (FRONT_URL, WM-154) is a site of its own: no sidebar, full width, and the
+        # team login in the footer. The login and "Abgemeldet" pages pass bare=True themselves.
+        "bare": front,
+        "wide": front,
+        "team_login": front,
         "login": login,
         "login_photo": photo,
-        "nav": nav.sidebar(login, request.url.path, counts, projects, front=hosts.front_href(request)),
+        "nav": nav.sidebar(login, request.url.path, counts, projects),
         "front_href": hosts.front_href(request),
         "brand": hosts.brand(request),
         "login_href": hosts.login_href(request),

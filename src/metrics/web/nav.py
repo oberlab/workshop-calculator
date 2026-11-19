@@ -46,7 +46,6 @@ def _proposed(slug: str, label: str) -> Count:
 
 
 ENTRIES: list[Entry | str] = [
-    Entry("Übersicht", "/", role=PUBLIC, note="öffentlich"),
     Entry("Mein Bereich", "/mein-bereich", counts=(Count("mine_open", "neutral", "offene Aufgaben"),)),
     Entry("Kalender", "/kalender", PLANUNG),
     Entry(
@@ -60,6 +59,8 @@ ENTRIES: list[Entry | str] = [
     ),
     Entry("Team", "/team", PLANUNG),
     Entry("+ Neuer Kurs", "/planung/neu", PLANUNG, action=True),
+    # The public figures, inside the team part (WM-154); on the front address there is no sidebar.
+    Entry("Übersicht", "/", AUSWERTUNG, role=PUBLIC, note="öffentlich"),
     Entry("Analyse", "/analyse", AUSWERTUNG),
     Entry("Planungszahlen", "/analyse/planung", AUSWERTUNG),
     PROJECTS,
@@ -109,11 +110,8 @@ def _matches(href: str, path: str) -> bool:
     return path == href or (href != "/" and path.startswith(href + "/"))
 
 
-def sidebar(
-    login, path: str, counts: dict[str, int], projects, front: str = "/"
-) -> list[tuple[str | None, list[Link]]]:
-    """The visible entries in groups, in order; the longest matching address is the active one.
-    `front` is where the public front page is (another address with FRONT_URL, WM-154)."""
+def sidebar(login, path: str, counts: dict[str, int], projects) -> list[tuple[str | None, list[Link]]]:
+    """The visible entries in groups, in order; the longest matching address is the active one."""
     entries: list[Entry] = []
     for entry in ENTRIES:
         if entry == PROJECTS:
@@ -127,7 +125,7 @@ def sidebar(
     for entry in entries:
         link = Link(
             entry.label,
-            front if entry.href == "/" else entry.href,
+            entry.href,
             entry.href == active,
             [(counts[c.key], c.tone, c.title) for c in entry.counts if counts.get(c.key)],
             entry.note if login is not None else None,

@@ -74,14 +74,18 @@ def test_front_address_serves_only_the_front_page(monkeypatch):
     assert client.post("/logout").status_code == 404
 
 
-def test_front_page_links_to_the_team_address(monkeypatch):
-    html = _front_client(monkeypatch).get("/").text
-    assert f'href="{TEAM}/login"' in html
-    assert 'href="/"' in html  # the Übersicht entry stays on this address
-    assert '<a class="brand" href="/">Zahlen</a>' in html
+def test_front_address_is_a_site_of_its_own(monkeypatch):
+    """No sidebar on the front address, on every page; the team login only in the footer."""
+    client = _front_client(monkeypatch)
+    for path in ("/", "/datenschutz", "/impressum"):
+        html = client.get(path).text
+        assert 'class="shell shell-bare shell-wide"' in html and 'id="sidebar"' not in html, path
+        assert '<a class="brand" href="/">Zahlen</a>' in html, path
+        footer = html.split('class="page-foot"')[1]
+        assert f'<a href="{TEAM}/login">Anmelden (Team)</a>' in footer, path
 
 
-def test_team_address_has_no_front_page(monkeypatch):
+def test_team_address_shows_the_overview_after_login(monkeypatch):
     client = _client(monkeypatch, **SPLIT)
     response = client.get("/", follow_redirects=False)
     assert (response.status_code, response.headers["location"]) == (303, "/login")
@@ -90,16 +94,17 @@ def test_team_address_has_no_front_page(monkeypatch):
     assert '<a class="brand" href="/">Kursplaner</a>' in login_page
 
     _log_in(client, monkeypatch)
-    response = client.get("/", follow_redirects=False)
-    assert (response.status_code, response.headers["location"]) == (303, "/mein-bereich")
-    html = client.get("/impressum").text
-    assert f'href="{FRONT}/"' in html  # the Übersicht entry leads to the front address
-    assert 'href="/datenschutz/team"' in html  # logged in on the team address
+    html = client.get("/", follow_redirects=False).text  # "Übersicht" inside the team part
+    assert 'id="sidebar"' in html and 'data-api="/api/sessions-over-time"' in html
+    assert 'href="/" aria-current="page"' in html.split("</nav>")[0]
+    assert "Anmelden (Team)" not in html and f'href="{FRONT}/"' not in html
+    assert 'href="/datenschutz/team"' in client.get("/impressum").text  # logged in on the team address
 
 
 def test_one_address_without_front_url(monkeypatch):
     client = _client(monkeypatch)
-    assert client.get("/", follow_redirects=False).status_code == 200
+    html = client.get("/", follow_redirects=False).text
+    assert 'id="sidebar"' in html and "Anmelden (Team)" not in html  # as before: one site
     assert 'href="/"' in client.get("/login").text
 
 

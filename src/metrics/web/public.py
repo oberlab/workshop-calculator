@@ -12,7 +12,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from metrics.web import hosts, security
 from metrics.web.common import current_login, page, page_context, parse_filters, sessions_over_time
-from metrics.web.login import HOME
 
 router = APIRouter()
 
@@ -31,9 +30,10 @@ def clear_cache() -> None:
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    if hosts.is_split() and not hosts.on_front_host(request):
-        # The team address (WM-154): the front page lives on FRONT_URL.
-        return RedirectResponse(HOME if current_login(request) else "/login", status_code=303)
+    if hosts.is_split() and not hosts.on_front_host(request) and current_login(request) is None:
+        # The team address (WM-154) starts with the login; logged in, "Übersicht" shows the same
+        # figures inside the team part.
+        return RedirectResponse("/login", status_code=303)
     filters = parse_filters(request.query_params, detailed=False)
     return page(request, "index.html", page_context(filters, api="/api/sessions-over-time"))
 

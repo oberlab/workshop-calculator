@@ -1,10 +1,11 @@
 """Two addresses (WM-154): the public front page on FRONT_URL, the team part on PUBLIC_URL.
 
 On the front address only the public front page, its data, the privacy notice, the imprint and the
-files they need answer (`metrics.web.access.FRONT_ROUTES`); everything else is 404 there. On the team
-address "/" leads to Mein Bereich or the login page instead of the front page. Without FRONT_URL the
-app serves everything on one address, as before. Cookies are host-only, so the login cookie never
-reaches the front address.
+files they need answer (`metrics.web.access.FRONT_ROUTES`), without the sidebar (`common.page`) and
+with the team login in the footer; everything else is 404 there. On the team address "/" leads to the
+login page, and after the login shows the overview with the sidebar. Without FRONT_URL the app serves
+everything on one address, as before. Cookies are host-only, so the login cookie never reaches the
+front address.
 """
 
 from urllib.parse import urlsplit
