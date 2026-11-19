@@ -914,6 +914,11 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .picker-new { display: grid; gap: 10px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .picker-new legend { padding: 0 4px; font-weight: 700; font-size: 0.9rem; }
 .picker-message { font-size: 0.85rem; color: var(--success-ink); }
+/* Material of a Termin (WM-140): a box per item, the number next to it. */
+.material-list { display: grid; gap: 6px; margin: 10px 0; }
+.material-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 2px 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.material-row > .field-help, .material-row > .field-error { grid-column: 1 / -1; }
+.material-row input[type="number"]:disabled { opacity: 0.45; }
 /* The picker as a text field with suggestions (static/picker.js). */
 .combo { position: relative; width: 100%; }
 .combo-input { width: 100%; }

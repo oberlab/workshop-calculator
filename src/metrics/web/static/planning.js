@@ -164,3 +164,51 @@ if (addForm) {
   });
   updateRhythm();
 }
+
+// Material (WM-140, Alex 2026-11-19): a box per item says whether the Termin needs it; the number
+// next to it is greyed out while the box is not ticked. A new course ticks what the chosen format
+// needs (data-format-needs) and only then sends the boxes (`material=1`); without JavaScript it takes
+// the format's material when it is created.
+const material = document.getElementById("material");
+if (form && material) {
+  const formatNeeds = JSON.parse(material.dataset.formatNeeds || "null");
+  const numberOf = (box) => form.elements[`material_${box.dataset.materialItem}`];
+
+  function markChosen() {
+    if (form.elements.material) return;
+    const marker = document.createElement("input");
+    marker.type = "hidden";
+    marker.name = "material";
+    marker.value = "1";
+    material.append(marker);
+  }
+
+  function follow(box) {
+    const number = numberOf(box);
+    number.disabled = !box.checked;
+    if (box.checked && !number.value) number.value = "1";
+  }
+
+  material.addEventListener("change", (event) => {
+    const box = event.target.closest("[data-material-item]");
+    if (box) {
+      follow(box);
+      if (box.checked) numberOf(box).focus();
+    }
+    if (formatNeeds) markChosen();
+  });
+
+  if (formatNeeds) {
+    form.addEventListener("change", (event) => {
+      if (event.target.name !== "format_id") return;
+      const needs = formatNeeds[event.target.value] || {};
+      for (const box of material.querySelectorAll("[data-material-item]")) {
+        const quantity = needs[box.dataset.materialItem];
+        box.checked = Boolean(quantity);
+        numberOf(box).value = quantity || "";
+        follow(box);
+      }
+      markChosen();
+    });
+  }
+}

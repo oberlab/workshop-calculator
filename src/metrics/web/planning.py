@@ -54,6 +54,7 @@ from metrics.db import (
     Course,
     Equipment,
     Format,
+    FormatEquipment,
     Person,
     Place,
     StoredHint,
@@ -361,6 +362,14 @@ def _equipment(session: Session, t: Appointment) -> list[Need]:
     return [Need(item, needs.get(item.id), others.get(item.id, 0)) for item in items]
 
 
+def _format_needs(session: Session) -> dict[int, dict[int, int]]:
+    """format ID -> equipment ID -> quantity, for the formats that need anything."""
+    found: dict[int, dict[int, int]] = {}
+    for row in session.scalars(select(FormatEquipment)):
+        found.setdefault(row.format_id, {})[row.equipment_id] = row.quantity
+    return found
+
+
 STEPS = (GEPLANT, BESTAETIGT, DURCHGEFUEHRT, ABGESCHLOSSEN)
 NEXT_ACTION = {
     GEPLANT: ("confirm", "Bestätigen"),
@@ -438,6 +447,8 @@ def course_context(
         "pickers": _pickers(session, course),
         "pickable": _pickable(session, t),
         "equipment": _equipment(session, t),
+        # A new course: what each format needs, so choosing one ticks its material (planning.js).
+        "format_needs": _format_needs(session) if new else {},
         "class_kind": workflow.class_kind(course if workflow.COURSE in editable else t),
         "class_kinds": workflow.CLASS_KINDS,
         "at_school": workflow.AT_SCHOOL,

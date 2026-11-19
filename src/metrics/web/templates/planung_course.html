@@ -161,21 +161,26 @@
       </section>
 
       {% if equipment %}
-      <section class="panel" id="material">
+      {# A box per item (Alex, 2026-11-19): ticked = this Termin needs it, with the number next to it.
+         A new course ticks what the chosen format needs (planning.js, data-format-needs); without
+         JavaScript it takes the format's material when it is created, as before. #}
+      <section class="panel" id="material"{% if new %} data-format-needs='{{ format_needs|tojson|forceescape }}'{% endif %}>
         <h2>Material</h2>
-        {% if new %}
-        <p class="help">Kommt aus dem Format und ist nach dem Anlegen für jeden Termin änderbar.</p>
-        {% else %}
-        <input type="hidden" name="material" value="1">
-        <div class="fields">
+        {% if not new %}<input type="hidden" name="material" value="1">{% endif %}
+        <input type="hidden" name="material_checks" value="1">
+        <div class="material-list">
           {% for n in equipment %}
           {% set of = (" von " ~ n.item.quantity) if n.item.quantity is not none else "" %}
           {% set day = (" · am Tag sonst " ~ n.others ~ " verplant") if n.others else "" %}
-          {{ ui.field(n.item.name, "material_" ~ n.item.id, n.quantity, type="number", help=("Anzahl" ~ of ~ day) if (of or day) else none, error=("reicht am " ~ (t.date|day) ~ " nicht: " ~ (n.quantity + n.others) ~ of) if n.short else none, attrs={"min": 0, "inputmode": "numeric", "disabled": none if equipment_on else true}) }}
+          <div class="material-row{{ ' is-short' if n.short }}">
+            <label class="check"><input type="checkbox" name="material_on_{{ n.item.id }}" value="1" data-material-item="{{ n.item.id }}"{% if n.quantity %} checked{% endif %}{% if not equipment_on %} disabled{% endif %}> {{ n.item.name }}</label>
+            <input type="number" name="material_{{ n.item.id }}" value="{{ n.quantity or '' }}" min="0" inputmode="numeric" aria-label="Anzahl {{ n.item.name }}"{% if not equipment_on or not n.quantity %} disabled{% endif %}>
+            {% if of or day %}<span class="field-help">Anzahl{{ of }}{{ day }}</span>{% endif %}
+            {% if n.short %}<span class="field-error">reicht am {{ t.date|day }} nicht: {{ n.quantity + n.others }}{{ of }}</span>{% endif %}
+          </div>
           {% endfor %}
         </div>
-        <p class="help">Leer oder 0: braucht der Termin nicht. Ein Satz ist den ganzen Tag belegt; reicht es an einem Tag nicht für alle Termine, bekommen sie einen kritischen Hinweis.</p>
-        {% endif %}
+        <p class="help">{% if new %}Kommt aus dem Format; was dieser Kurs nicht braucht, abhaken. {% else %}Was dieser Termin nicht braucht, abhaken. {% endif %}Ein Satz ist den ganzen Tag belegt; reicht es an einem Tag nicht für alle Termine, bekommen sie einen kritischen Hinweis.</p>
       </section>
       {% endif %}
 

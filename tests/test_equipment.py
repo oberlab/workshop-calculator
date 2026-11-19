@@ -5,6 +5,9 @@ both show a critical hint, which goes away when one moves to another day.
 """
 
 import datetime as dt
+import html
+import json
+import re
 
 import pytest
 import sqlalchemy as sa
@@ -301,3 +304,56 @@ def test_reminder_names_the_equipment(kit):
     w = kit
     t = _course(w, TUESDAY)
     assert "• Material: 20 Calliope mini" in messages.reminder_text(t)
+
+
+def test_material_boxes_untick_what_a_course_does_not_need(kit, monkeypatch):
+    """Alex, 2026-11-19: a box per item; unticked, the item is not needed whatever number stands
+    next to it; ticked without a number is an error. The Verlauf records the change."""
+    w = kit
+    t = _course(w, TUESDAY)
+    assert equipment.needs_of(t.equipment) == {w.calliope.id: 20}
+    team = _team(monkeypatch)
+    page = team.get(f"/planung/{t.course_id}?termin={t.id}").text
+    box = f'name="material_on_{w.calliope.id}" value="1" data-material-item="{w.calliope.id}" checked'
+    assert box in page
+    assert f'name="material_on_{w.laptops.id}" value="1" data-material-item="{w.laptops.id}">' in page
+    assert 'name="material_checks"' in page
+
+    def send(**extra):
+        data = {k: v[0] for k, v in _material(w, t, calliope=20).items()}
+        data |= {"termin": t.id, "material_checks": "1", **extra}
+        return team.post(f"/planung/{t.course_id}", data=data, follow_redirects=False)
+
+    assert send().status_code == 303  # Calliope not ticked: not needed for this course
+    w.db.expire_all()
+    t = w.db.get(Appointment, t.id)
+    assert equipment.needs_of(t.equipment) == {}
+    history = w.db.scalars(
+        sa.select(HistoryEntry).where(
+            HistoryEntry.table_name == "appointments",
+            HistoryEntry.row_id == t.id,
+            HistoryEntry.field == "equipment",
+        )
+    ).all()
+    assert [(h.old_value, h.new_value) for h in history][-1] == ("20 Calliope mini", None)
+
+    ticked = {f"material_on_{w.calliope.id}": "1", f"material_on_{w.laptops.id}": "1"}
+    assert send(**ticked, **{f"material_{w.laptops.id}": "1"}).status_code == 303
+    w.db.expire_all()
+    assert equipment.needs_of(w.db.get(Appointment, t.id).equipment) == {w.calliope.id: 20, w.laptops.id: 1}
+    refused = send(**{f"material_on_{w.laptops.id}": "1", f"material_{w.laptops.id}": ""})
+    assert refused.status_code == 400 and "Laptopkoffer: angehakt, aber ohne Anzahl" in refused.text
+
+
+def test_new_course_ticks_the_formats_material(kit, monkeypatch):
+    """The new-course page knows what each format needs (planning.js ticks it); without the boxes
+    being sent (`material` missing, as without JavaScript) the format's material is taken."""
+    w = kit
+    page = _team(monkeypatch).get("/planung/neu").text
+    needs = re.search(r"data-format-needs='([^']*)'", page).group(1)
+    assert json.loads(html.unescape(needs)) == {str(w.calliope_format.id): {str(w.calliope.id): 20}}
+    t = _course(w, TUESDAY)  # the form without `material`: the format's material
+    assert equipment.needs_of(t.equipment) == {w.calliope.id: 20}
+    values = w.basics(format_id=w.calliope_format.id, date=TUESDAY.isoformat())
+    unticked = workflow.create(w.db, values | {"material": ["1"], "material_checks": ["1"]}, "Test")
+    assert equipment.needs_of(unticked.equipment) == {}  # unticked while creating

@@ -32,6 +32,10 @@ from metrics.db import (
 
 Needs = dict[int, int]  # equipment ID -> quantity
 FIELD = "material_"  # form fields `material_<equipment ID>`; `material=1` says the form has them
+# The course page (WM-140, Alex 2026-11-19): a box `material_on_<ID>` per item says whether the Termin
+# needs it at all; `material_checks=1` says the form has the boxes (the format page has none).
+CHECK = "material_on_"
+CHECKS = "material_checks"
 
 
 def needs_of(rows: Iterable[FormatEquipment | AppointmentEquipment]) -> Needs:
@@ -57,18 +61,24 @@ def choices(session: Session, needs: Needs | None = None) -> list[Equipment]:
 
 
 def parse(session: Session, form: dict, current: Needs, errors: list[str]) -> Needs:
-    """The needs entered in the `material_<id>` fields (empty or 0: not needed). Only active
-    equipment can be added; what is needed already stays choosable whatever its status."""
+    """The needs entered in the `material_<id>` fields (empty or 0: not needed). With the boxes of
+    the course page (`material_checks`), only ticked items count, and a ticked item needs a number.
+    Only active equipment can be added; what is needed already stays choosable whatever its status."""
+    checks = CHECKS in form
     needs: Needs = {}
     for key, values in form.items():
         if not key.startswith(FIELD) or not lists.is_whole(key[len(FIELD) :]):
             continue
+        item_id = int(key[len(FIELD) :])
+        if checks and f"{CHECK}{item_id}" not in form:
+            continue  # not ticked: this Termin does not need it, whatever number stands next to it
         value = values[-1] if isinstance(values, list) else values
         raw = (value or "").strip()
-        if not raw:
-            continue
-        item = session.get(Equipment, int(key[len(FIELD) :]))
+        item = session.get(Equipment, item_id) if raw or checks else None
         if item is None:
+            continue
+        if not raw:
+            errors.append(f"Material {item.name}: angehakt, aber ohne Anzahl")
             continue
         if not lists.is_whole(raw) or int(raw) > lists.MAX_COUNT:
             errors.append(f"Material {item.name}: bitte eine ganze Zahl zwischen 0 und {lists.MAX_COUNT}")
