@@ -50,6 +50,8 @@ services:
       OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Optional: the public front page on its own address (WM-154); empty: one address for all.
+      FRONT_URL: ${FRONT_URL:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
       # The course calendar (WM-110); without CALDAV_URL planning runs without a calendar.
