@@ -27,7 +27,8 @@
 
 {% set tabs = [("zeitverlauf", "Zeitverlauf"), ("kumuliert", "Kumuliert")]
    + ([("kursleitungen", "Kursleitungen")] if instructor_ranking else [])
-   + [("schularten", "Schularten"), ("schulen", "Schulen"), ("kontexte", "Kontexte & Formate"), ("alter", "Klasse / Alter")]
+   + ([("schularten", "Schularten"), ("schulen", "Schulen")] if school_views else [])
+   + [("kontexte", "Kontexte & Formate"), ("alter", "Klasse / Alter")]
    + ([("gemeinden", "Gemeinden")] if map else [])
    + [("orte", "Orte")]
    + ([("herkunft", "Herkunft")] if origins_map else []) %}
@@ -58,6 +59,7 @@
   </section>
   {% endif %}
 
+  {% if school_views %}
   <section class="tab-panel figure" role="tabpanel" tabindex="0" id="view-schularten" aria-labelledby="tab-schularten" data-figure="/api/analyse/schools" hidden>
     {{ view_title("Einsätze an Schulen nach Schulart") }}
     <p class="help">Nur Einsätze an Orten, die als Schule eingetragen sind. {{ same_filters }}</p>
@@ -71,6 +73,7 @@
     <div class="chart" data-click="category"></div>
     <p class="empty" hidden>Keine Einsätze an Schulen für diese Auswahl.</p>
   </section>
+  {% endif %}
 
   <div class="tab-panel" role="tabpanel" tabindex="0" id="view-kontexte" aria-labelledby="tab-kontexte" hidden>
     <section class="figure" data-figure="/api/analyse/by/kontext">

@@ -257,7 +257,8 @@ def test_team_sidebar_and_project_page(db, instance, client, monkeypatch):
     assert 'data-fixed="context=Projekt+A"' in project.text
     assert 'name="category"' not in project.text and 'name="context"' not in project.text
     assert 'aria-current="page"' in project.text
-    assert 'role="tablist"' in project.text and 'id="view-schularten"' in project.text
+    assert 'role="tablist"' in project.text
+    assert 'id="view-schularten"' not in project.text  # no Termin at a school in this project
     assert client.get("/projekte/unbekannt").status_code == 404
 
 

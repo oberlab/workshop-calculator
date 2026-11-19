@@ -31,12 +31,22 @@ def filter_choices(session) -> dict:
     }
 
 
+def _has_school_termine(session, project: Project | None) -> bool:
+    """Whether the Schularten and Schulen views have anything to show: a held Termin at a school, over
+    the whole time span (so the tabs do not come and go with the period), in the project's contexts."""
+    instance = get_instance()
+    every = metrics.Filters(contexts=list(project.contexts) if project else [])
+    rows = analytics.count_by_place(session, every, today(), instance.school_year_start_month)
+    return any(row.is_school for row in rows)
+
+
 def _analysis_page(request: Request, project: Project | None = None) -> HTMLResponse:
     filters = parse_filters(request.query_params, detailed=project is None)
     options = None
-    if project is None:  # a project page has no category, target group or context filter
-        with get_sessionmaker()() as session:
+    with get_sessionmaker()() as session:
+        if project is None:  # a project page has no category, target group or context filter
             options = filter_choices(session)
+        school_views = _has_school_termine(session, project)
     instance = get_instance()
     return page(
         request,
@@ -49,6 +59,8 @@ def _analysis_page(request: Request, project: Project | None = None) -> HTMLResp
             # Sent with every data request but kept out of the address bar.
             fixed=urlencode([("context", c) for c in project.contexts]) if project else "",
             instructor_ranking=instance.instructor_ranking,
+            # Schularten and Schulen only where there is a Termin at a school (e.g. not for JugendLab).
+            school_views=school_views,
             map=instance.map,
             # Herkunft map (WM-134): only where the project's context asks for home municipalities.
             origins_map=bool(instance.map and project and project.participant_municipalities),

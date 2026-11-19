@@ -24,7 +24,7 @@ from metrics.db import (
     Person,
     Place,
 )
-from metrics.instance import load_instance
+from metrics.instance import Project, load_instance
 from metrics.planning import insights, workload
 from metrics.web import analyse
 from metrics.web import insights as insights_web
@@ -409,3 +409,13 @@ def test_planning_insights_need_login(monkeypatch):
     assert client.get("/api/analyse/planung/stunden").status_code == 401
     response = client.get("/analyse/planung", follow_redirects=False)
     assert response.headers["location"] == "/login"
+
+
+def test_school_views_only_where_a_termin_is_at_a_school(data):
+    """Schularten and Schulen are hidden where they could only be empty, e.g. on the JugendLab page."""
+    has = analyse._has_school_termine
+    assert has(data, None)
+    assert has(data, Project("projekt-a", "Projekt A", ("Projekt A",)))
+    # "Offen" has one Termin, at the Makerspace (no school): nothing to show.
+    assert not has(data, Project("offen", "Offen", ("Offen",)))
+    assert not has(data, Project("leer", "Leer", ("Gibt es nicht",)))
