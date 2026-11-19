@@ -697,7 +697,9 @@ def test_list_decisions_refresh_the_hints(seeded, monkeypatch):
         seeded, lists.PLACES, {"name": "Jugendhaus Seeblick", "is_school": False, "address": "See 2"}, "Kim"
     ).entry
     course = courses.create_course(seeded, by="Kim", place_id=place.id)
-    t = courses.add_appointment(seeded, course, by="Kim", date=TODAY + dt.timedelta(days=4), stage=GEPLANT)
+    # The page refreshes the hints with the real date, so the Termin must lie after it (not after TODAY).
+    later = dt.date.today() + dt.timedelta(days=30)
+    t = courses.add_appointment(seeded, course, by="Kim", date=later, stage=GEPLANT)
     seeded.commit()
     assert [h.rule for h in seeded.scalars(sa.select(StoredHint))] == ["eintrag-wartet"]
     admin = _admin(monkeypatch)
