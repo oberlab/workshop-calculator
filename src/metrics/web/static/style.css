@@ -914,6 +914,20 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .picker-new { display: grid; gap: 10px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .picker-new legend { padding: 0 4px; font-weight: 700; font-size: 0.9rem; }
 .picker-message { font-size: 0.85rem; color: var(--success-ink); }
+/* The picker as a text field with suggestions (static/picker.js). */
+.combo { position: relative; width: 100%; }
+.combo-input { width: 100%; }
+.combo-list {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 300px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--line-control); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow); font-weight: 400; font-size: 0.9rem;
+}
+.combo-list li { padding: 7px 10px; border-radius: 4px; cursor: pointer; }
+.combo-list li.is-active, .combo-list li:hover { background: var(--surface-hover); }
+.combo-list li[aria-selected="true"] { font-weight: 700; }
+.combo-list .combo-new { color: var(--link); font-weight: 700; border-top: 1px solid var(--line); margin-top: 4px; }
+.combo-list .combo-empty { color: var(--text-muted); cursor: default; }
 
 /* ---- Prüfen (WM-113): one queue of proposals, corrections and hints ----------------------------- */
 

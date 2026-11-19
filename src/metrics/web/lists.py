@@ -17,8 +17,11 @@ The picker (`_lists.html`, macro `picker`) is a select of the active entries wit
 button. `GET /stammdaten/<liste>/auswahl` renders it (htmx swaps it in place: after a change, to show
 the details of the chosen entry, or with the proposal fields open); `POST` to the same address adds
 the proposed entry and answers with the picker that has it selected. Parameters: `feld` (the form
-field, e.g. `place_id`; its value is the entry ID), `label`, `neu=1`, `ohne=<id>` (leave one entry
-out, e.g. the entry being merged) and `neu_erlaubt=0` (no proposals, e.g. a merge target).
+field, e.g. `place_id`; its value is the entry ID), `label`, `neu=1` with `name` (what was typed, to
+start the proposal with), `ohne=<id>` (leave one entry out, e.g. the entry being merged) and
+`neu_erlaubt=0` (no proposals, e.g. a merge target). With JavaScript the picker is a text field with
+suggestions (`static/picker.js`): typing filters the entries, and "„…“ neu vorschlagen" opens the
+proposal fields with the typed name; without it the select and the "Neu vorschlagen" button remain.
 """
 
 import re
@@ -502,6 +505,11 @@ def _picker(
     return templates.TemplateResponse(request, "_picker.html", context)
 
 
+def _search_text(entry) -> str:
+    """What typing in the picker matches besides the shown text: a place's address and municipality."""
+    return " ".join(x for x in (getattr(entry, "address", None), getattr(entry, "municipality", None)) if x)
+
+
 def picker_context(
     kind: lists.Kind,
     field: str,
@@ -520,7 +528,12 @@ def picker_context(
         "field": field,
         "label": label or kind.singular,
         "options": [
-            (e.id, lists.label(e) + ("" if e.status == CONFIRMED else f" ({e.status})"), e.status)
+            (
+                e.id,
+                lists.label(e) + ("" if e.status == CONFIRMED else f" ({e.status})"),
+                e.status,
+                _search_text(e),
+            )
             for e in entries
         ],
         "selected_id": selected.id if selected else None,
@@ -536,8 +549,14 @@ def picker_context(
 def picker(kind: str, request: Request):
     params = request.query_params
     field = params.get("feld") or ""
+    # `name`: what was typed in the picker before "neu vorschlagen" (WM-101), to start the proposal.
+    typed = (params.get("name") or "").strip()[:200]
     return _picker(
-        request, _kind(kind), selected_id=_int(params.get(field)), open_new=params.get("neu") == "1"
+        request,
+        _kind(kind),
+        selected_id=_int(params.get(field)),
+        open_new=params.get("neu") == "1",
+        values={"name": typed} if typed else None,
     )
 
 

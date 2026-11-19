@@ -333,7 +333,7 @@ def _admin(monkeypatch):
 
 
 def _selected(html: str) -> str:
-    return re.search(r'<option value="(\d+)" selected>', html).group(1)
+    return re.search(r'<option value="(\d+)"[^>]* selected>', html).group(1)
 
 
 def test_list_pages_search_filter_and_detail(seeded, monkeypatch):
@@ -380,6 +380,27 @@ def test_picker_endpoint(seeded, monkeypatch):
     assert (
         client.get("/stammdaten/formate/auswahl?feld=format_id&neu=1").text.count('name="neu-format_id-') == 3
     )
+
+
+def test_picker_for_typing(seeded, monkeypatch):
+    """The picker as a text field (static/picker.js): the options carry what typing also searches
+    (a place's address and municipality), "neu vorschlagen" starts the proposal with the typed name,
+    and the button and select stay in the page for browsers without JavaScript."""
+    client = _team(monkeypatch)
+    place = _place(seeded, "Makerspace")
+    place.address = "Werkstattstraße 5"
+    seeded.commit()
+    html = client.get("/stammdaten/orte/auswahl?feld=place_id").text
+    assert 'data-combobox data-kind="Ort"' in html
+    assert 'data-new-url="/stammdaten/orte/auswahl?feld=place_id' in html
+    option = f'<option value="{place.id}" data-search="Werkstattstraße 5 Beispieldorf">Makerspace</option>'
+    assert option in html
+    assert "data-picker-new" in html and "<select" in html  # the fallback without JavaScript
+    typed = client.get("/stammdaten/orte/auswahl?feld=place_id&neu=1&name=Gymnasium%20Testdorf").text
+    assert 'name="neu-place_id-name" value="Gymnasium Testdorf"' in typed
+    assert "data-new-url" not in typed  # the proposal is open: nothing more to propose
+    long = client.get("/stammdaten/orte/auswahl?feld=place_id&neu=1&name=" + "x" * 300).text
+    assert 'value="' + "x" * 200 + '"' in long and "x" * 201 not in long
 
 
 def test_done_when_a_proposed_place_is_used_merged_and_counted(seeded, monkeypatch):

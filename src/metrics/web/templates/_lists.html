@@ -69,12 +69,12 @@
    surrounding form ignores them. #}
 {% macro picker(p, open_new=false, new_values={}, new_errors={}, message=none, categories=[], focus=false) -%}
 {% set base = "/stammdaten/" ~ p.kind.slug ~ "/auswahl?feld=" ~ p.field ~ "&label=" ~ (p.label|urlencode) ~ ("&ohne=" ~ p.without if p.without else "") ~ ("" if p.allow_new else "&neu_erlaubt=0") %}
-<div class="picker" id="picker-{{ p.field }}">
+<div class="picker" id="picker-{{ p.field }}" data-combobox data-kind="{{ p.kind.singular }}"{% if p.allow_new and not open_new %} data-new-url="{{ base }}&neu=1"{% endif %}>
   <label class="field">
     <span>{{ p.label }}</span>
     <select name="{{ p.field }}" id="{{ p.field }}-auswahl" hx-get="{{ base }}" hx-trigger="change" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML"{% if focus %} autofocus{% endif %}>
       <option value="">– bitte wählen –</option>
-      {% for id, text, status in p.options %}<option value="{{ id }}"{% if id == p.selected_id %} selected{% endif %}>{{ text }}</option>{% endfor %}
+      {% for id, text, status, search in p.options %}<option value="{{ id }}"{% if search %} data-search="{{ search }}"{% endif %}{% if id == p.selected_id %} selected{% endif %}>{{ text }}</option>{% endfor %}
     </select>
     {% if p.selected_note %}<span class="field-help">{{ p.selected_note }}</span>{% endif %}
   </label>
@@ -91,7 +91,7 @@
     </div>
   </fieldset>
   {% else %}
-  <button type="button" class="btn btn-secondary btn-sm" hx-get="{{ base }}&neu=1" hx-include="#{{ p.field }}-auswahl" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML">Neu vorschlagen</button>
+  <button type="button" class="btn btn-secondary btn-sm" data-picker-new hx-get="{{ base }}&neu=1" hx-include="#{{ p.field }}-auswahl" hx-target="#picker-{{ p.field }}" hx-swap="outerHTML">Neu vorschlagen</button>
   {% endif %}
   {% endif %}
 </div>
