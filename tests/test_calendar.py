@@ -3,6 +3,7 @@
 
 import datetime as dt
 import urllib.request
+from dataclasses import replace
 
 import pytest
 import sqlalchemy as sa
@@ -46,7 +47,12 @@ def test_ics_round_trip_with_organizer_attendees_and_long_lines():
     )
     text = caldav.to_ics(event)
     assert all(len(line.encode()) <= 75 for line in text.split("\r\n"))
-    assert "DTSTART:20261120T080000Z" in text  # written in UTC
+    # Local time with its zone (Nextcloud's e-mails then show 09:00, not 08:00 UTC), and the zone's rules.
+    assert "DTSTART;TZID=Europe/Berlin:20261120T090000" in text and "Z" not in text.split("DTSTART")[1][:30]
+    assert text.index("BEGIN:VTIMEZONE") < text.index("BEGIN:VEVENT") and "TZID:Europe/Berlin" in text
+    summer = caldav.to_ics(replace(event, start=dt.datetime(2026, 7, 1, 9), end=dt.datetime(2026, 7, 1, 11)))
+    assert "DTSTART;TZID=Europe/Berlin:20260701T090000" in summer
+    assert caldav.parse_ics(summer)[0].start == dt.datetime(2026, 7, 1, 9)  # read back as the same local time
     assert (
         'ATTENDEE;CN="Kim, K.";ROLE=CHAIR;PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:kim@example.org'
         in text.replace("\r\n ", "")
@@ -361,7 +367,7 @@ def test_course_page_enters_and_updates_the_calendar(world, fake, monkeypatch):
         "1 events checked: 0 missing, 1 outdated, 0 with new responses; "
         f"0 future events without a Termin; pushed 1: Termin {t.id}"
     )
-    assert fake.event(uid).location == "Grundschule Musterstadt"
+    assert fake.event(uid).location == "Grundschule Musterstadt, Schulweg 1"  # with the address
 
 
 def test_calendar_job_pushes_what_failed_while_the_calendar_was_down(world, fake, monkeypatch):

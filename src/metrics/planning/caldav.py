@@ -153,8 +153,32 @@ def _fold(line: str) -> list[str]:
     return [parts[0], *(" " + p for p in parts[1:])]
 
 
-def _utc(local: dt.datetime) -> str:
-    return local.replace(tzinfo=LOCAL).astimezone(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+def _local(moment: dt.datetime) -> str:
+    """A local time with its zone, so calendars and Nextcloud's e-mails show 09:00, not 08:00 UTC."""
+    return f";TZID={TZID}:{moment:%Y%m%dT%H%M%S}"
+
+
+# The zone the times are written in (the rules since 1996, enough for any future course).
+TZID = "Europe/Berlin"
+VTIMEZONE = [
+    "BEGIN:VTIMEZONE",
+    f"TZID:{TZID}",
+    "BEGIN:DAYLIGHT",
+    "TZOFFSETFROM:+0100",
+    "TZOFFSETTO:+0200",
+    "TZNAME:CEST",
+    "DTSTART:19700329T020000",
+    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU",
+    "END:DAYLIGHT",
+    "BEGIN:STANDARD",
+    "TZOFFSETFROM:+0200",
+    "TZOFFSETTO:+0100",
+    "TZNAME:CET",
+    "DTSTART:19701025T030000",
+    "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU",
+    "END:STANDARD",
+    "END:VTIMEZONE",
+]
 
 
 def to_ics(event: Event) -> str:
@@ -162,11 +186,12 @@ def to_ics(event: Event) -> str:
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         f"PRODID:{PRODID}",
+        *VTIMEZONE,
         "BEGIN:VEVENT",
         f"UID:{event.uid}",
         f"DTSTAMP:{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}",
-        f"DTSTART:{_utc(event.start)}",
-        f"DTEND:{_utc(event.end)}",
+        f"DTSTART{_local(event.start)}",
+        f"DTEND{_local(event.end)}",
         f"SEQUENCE:{event.sequence}",
         f"STATUS:{event.status}",
         f"SUMMARY:{_escape(event.summary)}",
@@ -424,12 +449,14 @@ def expected_event(
         lines.append(f"{LINK_LINE}{base}/planung/{t.course_id}?termin={t.id}")
     title = hints.title(t)
     place = t.place.name if t.place else None
+    # The address too, so the entry leads there (calendar apps link it to a map).
+    where = ", ".join(x for x in (place, t.place.address if t.place else None) if x) or None
     event = Event(
         uid=uid or t.calendar_uid or new_uid(t),
         summary=" · ".join(x for x in (title, place) if x),
         start=dt.datetime.combine(t.date, t.start_time),
         end=dt.datetime.combine(t.date, t.end_time),
-        location=place,
+        location=where,
         description="\n".join(lines),
         status=status,
     )
