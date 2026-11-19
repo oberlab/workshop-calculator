@@ -11,10 +11,11 @@
 
 {# The input fields of a list entry. fields: lists.Field items; values and errors by field name;
    prefix: put before every input name (the picker uses "neu-<feld>-" so its fields never mix with
-   the surrounding form); new: a proposal, which marks the required fields. #}
+   the surrounding form); new: a proposal, which marks the required fields. The checkboxes come last,
+   together in one full-width block, each with its help text below it. #}
 {% macro entry_fields(fields, values, errors, school_types, categories=[], prefix="", new=false, autofocus=false) -%}
 <div class="fields">
-{% for f in fields %}
+{% for f in fields if f.type != "bool" %}
   {% set name = prefix ~ f.name %}
   {% set required = f.required and new %}
   {% set first = {"autofocus": "autofocus"} if autofocus and loop.first else {} %}
@@ -27,8 +28,6 @@
     </div>
     {% if errors.get(f.name) %}<span class="field-error">{{ errors[f.name] }}</span>{% endif %}
   </fieldset>
-  {% elif f.type == "bool" %}
-  <label class="check field-check"><input type="checkbox" name="{{ name }}" value="1"{% if values.get(f.name) %} checked{% endif %}> {{ f.label }}</label>
   {% elif f.type == "school_type" %}
   <label class="field{{ ' is-missing' if errors.get(f.name) }}">
     <span>{{ f.label }}</span>
@@ -47,6 +46,17 @@
   {{ ui.field(f.label, name, values.get(f.name), type="email" if f.type == "email" else "text", required=required or (f.name == "name" and not new), help=f.help, error=errors.get(f.name), attrs=dict(attrs, **first)) }}
   {% endif %}
 {% endfor %}
+{% set checks = fields|selectattr("type", "equalto", "bool")|list %}
+{% if checks %}
+<div class="field-checks">
+  {% for f in checks %}
+  <div class="field-check">
+    <label class="check"><input type="checkbox" name="{{ prefix ~ f.name }}" value="1"{% if values.get(f.name) %} checked{% endif %}> {{ f.label }}</label>
+    {% if f.help %}<span class="field-help">{{ f.help }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 </div>
 {%- endmacro %}
 

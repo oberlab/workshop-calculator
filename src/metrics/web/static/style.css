@@ -402,8 +402,11 @@ form.inline { display: inline; margin: 0; }
   color: var(--on-fill);
   background: var(--accent-strong);
   overflow: hidden;
+  vertical-align: middle;  /* centred on the name next to it */
+  position: relative;
 }
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* Pinned to the circle, so a picture that is not square (Slack) still fills it. */
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .avatar.tone-1 { background: var(--critical-strong); }
 .avatar.tone-2 { background: var(--success-ink); }
 .avatar.tone-3 { background: var(--warning); color: var(--text); }
@@ -883,7 +886,10 @@ table.changes thead th { color: var(--text-muted); font-weight: 700; }
 .detail-pane { display: grid; gap: 14px; overflow-wrap: anywhere; }
 .detail-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .entry-form { display: grid; gap: 12px; }
-.field-check { align-self: end; }
+/* The checkboxes of a list entry: one block below the other fields, the help under each box. */
+.field-checks { grid-column: 1 / -1; display: grid; gap: 10px; }
+.field-check { display: grid; gap: 2px; }
+.field-check .field-help { padding-left: 26px; }
 .entry-values { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 0.9rem; }
 .entry-values dt { color: var(--text-muted); }
 .entry-values dd { margin: 0; }
@@ -1006,6 +1012,7 @@ table.mun input[type="number"] { width: 90px; }
 .cal-grid th, .cal-grid td { border: 1px solid var(--line); padding: 4px; vertical-align: top; }
 .cal-grid thead th { font: 600 0.75rem var(--heading); color: var(--text-muted); text-align: left; padding: 6px; }
 .cal-grid th.cal-person { width: 9.5rem; text-align: left; font-weight: 600; overflow-wrap: anywhere; }
+.cal-grid th.cal-person .avatar { margin-right: 4px; }
 .cal-grid .is-today { background: var(--accent-tint); }
 .cal-grid thead th.is-today { color: var(--accent-ink); }
 .cal-grid .is-outside { background: var(--surface-page); }

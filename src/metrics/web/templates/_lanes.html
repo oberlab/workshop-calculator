@@ -30,7 +30,7 @@
       <tbody>
         {% for lane in week.lanes %}
         <tr>
-          <th scope="row" class="cal-person">{% if lane.person %}{{ ui.avatar(lane.label, "sm", image=lane.person.photo) }} {% endif %}<span>{{ lane.label }}</span></th>
+          <th scope="row" class="cal-person">{% if lane.person %}{{ ui.avatar(lane.label, image=lane.person.photo) }} {% endif %}<span>{{ lane.label }}</span></th>
           {% for items in lane.days %}{% set d = week.days[loop.index0] %}{% set away = lane.absent[loop.index0] %}
           <td class="{{ 'is-today' if d == today }}{{ ' is-outside' if view == 'monat' and d.month != day.month }}{{ ' is-absent' if away }}">{% if away %}<span class="cal-absent">{{ away }}</span>{% endif %}{% for it in items %}{{ item(it.t, it.role) }}{% endfor %}</td>
           {% endfor %}
