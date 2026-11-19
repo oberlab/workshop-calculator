@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import QueryParams
 
 from metrics import analytics, auth, charts, hints, lists, logins, metrics
-from metrics.db import ImportRun, Proposal, get_sessionmaker
+from metrics.db import ImportRun, Person, Proposal, get_sessionmaker
 from metrics.instance import get_instance
 from metrics.planning import mine, workflow
 from metrics.web import hosts, nav, security
@@ -105,12 +105,15 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
     login = current_login(request)
     counts: dict[str, int] = {}
     projects: list = []
+    photo = None
     if login:
         reference = list_state(login)
         counts |= reference.counts
         projects = reference.projects
+        photo = reference.photo
     sidebar = {
         "login": login,
+        "login_photo": photo,
         "nav": nav.sidebar(login, request.url.path, counts, projects, front=hosts.front_href(request)),
         "front_href": hosts.front_href(request),
         "brand": hosts.brand(request),
@@ -128,6 +131,7 @@ def page(request: Request, template: str, context: dict, status_code: int = 200)
 class ListState:
     projects: list  # project pages, from the contexts (WM-101)
     counts: dict[str, int]  # proposed entries per list, open hints and proposals for "Prüfen"
+    photo: str | None = None  # the logged-in person's picture for the sidebar avatar
 
 
 def list_state(login: auth.Login | None = None) -> ListState:
@@ -141,13 +145,16 @@ def list_state(login: auth.Login | None = None) -> ListState:
                 select(func.count()).select_from(Proposal).where(Proposal.decision.is_(None))
             )
             counts |= workflow.sidebar_counts(session)
+            photo = None
             if login is not None and login.subject:
                 counts["mine_open"] = mine.task_count(session, login.subject, today())
+                me = session.scalars(select(Person).where(Person.login_subject == login.subject)).first()
+                photo = me.photo if me else None
             counts |= {
                 "hints_high": found["hints_high"],
                 "pruefen_open": (open_proposals or 0) + found["hints_medium"],
             }
-            return ListState(lists.projects(session), counts)
+            return ListState(lists.projects(session), counts, photo)
     except SQLAlchemyError:
         return ListState([], {})
 

@@ -288,7 +288,7 @@
         <td class="mono">{{ a.number or "–" }}</td>
         <td class="nowrap mono"><a href="/planung/{{ course.id }}?termin={{ a.id }}">{{ a.date|day }}</a></td>
         <td class="nowrap mono">{% if a.start_time %}{{ a.start_time.strftime("%H:%M") }}–{{ a.end_time.strftime("%H:%M") if a.end_time else "?" }}{% else %}–{% endif %}</td>
-        <td>{% if a.lead %}{{ ui.avatar(a.lead.name, "sm", label=true) }}{% endif %}{% for p in a.support %}{{ ui.avatar(p.name, "sm", label=true) }}{% endfor %}{% if not a.lead and not a.support %}<span class="muted">–</span>{% endif %}</td>
+        <td>{% if a.lead %}{{ ui.avatar(a.lead.name, "sm", image=a.lead.photo, label=true) }}{% endif %}{% for p in a.support %}{{ ui.avatar(p.name, "sm", image=p.photo, label=true) }}{% endfor %}{% if not a.lead and not a.support %}<span class="muted">–</span>{% endif %}</td>
         <td>{{ ui.stage_pill(a.stage|stage_key, a.stage) }}{% if kept_by_termin.get(a.id) %} <span class="muted small" title="{% for label, own, now in kept_by_termin[a.id] %}{{ label }} „{{ own or '–' }}“{{ ', ' if not loop.last }}{% endfor %}">eigene Angaben</span>{% endif %}</td>
         <td class="mono">{{ a.participants_total if a.participants_total is not none else "–" }}</td>
         <td>{% if top %}{{ ui.hint_badge(badge[top.level], top.text|truncate(40)) }}{% endif %}</td>

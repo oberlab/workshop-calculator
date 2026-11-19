@@ -35,7 +35,7 @@
   {% call ui.table(["Person"] + week_labels + ["Summe"], caption="Geschätzte Arbeitsstunden pro Person und Woche", class="load-table") %}
   {% for row in rows %}
   <tr data-person="{{ row.person.id }}">
-    <th scope="row">{{ ui.avatar(row.person.name, "sm") }} {{ row.person.name }}{% if row.capacity %}<span class="muted small load-capacity">{{ hours(row.capacity) }} Std./Woche</span>{% endif %}</th>
+    <th scope="row">{{ ui.avatar(row.person.name, "sm", image=row.person.photo) }} {{ row.person.name }}{% if row.capacity %}<span class="muted small load-capacity">{{ hours(row.capacity) }} Std./Woche</span>{% endif %}</th>
     {% for cell in row.cells %}
     <td data-week="{{ cell.monday.isoformat() }}" data-hours="{{ cell.total }}" data-termine="{{ cell.termine }}"{% if row.above(cell) %} class="is-above"{% endif %}>
       {% if cell.absent %}<span class="load-absent">{{ cell.absent|join(", ") }}</span>{% endif %}
@@ -77,7 +77,7 @@
   </form>
   <p class="help">{{ free.day|day }}{% if free.start and free.end %}, {{ free.start.strftime("%H:%M") }}–{{ free.end.strftime("%H:%M") }}{% else %}, ganzer Tag{% endif %}: dieselbe Prüfung wie bei der Teamauswahl im Kurs.</p>
   {% if free.free %}
-  <ul class="free-list" aria-label="Frei">{% for p in free.free %}<li data-person="{{ p.id }}">{{ ui.avatar(p.name, "sm") }} {{ p.name }}</li>{% endfor %}</ul>
+  <ul class="free-list" aria-label="Frei">{% for p in free.free %}<li data-person="{{ p.id }}">{{ ui.avatar(p.name, "sm", image=p.photo) }} {{ p.name }}</li>{% endfor %}</ul>
   {% else %}
   <p class="muted">Niemand ist frei.</p>
   {% endif %}

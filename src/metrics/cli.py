@@ -151,7 +151,7 @@ def sync_instructor_profiles(args: argparse.Namespace) -> None:
     if not token:
         sys.exit("SLACK_BOT_TOKEN must be set.")
     with get_sessionmaker()() as session, session.begin():
-        people, pictures = sync_instructors(session, token)
+        people, pictures = sync_instructors(session, token, names=not args.pictures_only)
     print(f"{people} instructors updated, {pictures} with a profile picture.")
 
 
@@ -274,6 +274,9 @@ def main() -> None:
     take.set_defaults(func=transfer_slack)
 
     people = commands.add_parser("sync-instructors", help="Fetch instructor names and pictures from Slack")
+    people.add_argument(
+        "--pictures-only", action="store_true", help="only the profile pictures; keep the names as they are"
+    )
     people.set_defaults(func=sync_instructor_profiles)
 
     password = commands.add_parser("hash-password", help="Print a TEAM_PASSWORD_HASH line for .env")

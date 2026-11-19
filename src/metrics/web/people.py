@@ -11,11 +11,11 @@ Every route here is an admin route in `access.py`. The people picker of the cour
 `/stammdaten/personen/auswahl`, open to the team (choose, or propose a new person).
 """
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 
 from metrics import lists
-from metrics.db import MERGED
+from metrics.db import MERGED, Person, get_sessionmaker
 from metrics.web import lists as list_pages
 
 router = APIRouter()
@@ -59,3 +59,16 @@ async def propose(request: Request):
 @router.post(BASE + "/{entry_id:int}", response_class=HTMLResponse)
 async def edit(entry_id: int, request: Request):
     return await list_pages.edit_entry(request, lists.PEOPLE, entry_id)
+
+
+@router.get("/personen/{person_id:int}/bild")
+def person_photo(person_id: int) -> Response:
+    """A team member's Slack profile picture for the avatars (Team route: never public)."""
+    with get_sessionmaker()() as session:
+        person = session.get(Person, person_id)
+        image, kind = (person.image, person.image_type) if person else (None, None)
+    if image is None:
+        raise HTTPException(404)
+    # Only an image type as stored from Slack; anything else is served as JPEG (and never sniffed).
+    media_type = kind if kind and kind.startswith("image/") else "image/jpeg"
+    return Response(image, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})

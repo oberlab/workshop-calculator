@@ -29,7 +29,7 @@
     <section class="account" aria-label="Anmeldung">
       {% if login %}
       <div class="account-user">
-        {{ ui.avatar(login.user) }}
+        {{ ui.avatar(login.user, image=login_photo) }}
         <div>
           <div class="account-name">{{ login.user }}</div>
           <div class="account-role">Team{% if login.admin %} · Admin{% endif %}</div>

@@ -7,7 +7,7 @@
 {% block subheading %}<p class="subheading">Termine nach Woche. Die Phase steht am Termin; ein Klick öffnet den Kurs.</p>{% endblock %}
 
 {% macro team(t) -%}
-{% if t.lead or t.support %}<span class="team-names">{% if t.lead %}{{ ui.avatar(t.lead.name, "sm") }} {{ t.lead.name }}{% endif %}{% for p in t.support %}{{ ", " if loop.first and t.lead else (", " if not loop.first) }}{{ p.name }}{% endfor %}</span>{% else %}<span class="muted">kein Team</span>{% endif %}
+{% if t.lead or t.support %}<span class="team-names">{% if t.lead %}{{ ui.avatar(t.lead.name, "sm", image=t.lead.photo) }} {{ t.lead.name }}{% endif %}{% for p in t.support %}{{ ", " if loop.first and t.lead else (", " if not loop.first) }}{{ p.name }}{% endfor %}</span>{% else %}<span class="muted">kein Team</span>{% endif %}
 {%- endmacro %}
 
 {% macro when(t) -%}

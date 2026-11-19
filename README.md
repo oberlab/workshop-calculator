@@ -157,7 +157,7 @@ curl -X POST 'http://127.0.0.1:8765/_wochenstunden?email=kim.beispiel@example.or
 | `fake-calendar [--host H] [--port P]` | A fake CalDAV server for local tries, with an outbox instead of e-mail. |
 | `fake-kimai [--host H] [--port P]` | A fake Kimai Cloud API for local tries (invented users matching `demo-data`). |
 | `kimai-check` | Read only: shows which people match a Kimai user and what the Kimai endpoints answer. |
-| `sync-instructors` | Fetches names and profile pictures of the instructors from Slack (needs `SLACK_BOT_TOKEN` with `users:read`). |
+| `sync-instructors` | Fetches names and profile pictures of the team from Slack (needs `SLACK_BOT_TOKEN` with `users:read`). The pictures appear next to names in the team part. `--pictures-only` keeps the names as kept on the Personen page. |
 | `export-baseline --harmonised CSV --slack-export CSV --out FILE` | Writes the reviewed legacy data into one baseline CSV and prints its sha256. |
 | `load-baseline CSV --version NAME [--sha256 HASH]` | Loads the baseline once and freezes it. |
 | `load-legacy [--harmonised CSV …] [--slack-export CSV …]` | Replaces all legacy rows with the given CSV files (only entries after the baseline). |

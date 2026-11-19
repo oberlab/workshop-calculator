@@ -225,8 +225,16 @@ class Person(Base):
     # The Kimai user ID, set by an admin when the e-mail in Kimai differs (WM-142); the Kimai job
     # matches this first, then the e-mail.
     kimai_user_id: Mapped[int | None] = mapped_column(Integer, unique=True)
-    image: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # The Slack profile picture (`metrics sync-instructors`), loaded only when asked for: lists of
+    # people show it through `GET /personen/{id}/bild`.
+    image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     image_type: Mapped[str | None] = mapped_column(String(64))
+
+    @property
+    def photo(self) -> str | None:
+        """The address of the picture for avatars, or None (initials)."""
+        return f"/personen/{self.id}/bild" if self.image_type else None
+
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # The core team (WM-131 follow-up): always on the Team page and in "Wer ist frei?"; helpers appear
     # there only with a Termin. Set by an admin.

@@ -179,3 +179,20 @@ def test_core_team_is_active_confirmed_people_marked_kernteam(db):
     kern, former = (db.scalars(sa.select(Person).where(Person.name == n)).one() for n in ("Kern", "Ehemals"))
     assert "Kernteam" in lists.describe(kern, {}) and "Kernteam" not in lists.describe(former, {})
     assert any(f.name == "core_team" for f in lists.FIELDS[lists.PEOPLE])
+
+
+def test_sync_pictures_only_keeps_the_names(db, monkeypatch):
+    """`metrics sync-instructors --pictures-only`: the pictures change, the names an admin kept stay."""
+    from metrics.ingest import instructors
+
+    person = Person(name="Kim (Kurse)", slack_id="U012AB3CD9", status=CONFIRMED)
+    db.add(person)
+    db.flush()
+    user = {"ok": True, "user": {"profile": {"real_name": "Kim Slack", "image_192": "https://img/kim"}}}
+    monkeypatch.setattr(instructors, "_get_json", lambda url, token: user)
+    monkeypatch.setattr(instructors, "_download", lambda url: (b"jpeg", "image/jpeg"))
+    assert instructors.sync_instructors(db, "token", names=False) == (1, 1)
+    assert (person.name, person.image) == ("Kim (Kurse)", b"jpeg")
+    assert person.photo == f"/personen/{person.id}/bild"
+    instructors.sync_instructors(db, "token")
+    assert person.name == "Kim Slack"  # the default, as before

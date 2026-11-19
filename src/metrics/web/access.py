@@ -101,6 +101,8 @@ TEAM_ROUTES = {
     "GET /analyse/planung",
     "GET /api/analyse/planung/stunden",
     "GET /instructors/{key}/image",
+    # Avatars (Slack profile pictures) of team members, wherever names appear in the team part.
+    "GET /personen/{person_id:int}/bild",
     # Tabelle (WM-152): the held Termine with chosen columns and their CSV. Team members' names may
     # appear; contacts (WM-141) never do (`metrics.table`).
     "GET /tabelle",

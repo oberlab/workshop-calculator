@@ -431,3 +431,27 @@ def test_capacity_hint_goes_when_the_person_is_taken_off_a_termin(world):  # noq
     workflow.delete(db, z, "Test", really=True)
     db.flush()
     assert flagged() == set() == nightly()
+
+
+def test_slack_pictures_as_avatars(week, monkeypatch):
+    """A person with a Slack picture shows it instead of initials; the picture needs a login."""
+    w, _ = week
+    w.kim.image, w.kim.image_type = b"\x89PNG-kim", "image/png"
+    w.lea.image, w.lea.image_type = b"<svg onload=alert(1)>", "text/html"  # never served as HTML
+    w.db.commit()
+    client = _as(monkeypatch, "Kim", "kc-kim")
+    html = client.get(f"/team?datum={NEXT_MONDAY}").text
+    assert f'<img src="/personen/{w.kim.id}/bild" alt="">' in html
+    assert f'src="/personen/{w.sam.id}/bild"' not in html  # no picture: initials
+    sidebar = html.split('<nav class="nav"')[0]
+    assert f'src="/personen/{w.kim.id}/bild"' in sidebar  # the logged-in person's own avatar
+
+    picture = client.get(f"/personen/{w.kim.id}/bild")
+    assert (picture.status_code, picture.content) == (200, b"\x89PNG-kim")
+    assert picture.headers["content-type"] == "image/png"
+    assert picture.headers["cache-control"] == "private, max-age=86400"
+    assert client.get(f"/personen/{w.lea.id}/bild").headers["content-type"] == "image/jpeg"
+    assert client.get(f"/personen/{w.sam.id}/bild").status_code == 404
+    assert client.get("/personen/999999/bild").status_code == 404
+    client.cookies.clear()
+    assert client.get(f"/personen/{w.kim.id}/bild").status_code == 401

@@ -27,8 +27,9 @@ def _download(url: str) -> tuple[bytes, str]:
         return response.read(), response.headers.get_content_type()
 
 
-def sync_instructors(session: Session, token: str) -> tuple[int, int]:
-    """Update every person with a Slack user ID. Returns (people, pictures)."""
+def sync_instructors(session: Session, token: str, names: bool = True) -> tuple[int, int]:
+    """Update every person with a Slack user ID. Returns (people, pictures). With `names=False`
+    only the pictures change: names stay as an admin kept them on the Personen page."""
     people = list(session.scalars(select(Person).where(Person.slack_id.is_not(None)).order_by(Person.id)))
     for person in people:
         if not SLACK_USER_ID.match(person.slack_id):
@@ -38,7 +39,8 @@ def sync_instructors(session: Session, token: str) -> tuple[int, int]:
             error = f"{result.get('error')} {result.get('needed', '')}"
             raise RuntimeError(f"users.info failed for {person.slack_id}: {error}")
         profile = result["user"].get("profile", {})
-        person.name = profile.get("real_name") or result["user"].get("real_name") or person.slack_id
+        if names:
+            person.name = profile.get("real_name") or result["user"].get("real_name") or person.slack_id
         if url := profile.get("image_192"):
             person.image, person.image_type = _download(url)
     return len(people), sum(1 for p in people if p.image)
