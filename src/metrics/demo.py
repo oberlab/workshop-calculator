@@ -353,6 +353,8 @@ class _Builder:
                 kimai_user=local,
                 weekly_hours=Decimal(hours) if hours else None,
                 active=active,
+                # Staff with weekly hours are the core team; Ben (a helper) appears only with a Termin.
+                core_team=active and hours is not None,
                 login_subject=LOGIN_SUBJECT if name == KIM else None,
                 status=CONFIRMED,
             )

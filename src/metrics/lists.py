@@ -183,6 +183,14 @@ def choices(session: Session, kind: Kind, selected_id: int | None = None) -> lis
     return sorted(entries.values(), key=_sort_key)
 
 
+def core_team(session: Session) -> list[Person]:
+    """The core team: active people marked "Kernteam", for the Team page and "Wer ist frei?"."""
+    stmt = select(Person).where(
+        Person.status.in_(ACTIVE_STATUSES), Person.active.is_(True), Person.core_team.is_(True)
+    )
+    return sorted(session.scalars(stmt), key=_sort_key)
+
+
 def school_types(session: Session) -> dict[str, str]:
     return dict(
         session.execute(select(SchoolType.code, SchoolType.label).order_by(SchoolType.position)).all()
@@ -219,6 +227,8 @@ def describe(entry, types: dict[str, str]) -> str:
     elif isinstance(entry, Person):
         if not entry.active:
             parts.append("inaktiv")
+        elif entry.core_team:
+            parts.append("Kernteam")
     elif isinstance(entry, Equipment):
         if entry.quantity is not None:
             parts.append(f"{entry.quantity} vorhanden")
@@ -535,6 +545,12 @@ FIELDS: dict[Kind, tuple[Field, ...]] = {
             limit=999_999_999,
         ),
         Field("active", "Aktiv im Team", "bool"),
+        Field(
+            "core_team",
+            "Kernteam",
+            "bool",
+            help="Immer auf der Team-Seite und unter „Wer ist frei?“; andere nur mit einem Termin",
+        ),
         Field(
             "weekly_hours",
             "Wochenstunden",

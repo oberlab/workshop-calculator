@@ -297,7 +297,7 @@ def table(
 ) -> list[Row]:
     """Per person and calendar week from the week of `start`: Termine and estimated hours.
 
-    `people` get a row each (the active team), plus anyone else with a Termin in those weeks.
+    `people` get a row each (the core team), plus anyone else with a Termin in those weeks.
     `appointments` may pass the Termine of those weeks when the caller has them already; `own` is
     the viewer, who sees the kind of their own absences.
     """
@@ -377,9 +377,10 @@ class Free:
 def who_is_free(
     session: Session, day: dt.date, start: dt.time | None, end: dt.time | None, own: int | None = None
 ) -> Free:
-    """The team pickers' people (`lists.choices`) without a Termin then (`workflow.busy_people`,
-    the pickers' own check) and without an absence that day (`own`: the viewer, see `absences`)."""
-    team = lists.choices(session, lists.PEOPLE)
+    """The core team (`lists.core_team`; helpers are asked directly) without a Termin then
+    (`workflow.busy_people`, the pickers' own check) and without an absence that day (`own`: the
+    viewer, see `absences`)."""
+    team = lists.core_team(session)
     busy = workflow.busy_people(session, day, start, end)
     absent = absences(session, day, day, own)
     result = Free(day, start, end, [], [], [])

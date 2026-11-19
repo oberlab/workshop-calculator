@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from fastapi import HTTPException
 
 from metrics import auth, lists
-from metrics.db import CONFIRMED, HistoryEntry, Person
+from metrics.db import CONFIRMED, PROPOSED, REJECTED, HistoryEntry, Person
 from metrics.ingest import store
 from metrics.web import lists as list_pages
 from tests.test_lists import _admin, _team
@@ -161,3 +161,21 @@ def test_proposals_from_the_personen_page(seeded, monkeypatch):
     )
     assert created.status_code == 303
     assert _people(seeded)["Nora"].email == "nora@example.org"
+
+
+def test_core_team_is_active_confirmed_people_marked_kernteam(db):
+    """The Team page and "Wer ist frei?" start from the core team (WM-131 follow-up)."""
+    db.add_all(
+        [
+            Person(name="Kern", core_team=True, status=CONFIRMED),
+            Person(name="Vorgeschlagen", core_team=True, status=PROPOSED),
+            Person(name="Ehemals", core_team=True, active=False, status=CONFIRMED),
+            Person(name="Abgelehnt", core_team=True, status=REJECTED),
+            Person(name="Helferin", status=CONFIRMED),
+        ]
+    )
+    db.flush()
+    assert [p.name for p in lists.core_team(db)] == ["Kern", "Vorgeschlagen"]
+    kern, former = (db.scalars(sa.select(Person).where(Person.name == n)).one() for n in ("Kern", "Ehemals"))
+    assert "Kernteam" in lists.describe(kern, {}) and "Kernteam" not in lists.describe(former, {})
+    assert any(f.name == "core_team" for f in lists.FIELDS[lists.PEOPLE])

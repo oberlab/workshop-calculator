@@ -2,15 +2,16 @@
 
 `GET /team` (Team route, `access.py`), read only:
 - `ansicht` (`woche`, default, or `monat`) and `datum` (any day of the week or month, default
-  today): the calendar lanes, one per active team member and anyone else with a Termin, every
+  today): the calendar lanes, one per core team member and anyone else with a Termin, every
   stage but Abgesagt (the calendar's lanes and side panel, `_lanes.html`); absences from Kimai
   (WM-142) as grey blocks, with the kind only in the viewer's own lane. Below them the equipment
   lanes of the same days (WM-140), when there is a Material list.
-- The workload table per person and calendar week: four weeks from the week shown, or the weeks
+- The workload table per person and calendar week (the core team and anyone else with a Termin):
+  four weeks from the week shown, or the weeks
   of the month shown, with the estimated working hours (`metrics.planning.workload`) against the
   person's weekly hours, and the formula in words.
 - "Wer ist frei?": `frei` (a date, default the day shown), `von` and `bis` (optional times): the
-  team pickers' people without a Termin or absence then (`workload.who_is_free`).
+  core team members without a Termin or absence then (`workload.who_is_free`).
 """
 
 import datetime as dt
@@ -59,7 +60,7 @@ def team(request: Request):
     with get_sessionmaker()() as session:
         me = planning._me(session, request)
         own = me.id if me else None
-        team_people = lists.choices(session, lists.PEOPLE)
+        team_people = lists.core_team(session)
         shown = workload.termine(session, start, max(end, table_end))
         in_lanes = [t for t in shown if start <= t.date <= end]
         away = workload.absences(session, start, end, own)

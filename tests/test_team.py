@@ -13,7 +13,7 @@ import pytest
 import sqlalchemy as sa
 
 from metrics import hints, lists
-from metrics.db import ABGESCHLOSSEN, CONFIRMED, Format, HistoryEntry, StoredHint
+from metrics.db import ABGESCHLOSSEN, CONFIRMED, Format, HistoryEntry, Person, StoredHint
 from metrics.instance import WorkloadRule, load_workload
 from metrics.planning import lanes, workflow, workload
 from tests.test_mine import NEXT_MONDAY, TODAY, _as, _termin, world  # noqa: F401 (fixture)
@@ -51,8 +51,11 @@ def test_example_instance_uses_the_proposed_defaults(instance):
 def week(world):  # noqa: F811 (the fixture imported above)
     """Next week: Kim leads A at the school (1 h travel) with Lea as support, Lea leads B with Kim
     as support, Kim leads C without times (HackDays: 4 h usual duration, 3 h fixed hours); a
-    cancelled Termin of Kim's does not count. Sam leads D the week after."""
+    cancelled Termin of Kim's does not count. Sam leads D the week after. Kim and Sam are the core
+    team; Lea is a helper (Termine this week), and so is Ben (none)."""
     w = world
+    w.kim.core_team = w.sam.core_team = True
+    w.db.add(Person(name="Ben", status=CONFIRMED))
     w.school.travel_hours = Decimal(1)
     hackdays = Format(
         name="HackDays", category="Engineering", duration_hours=4, overhead_hours=3, status=CONFIRMED
@@ -205,8 +208,9 @@ def test_page_shows_lanes_for_the_team_and_the_formula(week, monkeypatch):
     html = _as(monkeypatch, "Kim", "kc-kim").get(f"/team?datum={NEXT_MONDAY}").text
     rows = re.findall(r'<th scope="row" class="cal-person">.*?</tr>', html, re.S)
     lanes_by_name = {re.search(r"<span>([^<]+)</span></th>", row).group(1): row for row in rows}
-    team = {p.name for p in lists.choices(w.db, lists.PEOPLE)}
-    assert set(lanes_by_name) == team and "Sam" in team  # Sam has no Termin this week, still a lane
+    # The core team (Sam: no Termin this week, still a lane) and Lea, a helper with Termine; not Ben.
+    assert {p.name for p in lists.core_team(w.db)} == {"Kim", "Sam"}
+    assert set(lanes_by_name) == {"Kim", "Sam", "Lea"}
     found = re.findall(r'hx-get="/kalender/termin/(\d+)"', lanes_by_name["Kim"])
     assert {int(i) for i in found} == {t["a"].id, t["b"].id, t["c"].id}  # not the cancelled one
     assert "Kursleitung: Kurszeit + Vorbereitung (0,5 × Kurszeit) + 1 Std. Zuschlag + Fahrtzeit" in html
@@ -228,11 +232,11 @@ def test_absences_hook_greys_out_lanes_and_who_is_free(week, monkeypatch):
 
 
 def test_who_is_free_agrees_with_the_team_picker(week, monkeypatch):
-    """WM-131 done when (second half): the free people are the pickers' people the picker does not
-    mark as busy, for the whole day and for a time."""
+    """WM-131 done when (second half): the free people are the core team members the picker does
+    not mark as busy, for the whole day and for a time. Helpers (Lea, Ben) are asked directly."""
     w, t = week
     client = _as(monkeypatch, "Kim", "kc-kim")
-    team = {p.id for p in lists.choices(w.db, lists.PEOPLE)}
+    team = {p.id for p in lists.core_team(w.db)}
     for day, start, end in (
         (TUESDAY, "10:00", "11:00"),  # A: Kim and Lea
         (TUESDAY, "12:00", "13:00"),  # nobody
@@ -247,7 +251,7 @@ def test_who_is_free_agrees_with_the_team_picker(week, monkeypatch):
         assert not_free == team & {int(k) for k in busy}
         found = workload.who_is_free(w.db, day, workflow._time(start, "", []), workflow._time(end, "", []))
         assert {p.id for p in found.free} == free
-    assert free == team - {w.kim.id} and w.lea.id in free
+    assert free == team - {w.kim.id} and w.sam.id in free and w.lea.id not in free
 
 
 # --- A course's own values ---------------------------------------------------------------------

@@ -228,6 +228,9 @@ class Person(Base):
     image: Mapped[bytes | None] = mapped_column(LargeBinary)
     image_type: Mapped[str | None] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # The core team (WM-131 follow-up): always on the Team page and in "Wer ist frei?"; helpers appear
+    # there only with a Termin. Set by an admin.
+    core_team: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     weekly_hours: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     # The login ("sub" of OpenID Connect) linked to this person by e-mail at its first login.
     login_subject: Mapped[str | None] = mapped_column(Text, unique=True)
